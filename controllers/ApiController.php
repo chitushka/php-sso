@@ -2,8 +2,10 @@
 
 namespace app\controllers;
 
-use Yii;
 use app\services\RateLimitService;
+use app\services\AuthService;
+use app\services\RbacService;
+use Yii;
 use yii\web\Controller;
 use yii\web\Response;
 
@@ -42,5 +44,19 @@ class ApiController extends Controller
     {
         Yii::$app->response->statusCode = $status;
         return array_merge(['error' => $message], $extra);
+    }
+
+    protected function requirePermission(string $resource, string $action)
+    {
+        $user = (new AuthService())->currentUser(Yii::$app->request);
+        if (!$user) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        if (!(new RbacService())->userHasPermission($user, $resource, $action)) {
+            return $this->fail(403, 'permission denied');
+        }
+
+        return $user;
     }
 }

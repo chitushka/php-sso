@@ -45,6 +45,8 @@ make lint     # проверить PHP-синтаксис
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
 - Просмотр и отзыв пользовательских сессий.
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
+- RBAC-проверка admin API с прямыми ролями и ролями через группы.
+- Admin API для users, roles, permissions, groups и audit.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
@@ -52,7 +54,7 @@ make lint     # проверить PHP-синтаксис
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: RBAC middleware, Users/Roles/Groups API, audit API, LDAP Search + Bind, MFA TOTP, password reset/email verification и identity brokering.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: LDAP providers API, детальные UI-формы назначения ролей/групп, LDAP Search + Bind, MFA TOTP, password reset/email verification и identity brokering.
 
 ## Важные изменения
 
@@ -61,3 +63,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.
+- 2026-09-07: перенесены RBAC-проверка, Users/Roles/Permissions/Groups/Audit admin API и базовые Vue-вкладки для этих разделов.

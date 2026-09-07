@@ -10,8 +10,9 @@ class OAuthController extends ApiController
 {
     public function actionListClients(): array
     {
-        if (!(new AuthService())->currentUser(Yii::$app->request)) {
-            return $this->fail(401, 'invalid token');
+        $auth = $this->requirePermission('oauth_clients', 'read');
+        if (is_array($auth)) {
+            return $auth;
         }
 
         return (new OAuthService())->listClients();
@@ -19,8 +20,9 @@ class OAuthController extends ApiController
 
     public function actionCreateClient(): array
     {
-        if (!(new AuthService())->currentUser(Yii::$app->request)) {
-            return $this->fail(401, 'invalid token');
+        $auth = $this->requirePermission('oauth_clients', 'create');
+        if (is_array($auth)) {
+            return $auth;
         }
 
         $result = (new OAuthService())->createClient($this->body());
@@ -30,6 +32,11 @@ class OAuthController extends ApiController
 
     public function actionGetClient(string $id): array
     {
+        $auth = $this->requirePermission('oauth_clients', 'read');
+        if (is_array($auth)) {
+            return $auth;
+        }
+
         $client = (new OAuthService())->getClient($id);
         if (!$client) {
             return $this->fail(404, 'client not found');
@@ -40,8 +47,9 @@ class OAuthController extends ApiController
 
     public function actionUpdateClient(string $id): array
     {
-        if (!(new AuthService())->currentUser(Yii::$app->request)) {
-            return $this->fail(401, 'invalid token');
+        $auth = $this->requirePermission('oauth_clients', 'update');
+        if (is_array($auth)) {
+            return $auth;
         }
 
         $result = (new OAuthService())->updateClient($id, $this->body());
@@ -51,8 +59,9 @@ class OAuthController extends ApiController
 
     public function actionDeleteClient(string $id): array
     {
-        if (!(new AuthService())->currentUser(Yii::$app->request)) {
-            return $this->fail(401, 'invalid token');
+        $auth = $this->requirePermission('oauth_clients', 'delete');
+        if (is_array($auth)) {
+            return $auth;
         }
 
         return (new OAuthService())->deleteClient($id)
@@ -62,8 +71,9 @@ class OAuthController extends ApiController
 
     public function actionRotateSecret(string $id): array
     {
-        if (!(new AuthService())->currentUser(Yii::$app->request)) {
-            return $this->fail(401, 'invalid token');
+        $auth = $this->requirePermission('oauth_clients', 'update');
+        if (is_array($auth)) {
+            return $auth;
         }
 
         $result = (new OAuthService())->rotateSecret($id);

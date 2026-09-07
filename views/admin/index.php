@@ -14,6 +14,10 @@ $this->title = 'SSO Admin';
       <button :class="{active: view === 'bootstrap'}" @click="view = 'bootstrap'">Bootstrap</button>
       <button :class="{active: view === 'login'}" @click="view = 'login'">Login</button>
       <button :class="{active: view === 'clients'}" @click="view = 'clients'">OAuth Clients</button>
+      <button :class="{active: view === 'users'}" @click="view = 'users'">Users</button>
+      <button :class="{active: view === 'roles'}" @click="view = 'roles'">Roles</button>
+      <button :class="{active: view === 'groups'}" @click="view = 'groups'">Groups</button>
+      <button :class="{active: view === 'audit'}" @click="view = 'audit'">Audit</button>
       <button class="primary" @click="logout">Logout</button>
     </nav>
 
@@ -32,6 +36,14 @@ $this->title = 'SSO Admin';
           <div class="metric">
             <strong>Clients</strong>
             <p class="muted">{{ clients.length }}</p>
+          </div>
+          <div class="metric">
+            <strong>Users</strong>
+            <p class="muted">{{ users.length }}</p>
+          </div>
+          <div class="metric">
+            <strong>Roles</strong>
+            <p class="muted">{{ roles.length }}</p>
           </div>
         </div>
       </div>
@@ -81,6 +93,70 @@ $this->title = 'SSO Admin';
         <pre>{{ clients }}</pre>
       </div>
 
+      <div class="panel" v-if="view === 'users'">
+        <h1>Users</h1>
+        <div class="grid">
+          <div>
+            <label>Username</label>
+            <input v-model="userForm.username">
+          </div>
+          <div>
+            <label>Email</label>
+            <input v-model="userForm.email">
+          </div>
+          <div>
+            <label>Password</label>
+            <input type="password" v-model="userForm.password">
+          </div>
+        </div>
+        <button class="primary" @click="createUser">Create user</button>
+        <pre>{{ users }}</pre>
+      </div>
+
+      <div class="panel" v-if="view === 'roles'">
+        <h1>Roles</h1>
+        <div class="grid">
+          <div>
+            <label>Code</label>
+            <input v-model="roleForm.code">
+          </div>
+          <div>
+            <label>Name</label>
+            <input v-model="roleForm.name">
+          </div>
+        </div>
+        <label>Description</label>
+        <textarea rows="2" v-model="roleForm.description"></textarea>
+        <button class="primary" @click="createRole">Create role</button>
+        <pre>{{ roles }}</pre>
+        <h2>Permissions</h2>
+        <pre>{{ permissions }}</pre>
+      </div>
+
+      <div class="panel" v-if="view === 'groups'">
+        <h1>Groups</h1>
+        <div class="grid">
+          <div>
+            <label>Code</label>
+            <input v-model="groupForm.code">
+          </div>
+          <div>
+            <label>Name</label>
+            <input v-model="groupForm.name">
+          </div>
+        </div>
+        <label>Description</label>
+        <textarea rows="2" v-model="groupForm.description"></textarea>
+        <button class="primary" @click="createGroup">Create group</button>
+        <pre>{{ groups }}</pre>
+      </div>
+
+      <div class="panel" v-if="view === 'audit'">
+        <h1>Audit</h1>
+        <button class="primary" @click="loadAudit">Refresh audit</button>
+        <pre>{{ audit }}</pre>
+      </div>
+
       <p class="muted">{{ message }}</p>
     </section>
   </main>
@@ -98,9 +174,17 @@ const app = Vue.createApp({
       bootstrap: {},
       discovery: {},
       clients: [],
+      users: [],
+      roles: [],
+      permissions: [],
+      groups: [],
+      audit: [],
       bootstrapForm: { username: 'admin', email: 'admin@example.com', password: '' },
       loginForm: { username: 'admin', password: '' },
-      clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' }
+      clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' },
+      userForm: { username: '', email: '', password: '' },
+      roleForm: { code: '', name: '', description: '' },
+      groupForm: { code: '', name: '', description: '' }
     };
   },
   mounted() {
@@ -124,6 +208,10 @@ const app = Vue.createApp({
       if (this.accessToken) {
         this.user = await this.api('/api/v1/auth/me').catch(() => null);
         this.clients = await this.api('/api/v1/oauth/clients').catch(() => []);
+        this.users = await this.api('/api/v1/users').catch(() => []);
+        this.roles = await this.api('/api/v1/roles').catch(() => []);
+        this.permissions = await this.api('/api/v1/permissions').catch(() => []);
+        this.groups = await this.api('/api/v1/groups').catch(() => []);
       }
     },
     async createAdmin() {
@@ -157,6 +245,27 @@ const app = Vue.createApp({
       const data = await this.api('/api/v1/oauth/clients', { method: 'POST', body: JSON.stringify(payload) });
       this.message = data.client_secret ? 'Client secret: ' + data.client_secret : 'Client created';
       await this.refresh();
+    },
+    async createUser() {
+      const data = await this.api('/api/v1/users', { method: 'POST', body: JSON.stringify(this.userForm) });
+      this.message = 'User created: ' + data.username;
+      this.userForm = { username: '', email: '', password: '' };
+      await this.refresh();
+    },
+    async createRole() {
+      const data = await this.api('/api/v1/roles', { method: 'POST', body: JSON.stringify(this.roleForm) });
+      this.message = 'Role created: ' + data.code;
+      this.roleForm = { code: '', name: '', description: '' };
+      await this.refresh();
+    },
+    async createGroup() {
+      const data = await this.api('/api/v1/groups', { method: 'POST', body: JSON.stringify(this.groupForm) });
+      this.message = 'Group created: ' + data.code;
+      this.groupForm = { code: '', name: '', description: '' };
+      await this.refresh();
+    },
+    async loadAudit() {
+      this.audit = await this.api('/api/v1/audit');
     }
   }
 });

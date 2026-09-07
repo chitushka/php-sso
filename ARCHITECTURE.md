@@ -26,8 +26,12 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 
 - `BootstrapController` — первичная инициализация администратора.
 - `AuthController` + `AuthService` — локальный вход, cookie-сессии, Bearer JWT, отзыв сессий.
+- `UsersController` — административный CRUD пользователей и soft delete.
+- `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям.
+- `GroupsController` — группы, роли групп и членство пользователей в группах.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
+- `AuditController` — чтение журнала аудита с фильтрами.
 - `AuditService` — запись важных событий.
 - `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
@@ -50,9 +54,11 @@ Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` 
 
 `ApiController` применяет общий лимит тела запроса и вызывает `RateLimitService` для `auth/login`, `bootstrap/create`, `oauth/token`, `oauth/revoke`, `oauth/introspect`.
 
+`ApiController::requirePermission()` загружает пользователя по Bearer JWT и проверяет право через `RbacService`. `RbacService` учитывает как прямые роли из `user_roles`, так и роли, унаследованные через `user_groups -> group_roles`.
+
 ## UI
 
-Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login и OAuth clients. Следующие страницы должны переноситься по модулям: users, roles, groups, LDAP, audit, account, identity providers.
+Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login, OAuth clients, users, roles, permissions, groups и audit. Следующие страницы должны переноситься по модулям: LDAP, account, identity providers и детальные формы назначения ролей/групп.
 
 ## Документация
 
