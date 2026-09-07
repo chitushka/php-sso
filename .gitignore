@@ -1,0 +1,8 @@
+/.env
+/vendor/
+/runtime/*
+!/runtime/.gitkeep
+/web/assets/
+/public/assets/runtime/
+.idea/
+.vscode/

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:13-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sso}
+      POSTGRES_USER: ${POSTGRES_USER:-sso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sso} -d ${POSTGRES_DB:-sso}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - vendor_data:/app/vendor
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -lc "composer install --no-interaction --prefer-dist && php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t public public/router.php"
+
+volumes:
+  postgres_data:
+  vendor_data:

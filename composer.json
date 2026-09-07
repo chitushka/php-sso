@@ -1,0 +1,31 @@
+{
+  "name": "local/sso-php",
+  "description": "Single-tenant SSO service ported from the Go implementation to PHP 7.4 and Yii2.",
+  "type": "project",
+  "require": {
+    "php": ">=7.4 <8.0",
+    "yiisoft/yii2": "^2.0"
+  },
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://asset-packagist.org"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "app\\": ""
+    }
+  },
+  "scripts": {
+    "lint": "find . -path ./vendor -prune -o -name '*.php' -print -exec php -l {} \\;",
+    "migrate": "php yii migrate --interactive=0",
+    "serve": "php -S 0.0.0.0:8080 -t public public/router.php"
+  },
+  "config": {
+    "allow-plugins": {
+      "yiisoft/yii2-composer": true
+    },
+    "process-timeout": 1800
+  }
+}

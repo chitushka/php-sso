@@ -1,0 +1,148 @@
+<?php
+
+namespace app\controllers;
+
+use app\services\AuthService;
+use app\services\OAuthService;
+use Yii;
+
+class OAuthController extends ApiController
+{
+    public function actionListClients(): array
+    {
+        if (!(new AuthService())->currentUser(Yii::$app->request)) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        return (new OAuthService())->listClients();
+    }
+
+    public function actionCreateClient(): array
+    {
+        if (!(new AuthService())->currentUser(Yii::$app->request)) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $result = (new OAuthService())->createClient($this->body());
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionGetClient(string $id): array
+    {
+        $client = (new OAuthService())->getClient($id);
+        if (!$client) {
+            return $this->fail(404, 'client not found');
+        }
+
+        return $client;
+    }
+
+    public function actionUpdateClient(string $id): array
+    {
+        if (!(new AuthService())->currentUser(Yii::$app->request)) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $result = (new OAuthService())->updateClient($id, $this->body());
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionDeleteClient(string $id): array
+    {
+        if (!(new AuthService())->currentUser(Yii::$app->request)) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        return (new OAuthService())->deleteClient($id)
+            ? ['status' => 'deleted']
+            : $this->fail(404, 'client not found');
+    }
+
+    public function actionRotateSecret(string $id): array
+    {
+        if (!(new AuthService())->currentUser(Yii::$app->request)) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $result = (new OAuthService())->rotateSecret($id);
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionAuthorize()
+    {
+        $result = (new OAuthService())->authorize(Yii::$app->request);
+
+        if (!$result['ok']) {
+            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        }
+
+        return $this->redirect($result['redirect']);
+    }
+
+    public function actionToken(): array
+    {
+        $result = (new OAuthService())->token(Yii::$app->request);
+        if (!$result['ok']) {
+            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        }
+
+        return $result['data'];
+    }
+
+    public function actionRevoke(): array
+    {
+        $result = (new OAuthService())->revoke(Yii::$app->request);
+        if (!$result['ok']) {
+            return $this->oauthError(401, 'invalid_client', 'client authentication failed');
+        }
+
+        return [];
+    }
+
+    public function actionIntrospect(): array
+    {
+        $result = (new OAuthService())->introspect(Yii::$app->request);
+        if (!$result['ok']) {
+            return $this->oauthError(401, 'invalid_client', 'client authentication failed');
+        }
+
+        return $result['data'];
+    }
+
+    public function actionConsent(): array
+    {
+        return (new OAuthService())->consentInfo(Yii::$app->request);
+    }
+
+    public function actionGrantConsent(): array
+    {
+        $result = (new OAuthService())->grantConsent(Yii::$app->request, $this->body());
+        if (!$result['ok']) {
+            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        }
+
+        return ['status' => 'granted'];
+    }
+
+    public function actionLogout()
+    {
+        Yii::$app->response->cookies->remove('sso_session');
+        $redirect = Yii::$app->request->get('post_logout_redirect_uri', '');
+        $state = Yii::$app->request->get('state', '');
+
+        if ($redirect !== '') {
+            return $this->redirect($redirect . ($state !== '' ? ((strpos($redirect, '?') === false ? '?' : '&') . http_build_query(['state' => $state])) : ''));
+        }
+
+        return ['status' => 'logged_out'];
+    }
+
+    private function oauthError(int $status, string $error, string $description): array
+    {
+        Yii::$app->response->statusCode = $status;
+        return ['error' => $error, 'error_description' => $description];
+    }
+}

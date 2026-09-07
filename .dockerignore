@@ -1,0 +1,8 @@
+.env
+.git
+.idea
+.vscode
+runtime/*
+!runtime/.gitkeep
+vendor
+postgres_data
