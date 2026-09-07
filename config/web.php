@@ -14,6 +14,9 @@ return [
         'rbac' => [
             'class' => app\controllers\RbacController::class,
         ],
+        'ldap' => [
+            'class' => app\controllers\LdapController::class,
+        ],
     ],
     'aliases' => [
         '@bower' => '@vendor/bower-asset',
@@ -85,6 +88,14 @@ return [
                 'POST api/v1/groups/<groupID:[0-9a-fA-F-]+>/roles' => 'groups/assign-role',
                 'DELETE api/v1/groups/<groupID:[0-9a-fA-F-]+>/roles/<roleID:[0-9a-fA-F-]+>' => 'groups/remove-role',
                 'GET api/v1/audit' => 'audit/index',
+                'GET api/v1/ldap/providers' => 'ldap/list-providers',
+                'POST api/v1/ldap/providers' => 'ldap/create-provider',
+                'PUT api/v1/ldap/providers/<id:[0-9a-fA-F-]+>' => 'ldap/update-provider',
+                'DELETE api/v1/ldap/providers/<id:[0-9a-fA-F-]+>' => 'ldap/delete-provider',
+                'POST api/v1/ldap/providers/test' => 'ldap/test',
+                'GET api/v1/ldap/providers/<id:[0-9a-fA-F-]+>/group-mappings' => 'ldap/list-group-mappings',
+                'POST api/v1/ldap/providers/<id:[0-9a-fA-F-]+>/group-mappings' => 'ldap/create-group-mapping',
+                'DELETE api/v1/ldap/providers/<id:[0-9a-fA-F-]+>/group-mappings/<mappingID:[0-9a-fA-F-]+>' => 'ldap/delete-group-mapping',
                 'GET api/v1/oauth/clients' => 'oauth/list-clients',
                 'POST api/v1/oauth/clients' => 'oauth/create-client',
                 'GET api/v1/oauth/clients/<id:[0-9a-fA-F-]+>' => 'oauth/get-client',

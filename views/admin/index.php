@@ -17,6 +17,7 @@ $this->title = 'SSO Admin';
       <button :class="{active: view === 'users'}" @click="view = 'users'">Users</button>
       <button :class="{active: view === 'roles'}" @click="view = 'roles'">Roles</button>
       <button :class="{active: view === 'groups'}" @click="view = 'groups'">Groups</button>
+      <button :class="{active: view === 'ldap'}" @click="view = 'ldap'">LDAP</button>
       <button :class="{active: view === 'audit'}" @click="view = 'audit'">Audit</button>
       <button class="primary" @click="logout">Logout</button>
     </nav>
@@ -44,6 +45,10 @@ $this->title = 'SSO Admin';
           <div class="metric">
             <strong>Roles</strong>
             <p class="muted">{{ roles.length }}</p>
+          </div>
+          <div class="metric">
+            <strong>LDAP providers</strong>
+            <p class="muted">{{ ldapProviders.length }}</p>
           </div>
         </div>
       </div>
@@ -157,6 +162,46 @@ $this->title = 'SSO Admin';
         <pre>{{ audit }}</pre>
       </div>
 
+      <div class="panel" v-if="view === 'ldap'">
+        <h1>LDAP providers</h1>
+        <div class="grid">
+          <div>
+            <label>Name</label>
+            <input v-model="ldapForm.name">
+          </div>
+          <div>
+            <label>Host</label>
+            <input v-model="ldapForm.host">
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="number" v-model.number="ldapForm.port">
+          </div>
+          <div>
+            <label>Bind DN</label>
+            <input v-model="ldapForm.bind_dn">
+          </div>
+          <div>
+            <label>Bind password</label>
+            <input type="password" v-model="ldapForm.bind_password">
+          </div>
+          <div>
+            <label>Base DN</label>
+            <input v-model="ldapForm.base_dn">
+          </div>
+        </div>
+        <label>User filter</label>
+        <input v-model="ldapForm.user_filter">
+        <div class="grid">
+          <label><input type="checkbox" v-model="ldapForm.use_tls"> Use TLS</label>
+          <label><input type="checkbox" v-model="ldapForm.start_tls"> StartTLS</label>
+          <label><input type="checkbox" v-model="ldapForm.enabled"> Enabled</label>
+        </div>
+        <button class="primary" @click="testLdap">Test</button>
+        <button class="primary" @click="createLdapProvider">Create provider</button>
+        <pre>{{ ldapProviders }}</pre>
+      </div>
+
       <p class="muted">{{ message }}</p>
     </section>
   </main>
@@ -179,12 +224,29 @@ const app = Vue.createApp({
       permissions: [],
       groups: [],
       audit: [],
+      ldapProviders: [],
       bootstrapForm: { username: 'admin', email: 'admin@example.com', password: '' },
       loginForm: { username: 'admin', password: '' },
       clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' },
       userForm: { username: '', email: '', password: '' },
       roleForm: { code: '', name: '', description: '' },
-      groupForm: { code: '', name: '', description: '' }
+      groupForm: { code: '', name: '', description: '' },
+      ldapForm: {
+        name: '',
+        host: '',
+        port: 389,
+        use_tls: false,
+        start_tls: false,
+        bind_dn: '',
+        bind_password: '',
+        base_dn: '',
+        user_filter: '(&(objectClass=user)(sAMAccountName={username}))',
+        username_attribute: 'sAMAccountName',
+        email_attribute: 'mail',
+        display_name_attribute: 'displayName',
+        group_attribute: 'memberOf',
+        enabled: true
+      }
     };
   },
   mounted() {
@@ -212,6 +274,7 @@ const app = Vue.createApp({
         this.roles = await this.api('/api/v1/roles').catch(() => []);
         this.permissions = await this.api('/api/v1/permissions').catch(() => []);
         this.groups = await this.api('/api/v1/groups').catch(() => []);
+        this.ldapProviders = await this.api('/api/v1/ldap/providers').catch(() => []);
       }
     },
     async createAdmin() {
@@ -266,6 +329,17 @@ const app = Vue.createApp({
     },
     async loadAudit() {
       this.audit = await this.api('/api/v1/audit');
+    },
+    async testLdap() {
+      await this.api('/api/v1/ldap/providers/test', { method: 'POST', body: JSON.stringify(this.ldapForm) });
+      this.message = 'LDAP connection is ok';
+    },
+    async createLdapProvider() {
+      const data = await this.api('/api/v1/ldap/providers', { method: 'POST', body: JSON.stringify(this.ldapForm) });
+      this.message = 'LDAP provider created: ' + data.name;
+      this.ldapForm.name = '';
+      this.ldapForm.bind_password = '';
+      await this.refresh();
     }
   }
 });

@@ -47,6 +47,8 @@ make lint     # проверить PHP-синтаксис
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - RBAC-проверка admin API с прямыми ролями и ролями через группы.
 - Admin API для users, roles, permissions, groups и audit.
+- Admin API для LDAP providers, test bind и LDAP group mappings.
+- AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
@@ -54,7 +56,7 @@ make lint     # проверить PHP-синтаксис
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: LDAP providers API, детальные UI-формы назначения ролей/групп, LDAP Search + Bind, MFA TOTP, password reset/email verification и identity brokering.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: детальные UI-формы назначения ролей/групп, LDAP Search + Bind authentication при login, MFA TOTP, password reset/email verification и identity brokering.
 
 ## Важные изменения
 
@@ -64,3 +66,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.
 - 2026-09-07: перенесены RBAC-проверка, Users/Roles/Permissions/Groups/Audit admin API и базовые Vue-вкладки для этих разделов.
+- 2026-09-07: перенесены LDAP providers CRUD, LDAP test bind, LDAP group mappings и шифрование bind password.

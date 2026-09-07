@@ -37,12 +37,12 @@
 - Включить RBAC middleware для всех admin API.
 - Доработать Vue-страницы по аналогии с Go UI.
 
-Статус: частично выполнено. Перенесены RBAC-проверка прав, Users API, Roles API, Permissions API, Groups API, Audit API и базовые Vue-вкладки. LDAP providers API и полноценные формы назначения ролей/групп остаются следующим подпунктом этапа.
+Статус: частично выполнено. Перенесены RBAC-проверка прав, Users API, Roles API, Permissions API, Groups API, Audit API, LDAP providers API, LDAP test bind, LDAP group mappings и базовые Vue-вкладки. Полноценные UI-формы назначения ролей/групп остаются следующим подпунктом этапа.
 
 ## Этап 5. Security hardening
 
 - Перенести MFA TOTP, recovery codes, email verification, password reset/change.
-- Перенести LDAP Search + Bind и group mappings.
+- Перенести LDAP Search + Bind authentication при login.
 - Перенести identity brokering для Google/GitHub/OIDC.
 - Добавить trusted proxy IP, cleanup expired records и production-настройки shared rate limit для горизонтального масштабирования.
 
