@@ -31,6 +31,8 @@ make lint     # проверить PHP-синтаксис
 - `SSO_JWT_SECRET` — HMAC-секрет access token, минимум 32 символа.
 - `SSO_ENCRYPTION_KEY` — ключ для будущего шифрования секретов, минимум 32 символа.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
+- `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
+- `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
 
 Для production замените все placeholder-секреты.
 
@@ -42,6 +44,7 @@ make lint     # проверить PHP-синтаксис
 - `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
 - Просмотр и отзыв пользовательских сессий.
+- Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
@@ -56,3 +59,5 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
 - 2026-09-07: dev-сервер переведён на `public/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
+- 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
+- 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.

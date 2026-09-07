@@ -20,6 +20,8 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 
 Контроллеры находятся в `controllers/`, бизнес-логика в `services/`, модели таблиц в `models/`, миграции в `migrations/`, UI в `views/admin/` и `public/css/`.
 
+Для `OAuthController` задан явный `controllerMap`: Yii2 иначе преобразует имя класса в controller id `o-auth`, а внешний контракт Go-сервиса использует стабильный маршрут `oauth/*`.
+
 ## Модули
 
 - `BootstrapController` — первичная инициализация администратора.
@@ -27,6 +29,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditService` — запись важных событий.
+- `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
 
 ## База данных
@@ -38,6 +41,14 @@ UUID генерируются PostgreSQL через `pgcrypto/gen_random_uuid()`
 ## Конфигурация
 
 Все runtime-настройки используют namespace `SSO_*`. Основные переменные: `SSO_DATABASE_URL`, `SSO_ISSUER`, `SSO_JWT_SECRET`, `SSO_ENCRYPTION_KEY`, `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL`.
+
+Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`. Максимальный размер тела запроса задаёт `SSO_MAX_BODY_BYTES`.
+
+## Защитные механизмы
+
+`AuthService` хранит неудачные попытки входа в `login_attempts`. После 5 ошибок пара login/IP блокируется с экспоненциальной задержкой от 1 до 15 минут. Успешный вход удаляет счётчик.
+
+`ApiController` применяет общий лимит тела запроса и вызывает `RateLimitService` для `auth/login`, `bootstrap/create`, `oauth/token`, `oauth/revoke`, `oauth/introspect`.
 
 ## UI
 

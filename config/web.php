@@ -7,6 +7,11 @@ return [
     'basePath' => dirname(__DIR__),
     'language' => 'ru-RU',
     'bootstrap' => ['log'],
+    'controllerMap' => [
+        'oauth' => [
+            'class' => app\controllers\OAuthController::class,
+        ],
+    ],
     'aliases' => [
         '@bower' => '@vendor/bower-asset',
         '@npm' => '@vendor/npm-asset',

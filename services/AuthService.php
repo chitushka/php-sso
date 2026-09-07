@@ -2,6 +2,7 @@
 
 namespace app\services;
 
+use app\models\LoginAttempt;
 use app\models\Session;
 use app\models\User;
 use Yii;
@@ -15,11 +16,20 @@ class AuthService
     {
         $login = trim((string)($body['username'] ?? ''));
         $password = (string)($body['password'] ?? '');
+        $ip = (string)$request->userIP;
+
+        if ($this->isLocked($login, $ip)) {
+            AuditService::record(null, 'login_locked', 'user', $login);
+            return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
+        }
+
         $user = User::find()
             ->where(['or', ['username' => $login], ['email' => $login]])
             ->one();
 
         if (!$user || $user->status !== User::STATUS_ACTIVE || !password_verify($password, (string)$user->password_hash)) {
+            $this->recordFailure($login, $ip);
+            AuditService::record($user ? $user->id : null, 'login_failed', 'user', $login);
             return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
         }
 
@@ -28,6 +38,7 @@ class AuthService
             return ['ok' => false, 'status' => 403, 'error' => 'mfa flow is not implemented yet'];
         }
 
+        $this->resetFailures($login, $ip);
         $sessionToken = $this->randomToken();
         $session = new Session();
         $session->user_id = $user->id;
@@ -146,5 +157,54 @@ class AuthService
     public function randomToken(int $bytes = 32): string
     {
         return JwtService::base64url(random_bytes($bytes));
+    }
+
+    private function isLocked(string $username, string $ip): bool
+    {
+        if ($username === '') {
+            return false;
+        }
+
+        $attempt = LoginAttempt::findOne(['username' => $username, 'ip' => $ip]);
+        if (!$attempt || !$attempt->locked_until) {
+            return false;
+        }
+
+        return strtotime($attempt->locked_until) > time();
+    }
+
+    private function recordFailure(string $username, string $ip): void
+    {
+        if ($username === '') {
+            return;
+        }
+
+        $attempt = LoginAttempt::findOne(['username' => $username, 'ip' => $ip]);
+        if (!$attempt) {
+            $attempt = new LoginAttempt();
+            $attempt->username = $username;
+            $attempt->ip = $ip;
+            $attempt->attempts = 0;
+        }
+
+        // Как в Go-сервисе: после 5 ошибок включается экспоненциальная блокировка до 15 минут.
+        $attempt->attempts = ((int)$attempt->attempts) + 1;
+        $attempt->updated_at = new Expression('now()');
+        if ($attempt->attempts >= 5) {
+            $power = max(0, $attempt->attempts - 5);
+            $seconds = min(900, 60 * (2 ** $power));
+            $attempt->locked_until = gmdate('Y-m-d H:i:sP', time() + $seconds);
+        }
+
+        $attempt->save(false);
+    }
+
+    private function resetFailures(string $username, string $ip): void
+    {
+        if ($username === '') {
+            return;
+        }
+
+        LoginAttempt::deleteAll(['username' => $username, 'ip' => $ip]);
     }
 }

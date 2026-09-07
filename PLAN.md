@@ -20,7 +20,7 @@
 - Сохранить политику паролей 12-128 символов.
 - Добавить аудит ключевых действий.
 
-Статус: частично выполнено; lockout/rate limit ещё нужно перенести.
+Статус: выполнено. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC
 
@@ -44,7 +44,7 @@
 - Перенести MFA TOTP, recovery codes, email verification, password reset/change.
 - Перенести LDAP Search + Bind и group mappings.
 - Перенести identity brokering для Google/GitHub/OIDC.
-- Добавить trusted proxy IP, body limit, rate limiting, cleanup expired records.
+- Добавить trusted proxy IP, cleanup expired records и production-настройки shared rate limit для горизонтального масштабирования.
 
 Статус: запланировано.
 
