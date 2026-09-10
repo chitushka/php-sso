@@ -30,6 +30,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям.
 - `GroupsController` — группы, роли групп и членство пользователей в группах.
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
+- `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с фильтрами.
@@ -59,6 +60,8 @@ Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` 
 `ApiController::requirePermission()` загружает пользователя по Bearer JWT и проверяет право через `RbacService`. `RbacService` учитывает как прямые роли из `user_roles`, так и роли, унаследованные через `user_groups -> group_roles`.
 
 LDAP bind password сохраняется в `ldap_providers.bind_password` в формате `v1:<base64>` через `CryptoService`. Ответы API не возвращают секрет. При update пустой `bind_password` сохраняет уже записанный секрет.
+
+При локальном login `AuthService` сначала проверяет локальный `password_hash`; если проверка не прошла, `LdapService` перебирает включённые LDAP providers, выполняет service bind, ищет пользователя по `user_filter`, затем проверяет пароль bind-ом найденного DN. LDAP-пользователь создаётся или обновляется в `users` с `source=ldap`, `ldap_provider_id` и `ldap_dn`. Если найден локальный пользователь с тем же username, LDAP login отклоняется, чтобы не захватить локальный аккаунт. LDAP group mappings синхронизируются в `user_groups` с `source=ldap`; ручные назначения не удаляются.
 
 ## UI
 

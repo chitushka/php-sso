@@ -4,7 +4,9 @@ namespace app\services;
 
 use app\models\LdapGroupMapping;
 use app\models\LdapProvider;
+use app\models\User;
 use Yii;
+use yii\db\Expression;
 
 class LdapService
 {
@@ -95,6 +97,22 @@ class LdapService
         return ['ok' => true, 'data' => ['status' => 'ok']];
     }
 
+    public function authenticate(string $login, string $password): ?User
+    {
+        if ($login === '' || $password === '' || !function_exists('ldap_connect')) {
+            return null;
+        }
+
+        foreach (LdapProvider::find()->where(['enabled' => true])->orderBy(['created_at' => SORT_ASC])->all() as $provider) {
+            $user = $this->authenticateWithProvider($provider, $login, $password);
+            if ($user !== null) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
     public function listGroupMappings(string $providerId): array
     {
         return LdapGroupMapping::find()
@@ -130,6 +148,192 @@ class LdapService
         $mapping->delete();
         AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_provider', $providerId);
         return true;
+    }
+
+    private function authenticateWithProvider(LdapProvider $provider, string $login, string $password): ?User
+    {
+        $conn = $this->connect($provider);
+        if (!$conn) {
+            return null;
+        }
+
+        $bindPassword = (new CryptoService())->decrypt((string)$provider->bind_password);
+        if ($bindPassword === '' || !@ldap_bind($conn, (string)$provider->bind_dn, $bindPassword)) {
+            AuditService::record(null, 'ldap_service_bind_failed', 'ldap_provider', $provider->id);
+            return null;
+        }
+
+        $filter = str_replace(
+            ['{username}', '{login}'],
+            $this->escapeFilterValue($login),
+            (string)$provider->user_filter
+        );
+        $search = @ldap_search($conn, (string)$provider->base_dn, $filter, [
+            (string)$provider->username_attribute,
+            (string)$provider->email_attribute,
+            (string)$provider->display_name_attribute,
+            (string)$provider->group_attribute,
+            'dn',
+        ]);
+        if (!$search) {
+            return null;
+        }
+
+        $entries = @ldap_get_entries($conn, $search);
+        if (!is_array($entries) || (int)($entries['count'] ?? 0) !== 1) {
+            return null;
+        }
+
+        $entry = $entries[0];
+        $userDn = (string)($entry['dn'] ?? '');
+        if ($userDn === '' || !@ldap_bind($conn, $userDn, $password)) {
+            return null;
+        }
+
+        $user = $this->upsertLdapUser($provider, $entry, $userDn, $login);
+        if ($user === null) {
+            return null;
+        }
+
+        $this->syncMappedGroups($provider, $user, $this->attributeValues($entry, (string)$provider->group_attribute));
+        AuditService::record($user->id, 'ldap_login_success', 'user', $user->id);
+
+        return $user;
+    }
+
+    private function connect(LdapProvider $provider)
+    {
+        $uri = ($provider->use_tls ? 'ldaps://' : 'ldap://') . $provider->host . ':' . $provider->port;
+        $conn = @ldap_connect($uri);
+        if (!$conn) {
+            return null;
+        }
+
+        ldap_set_option($conn, LDAP_OPT_PROTOCOL_VERSION, 3);
+        ldap_set_option($conn, LDAP_OPT_REFERRALS, 0);
+        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, 5);
+
+        if ($provider->start_tls && !@ldap_start_tls($conn)) {
+            AuditService::record(null, 'ldap_start_tls_failed', 'ldap_provider', $provider->id);
+            return null;
+        }
+
+        return $conn;
+    }
+
+    private function upsertLdapUser(LdapProvider $provider, array $entry, string $userDn, string $login): ?User
+    {
+        $username = $this->firstAttribute($entry, (string)$provider->username_attribute) ?: $login;
+        $email = $this->firstAttribute($entry, (string)$provider->email_attribute) ?: $username . '@ldap.local';
+        $displayName = $this->firstAttribute($entry, (string)$provider->display_name_attribute);
+        [$firstName, $lastName] = $this->splitDisplayName($displayName);
+
+        $user = User::findOne(['ldap_provider_id' => $provider->id, 'ldap_dn' => $userDn]);
+        $existingByUsername = User::findOne(['username' => $username]);
+        if ($existingByUsername && (!$user || $existingByUsername->id !== $user->id) && $existingByUsername->source !== User::SOURCE_LDAP) {
+            AuditService::record($existingByUsername->id, 'ldap_username_conflict', 'user', $username);
+            return null;
+        }
+
+        if (!$user && $existingByUsername) {
+            $user = $existingByUsername;
+        }
+
+        if (!$user) {
+            $user = new User();
+            $user->username = $username;
+            $user->status = User::STATUS_ACTIVE;
+            $user->source = User::SOURCE_LDAP;
+            $user->email_verified = true;
+        }
+
+        $user->email = $email;
+        $user->source = User::SOURCE_LDAP;
+        $user->ldap_provider_id = $provider->id;
+        $user->ldap_dn = $userDn;
+        $user->first_name = $firstName;
+        $user->last_name = $lastName;
+        $user->attributes = json_encode([
+            'display_name' => $displayName,
+            'ldap_provider' => $provider->name,
+        ]);
+        $user->last_login_at = new Expression('now()');
+        $user->save(false);
+
+        return $user;
+    }
+
+    private function syncMappedGroups(LdapProvider $provider, User $user, array $ldapGroups): void
+    {
+        Yii::$app->db->createCommand()->delete('user_groups', [
+            'user_id' => $user->id,
+            'source' => 'ldap',
+        ])->execute();
+
+        if (empty($ldapGroups)) {
+            return;
+        }
+
+        $mappings = LdapGroupMapping::find()
+            ->where(['provider_id' => $provider->id, 'ldap_group' => $ldapGroups])
+            ->all();
+
+        foreach ($mappings as $mapping) {
+            $this->insertIgnore('user_groups', [
+                'user_id' => $user->id,
+                'group_id' => $mapping->group_id,
+                'source' => 'ldap',
+            ]);
+        }
+    }
+
+    private function firstAttribute(array $entry, string $attribute): string
+    {
+        $values = $this->attributeValues($entry, $attribute);
+        return $values[0] ?? '';
+    }
+
+    private function attributeValues(array $entry, string $attribute): array
+    {
+        $key = strtolower($attribute);
+        if (!isset($entry[$key]) || !is_array($entry[$key])) {
+            return [];
+        }
+
+        $values = [];
+        $count = (int)($entry[$key]['count'] ?? 0);
+        for ($index = 0; $index < $count; $index++) {
+            if (isset($entry[$key][$index]) && $entry[$key][$index] !== '') {
+                $values[] = (string)$entry[$key][$index];
+            }
+        }
+
+        return $values;
+    }
+
+    private function splitDisplayName(string $displayName): array
+    {
+        $parts = preg_split('/\s+/', trim($displayName), 2);
+        if (!is_array($parts)) {
+            return ['', ''];
+        }
+
+        return [$parts[0] ?? '', $parts[1] ?? ''];
+    }
+
+    private function escapeFilterValue(string $value): string
+    {
+        if (function_exists('ldap_escape')) {
+            return ldap_escape($value, '', LDAP_ESCAPE_FILTER);
+        }
+
+        return strtr($value, [
+            '\\' => '\\5c',
+            '*' => '\\2a',
+            '(' => '\\28',
+            ')' => '\\29',
+            "\x00" => '\\00',
+        ]);
     }
 
     private function fillProvider(LdapProvider $provider, array $body, bool $keepEmptyPassword): void
@@ -171,5 +375,19 @@ class LdapService
         $data = $provider->toArray();
         unset($data['bind_password']);
         return $data;
+    }
+
+    private function insertIgnore(string $table, array $data): void
+    {
+        $columns = array_keys($data);
+        $params = [];
+        foreach ($columns as $column) {
+            $params[':' . $column] = $data[$column];
+        }
+
+        Yii::$app->db->createCommand(
+            'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_keys($params)) . ') ON CONFLICT DO NOTHING',
+            $params
+        )->execute();
     }
 }

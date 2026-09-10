@@ -49,6 +49,8 @@ make lint     # проверить PHP-синтаксис
 - Admin API для users, roles, permissions, groups и audit.
 - Admin API для LDAP providers, test bind и LDAP group mappings.
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
+- LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
+- Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
@@ -57,7 +59,7 @@ make lint     # проверить PHP-синтаксис
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: LDAP Search + Bind authentication при login, MFA TOTP, password reset/email verification и identity brokering.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: MFA TOTP, recovery codes, password reset/email verification, identity brokering и production hardening.
 
 ## Важные изменения
 
@@ -69,3 +71,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: перенесены RBAC-проверка, Users/Roles/Permissions/Groups/Audit admin API и базовые Vue-вкладки для этих разделов.
 - 2026-09-07: перенесены LDAP providers CRUD, LDAP test bind, LDAP group mappings и шифрование bind password.
 - 2026-09-10: добавлены UI-формы RBAC-назначений для пользователей, ролей и групп.
+- 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.

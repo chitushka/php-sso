@@ -27,7 +27,16 @@ class AuthService
             ->where(['or', ['username' => $login], ['email' => $login]])
             ->one();
 
-        if (!$user || $user->status !== User::STATUS_ACTIVE || !password_verify($password, (string)$user->password_hash)) {
+        $localPasswordValid = $user
+            && $user->status === User::STATUS_ACTIVE
+            && $user->password_hash
+            && password_verify($password, (string)$user->password_hash);
+
+        if (!$localPasswordValid) {
+            $user = (new LdapService())->authenticate($login, $password);
+        }
+
+        if (!$user || $user->status !== User::STATUS_ACTIVE) {
             $this->recordFailure($login, $ip);
             AuditService::record($user ? $user->id : null, 'login_failed', 'user', $login);
             return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
@@ -54,7 +63,7 @@ class AuthService
 
         $jwt = (new JwtService())->issue($user->id, [
             'username' => $user->username,
-            'source' => 'first_party',
+            'source' => $user->source,
         ]);
 
         return [
