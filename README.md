@@ -52,11 +52,12 @@ make lint     # проверить PHP-синтаксис
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
-- Базовая Vue-админка для bootstrap/login/OAuth clients.
+- Vue-админка для bootstrap/login/OAuth clients/users/roles/groups/LDAP/audit.
+- UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: детальные UI-формы назначения ролей/групп, LDAP Search + Bind authentication при login, MFA TOTP, password reset/email verification и identity brokering.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: LDAP Search + Bind authentication при login, MFA TOTP, password reset/email verification и identity brokering.
 
 ## Важные изменения
 
@@ -67,3 +68,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.
 - 2026-09-07: перенесены RBAC-проверка, Users/Roles/Permissions/Groups/Audit admin API и базовые Vue-вкладки для этих разделов.
 - 2026-09-07: перенесены LDAP providers CRUD, LDAP test bind, LDAP group mappings и шифрование bind password.
+- 2026-09-10: добавлены UI-формы RBAC-назначений для пользователей, ролей и групп.

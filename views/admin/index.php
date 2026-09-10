@@ -115,7 +115,64 @@ $this->title = 'SSO Admin';
           </div>
         </div>
         <button class="primary" @click="createUser">Create user</button>
-        <pre>{{ users }}</pre>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Assignments</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in users" :key="item.id">
+                <td>{{ item.username }}</td>
+                <td>{{ item.email }}</td>
+                <td>{{ item.status }}</td>
+                <td><button @click="selectUser(item)">Manage roles/groups</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="assignment" v-if="selectedUser">
+          <h2>User assignments: {{ selectedUser.username }}</h2>
+          <div class="grid">
+            <div>
+              <h3>Direct roles</h3>
+              <div class="inline-form">
+                <select v-model="assignmentForms.userRoleId">
+                  <option value="">Select role</option>
+                  <option v-for="role in availableUserRoles" :key="role.id" :value="role.id">{{ role.code }}</option>
+                </select>
+                <button class="primary" @click="assignUserRole">Assign</button>
+              </div>
+              <ul class="chips">
+                <li v-for="role in selectedUserRoles" :key="role.id">
+                  {{ role.code }}
+                  <button @click="removeUserRole(role.id)">remove</button>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3>Groups</h3>
+              <div class="inline-form">
+                <select v-model="assignmentForms.userGroupId">
+                  <option value="">Select group</option>
+                  <option v-for="group in availableUserGroups" :key="group.id" :value="group.id">{{ group.code }}</option>
+                </select>
+                <button class="primary" @click="assignUserGroup">Assign</button>
+              </div>
+              <ul class="chips">
+                <li v-for="group in selectedUserGroups" :key="group.id">
+                  {{ group.code }}
+                  <button @click="removeUserGroup(group.id)">remove</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="panel" v-if="view === 'roles'">
@@ -133,9 +190,45 @@ $this->title = 'SSO Admin';
         <label>Description</label>
         <textarea rows="2" v-model="roleForm.description"></textarea>
         <button class="primary" @click="createRole">Create role</button>
-        <pre>{{ roles }}</pre>
-        <h2>Permissions</h2>
-        <pre>{{ permissions }}</pre>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Permissions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="role in roles" :key="role.id">
+                <td>{{ role.code }}</td>
+                <td>{{ role.name }}</td>
+                <td>{{ role.description }}</td>
+                <td><button @click="selectRole(role)">Manage permissions</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="assignment" v-if="selectedRole">
+          <h2>Role permissions: {{ selectedRole.code }}</h2>
+          <div class="inline-form">
+            <select v-model="assignmentForms.rolePermissionId">
+              <option value="">Select permission</option>
+              <option v-for="permission in availableRolePermissions" :key="permission.id" :value="permission.id">
+                {{ permission.resource }}:{{ permission.action }}
+              </option>
+            </select>
+            <button class="primary" @click="assignRolePermission">Assign</button>
+          </div>
+          <ul class="chips">
+            <li v-for="permission in selectedRolePermissions" :key="permission.id">
+              {{ permission.resource }}:{{ permission.action }}
+              <button @click="removeRolePermission(permission.id)">remove</button>
+            </li>
+          </ul>
+        </section>
       </div>
 
       <div class="panel" v-if="view === 'groups'">
@@ -153,7 +246,43 @@ $this->title = 'SSO Admin';
         <label>Description</label>
         <textarea rows="2" v-model="groupForm.description"></textarea>
         <button class="primary" @click="createGroup">Create group</button>
-        <pre>{{ groups }}</pre>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Roles</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="group in groups" :key="group.id">
+                <td>{{ group.code }}</td>
+                <td>{{ group.name }}</td>
+                <td>{{ group.description }}</td>
+                <td><button @click="selectGroup(group)">Manage roles</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="assignment" v-if="selectedGroup">
+          <h2>Group roles: {{ selectedGroup.code }}</h2>
+          <div class="inline-form">
+            <select v-model="assignmentForms.groupRoleId">
+              <option value="">Select role</option>
+              <option v-for="role in availableGroupRoles" :key="role.id" :value="role.id">{{ role.code }}</option>
+            </select>
+            <button class="primary" @click="assignGroupRole">Assign</button>
+          </div>
+          <ul class="chips">
+            <li v-for="role in selectedGroupRoles" :key="role.id">
+              {{ role.code }}
+              <button @click="removeGroupRole(role.id)">remove</button>
+            </li>
+          </ul>
+        </section>
       </div>
 
       <div class="panel" v-if="view === 'audit'">
@@ -225,6 +354,19 @@ const app = Vue.createApp({
       groups: [],
       audit: [],
       ldapProviders: [],
+      selectedUser: null,
+      selectedUserRoles: [],
+      selectedUserGroups: [],
+      selectedRole: null,
+      selectedRolePermissions: [],
+      selectedGroup: null,
+      selectedGroupRoles: [],
+      assignmentForms: {
+        userRoleId: '',
+        userGroupId: '',
+        rolePermissionId: '',
+        groupRoleId: ''
+      },
       bootstrapForm: { username: 'admin', email: 'admin@example.com', password: '' },
       loginForm: { username: 'admin', password: '' },
       clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' },
@@ -252,6 +394,24 @@ const app = Vue.createApp({
   mounted() {
     this.refresh();
   },
+  computed: {
+    availableUserRoles() {
+      const assigned = new Set(this.selectedUserRoles.map(item => item.id));
+      return this.roles.filter(item => !assigned.has(item.id));
+    },
+    availableUserGroups() {
+      const assigned = new Set(this.selectedUserGroups.map(item => item.id));
+      return this.groups.filter(item => !assigned.has(item.id));
+    },
+    availableRolePermissions() {
+      const assigned = new Set(this.selectedRolePermissions.map(item => item.id));
+      return this.permissions.filter(item => !assigned.has(item.id));
+    },
+    availableGroupRoles() {
+      const assigned = new Set(this.selectedGroupRoles.map(item => item.id));
+      return this.roles.filter(item => !assigned.has(item.id));
+    }
+  },
   methods: {
     headers() {
       return this.accessToken ? { 'Authorization': 'Bearer ' + this.accessToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -275,6 +435,7 @@ const app = Vue.createApp({
         this.permissions = await this.api('/api/v1/permissions').catch(() => []);
         this.groups = await this.api('/api/v1/groups').catch(() => []);
         this.ldapProviders = await this.api('/api/v1/ldap/providers').catch(() => []);
+        await this.reloadSelectedAssignments();
       }
     },
     async createAdmin() {
@@ -326,6 +487,153 @@ const app = Vue.createApp({
       this.message = 'Group created: ' + data.code;
       this.groupForm = { code: '', name: '', description: '' };
       await this.refresh();
+    },
+    async selectUser(user) {
+      this.selectedUser = user;
+      await this.loadUserAssignments();
+    },
+    async loadUserAssignments() {
+      if (!this.selectedUser) {
+        return;
+      }
+
+      this.selectedUserRoles = await this.api('/api/v1/users/' + this.selectedUser.id + '/roles');
+      this.selectedUserGroups = await this.api('/api/v1/users/' + this.selectedUser.id + '/groups');
+    },
+    async assignUserRole() {
+      if (!this.selectedUser || !this.assignmentForms.userRoleId) {
+        return;
+      }
+
+      await this.api('/api/v1/users/' + this.selectedUser.id + '/roles', {
+        method: 'POST',
+        body: JSON.stringify({ role_id: this.assignmentForms.userRoleId })
+      });
+      this.assignmentForms.userRoleId = '';
+      this.message = 'User role assigned';
+      await this.loadUserAssignments();
+    },
+    async removeUserRole(roleId) {
+      if (!this.selectedUser) {
+        return;
+      }
+
+      await this.api('/api/v1/users/' + this.selectedUser.id + '/roles/' + roleId, { method: 'DELETE' });
+      this.message = 'User role removed';
+      await this.loadUserAssignments();
+    },
+    async assignUserGroup() {
+      if (!this.selectedUser || !this.assignmentForms.userGroupId) {
+        return;
+      }
+
+      await this.api('/api/v1/users/' + this.selectedUser.id + '/groups', {
+        method: 'POST',
+        body: JSON.stringify({ group_id: this.assignmentForms.userGroupId })
+      });
+      this.assignmentForms.userGroupId = '';
+      this.message = 'User group assigned';
+      await this.loadUserAssignments();
+    },
+    async removeUserGroup(groupId) {
+      if (!this.selectedUser) {
+        return;
+      }
+
+      await this.api('/api/v1/users/' + this.selectedUser.id + '/groups/' + groupId, { method: 'DELETE' });
+      this.message = 'User group removed';
+      await this.loadUserAssignments();
+    },
+    async selectRole(role) {
+      this.selectedRole = role;
+      await this.loadRolePermissions();
+    },
+    async loadRolePermissions() {
+      if (!this.selectedRole) {
+        return;
+      }
+
+      this.selectedRolePermissions = await this.api('/api/v1/roles/' + this.selectedRole.id + '/permissions');
+    },
+    async assignRolePermission() {
+      if (!this.selectedRole || !this.assignmentForms.rolePermissionId) {
+        return;
+      }
+
+      await this.api('/api/v1/roles/' + this.selectedRole.id + '/permissions', {
+        method: 'POST',
+        body: JSON.stringify({ permission_id: this.assignmentForms.rolePermissionId })
+      });
+      this.assignmentForms.rolePermissionId = '';
+      this.message = 'Role permission assigned';
+      await this.loadRolePermissions();
+    },
+    async removeRolePermission(permissionId) {
+      if (!this.selectedRole) {
+        return;
+      }
+
+      await this.api('/api/v1/roles/' + this.selectedRole.id + '/permissions/' + permissionId, { method: 'DELETE' });
+      this.message = 'Role permission removed';
+      await this.loadRolePermissions();
+    },
+    async selectGroup(group) {
+      this.selectedGroup = group;
+      await this.loadGroupRoles();
+    },
+    async loadGroupRoles() {
+      if (!this.selectedGroup) {
+        return;
+      }
+
+      this.selectedGroupRoles = await this.api('/api/v1/groups/' + this.selectedGroup.id + '/roles');
+    },
+    async assignGroupRole() {
+      if (!this.selectedGroup || !this.assignmentForms.groupRoleId) {
+        return;
+      }
+
+      await this.api('/api/v1/groups/' + this.selectedGroup.id + '/roles', {
+        method: 'POST',
+        body: JSON.stringify({ role_id: this.assignmentForms.groupRoleId })
+      });
+      this.assignmentForms.groupRoleId = '';
+      this.message = 'Group role assigned';
+      await this.loadGroupRoles();
+    },
+    async removeGroupRole(roleId) {
+      if (!this.selectedGroup) {
+        return;
+      }
+
+      await this.api('/api/v1/groups/' + this.selectedGroup.id + '/roles/' + roleId, { method: 'DELETE' });
+      this.message = 'Group role removed';
+      await this.loadGroupRoles();
+    },
+    async reloadSelectedAssignments() {
+      if (this.selectedUser) {
+        const freshUser = this.users.find(item => item.id === this.selectedUser.id);
+        this.selectedUser = freshUser || null;
+        if (this.selectedUser) {
+          await this.loadUserAssignments();
+        }
+      }
+
+      if (this.selectedRole) {
+        const freshRole = this.roles.find(item => item.id === this.selectedRole.id);
+        this.selectedRole = freshRole || null;
+        if (this.selectedRole) {
+          await this.loadRolePermissions();
+        }
+      }
+
+      if (this.selectedGroup) {
+        const freshGroup = this.groups.find(item => item.id === this.selectedGroup.id);
+        this.selectedGroup = freshGroup || null;
+        if (this.selectedGroup) {
+          await this.loadGroupRoles();
+        }
+      }
     },
     async loadAudit() {
       this.audit = await this.api('/api/v1/audit');

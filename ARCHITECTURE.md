@@ -62,7 +62,7 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 
 ## UI
 
-Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login, OAuth clients, users, roles, permissions, groups, LDAP providers и audit. Следующие страницы должны переноситься по модулям: account, identity providers и детальные формы назначения ролей/групп.
+Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login, OAuth clients, users, roles, permissions, groups, LDAP providers и audit. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие страницы должны переноситься по модулям: account, identity providers, MFA и recovery flows.
 
 ## Документация
 
