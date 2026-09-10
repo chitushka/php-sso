@@ -31,6 +31,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `GroupsController` — группы, роли групп и членство пользователей в группах.
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
+- `MfaService` — TOTP setup/enable/disable, одноразовые recovery codes и MFA challenge для login.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с фильтрами.
@@ -63,9 +64,11 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 
 При локальном login `AuthService` сначала проверяет локальный `password_hash`; если проверка не прошла, `LdapService` перебирает включённые LDAP providers, выполняет service bind, ищет пользователя по `user_filter`, затем проверяет пароль bind-ом найденного DN. LDAP-пользователь создаётся или обновляется в `users` с `source=ldap`, `ldap_provider_id` и `ldap_dn`. Если найден локальный пользователь с тем же username, LDAP login отклоняется, чтобы не захватить локальный аккаунт. LDAP group mappings синхронизируются в `user_groups` с `source=ldap`; ручные назначения не удаляются.
 
+Для пользователей с `mfa_enabled=true` успешная проверка пароля не создаёт сессию сразу: `AuthService` создаёт `one_time_tokens.purpose=mfa_login` и возвращает `challenge_token`. `POST /api/v1/auth/mfa/verify` принимает challenge и TOTP/recovery code, после чего создаёт обычную cookie-сессию и Bearer JWT. TOTP хранится в `users.mfa_secret` через `CryptoService`, `mfa_last_used_counter` блокирует повтор counter, recovery codes хранятся в `mfa_recovery_codes` как password hash и помечаются `used_at`.
+
 ## UI
 
-Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login, OAuth clients, users, roles, permissions, groups, LDAP providers и audit. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие страницы должны переноситься по модулям: account, identity providers, MFA и recovery flows.
+Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge, OAuth clients, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие страницы должны переноситься по модулям: account, identity providers и password recovery flows.
 
 ## Документация
 

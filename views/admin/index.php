@@ -66,11 +66,43 @@ $this->title = 'SSO Admin';
 
       <div class="panel login" v-if="view === 'login'">
         <h1>Login</h1>
-        <label>Username or email</label>
-        <input v-model="loginForm.username">
-        <label>Password</label>
-        <input type="password" v-model="loginForm.password">
-        <button class="primary" @click="login">Login</button>
+        <template v-if="!mfaChallenge">
+          <label>Username or email</label>
+          <input v-model="loginForm.username">
+          <label>Password</label>
+          <input type="password" v-model="loginForm.password">
+          <button class="primary" @click="login">Login</button>
+        </template>
+        <template v-else>
+          <p class="muted">Enter TOTP or recovery code.</p>
+          <label>MFA code</label>
+          <input v-model="mfaLoginForm.code">
+          <button class="primary" @click="verifyMfaLogin">Verify MFA</button>
+          <button @click="mfaChallenge = ''">Cancel</button>
+        </template>
+      </div>
+
+      <div class="panel login" v-if="view === 'dashboard' && user">
+        <h2>Account MFA</h2>
+        <p class="muted">{{ user.mfa_enabled ? 'MFA enabled' : 'MFA disabled' }}</p>
+        <template v-if="!user.mfa_enabled">
+          <button class="primary" @click="setupMfa">Create TOTP secret</button>
+          <div v-if="mfaSetup.secret">
+            <label>Secret</label>
+            <input readonly :value="mfaSetup.secret">
+            <label>Verify code</label>
+            <input v-model="mfaSetup.code">
+            <button class="primary" @click="enableMfa">Enable MFA</button>
+            <p class="muted">{{ mfaSetup.otpauth_uri }}</p>
+          </div>
+        </template>
+        <template v-else>
+          <label>TOTP or recovery code</label>
+          <input v-model="mfaManageForm.code">
+          <button @click="regenerateRecoveryCodes">Regenerate recovery codes</button>
+          <button @click="disableMfa">Disable MFA</button>
+        </template>
+        <pre v-if="mfaRecoveryCodes.length">{{ mfaRecoveryCodes }}</pre>
       </div>
 
       <div class="panel" v-if="view === 'clients'">
@@ -345,6 +377,7 @@ const app = Vue.createApp({
       message: '',
       accessToken: localStorage.getItem('sso_access_token') || '',
       user: null,
+      mfaChallenge: '',
       bootstrap: {},
       discovery: {},
       clients: [],
@@ -369,6 +402,10 @@ const app = Vue.createApp({
       },
       bootstrapForm: { username: 'admin', email: 'admin@example.com', password: '' },
       loginForm: { username: 'admin', password: '' },
+      mfaLoginForm: { code: '' },
+      mfaSetup: { secret: '', otpauth_uri: '', code: '' },
+      mfaManageForm: { code: '' },
+      mfaRecoveryCodes: [],
       clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' },
       userForm: { username: '', email: '', password: '' },
       roleForm: { code: '', name: '', description: '' },
@@ -445,9 +482,28 @@ const app = Vue.createApp({
     },
     async login() {
       const data = await this.api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(this.loginForm) });
+      if (data.mfa_required) {
+        this.mfaChallenge = data.challenge_token;
+        this.message = 'MFA verification required';
+        return;
+      }
+
       this.accessToken = data.access_token;
       localStorage.setItem('sso_access_token', this.accessToken);
       this.user = data.user;
+      this.message = 'Signed in';
+      await this.refresh();
+    },
+    async verifyMfaLogin() {
+      const data = await this.api('/api/v1/auth/mfa/verify', {
+        method: 'POST',
+        body: JSON.stringify({ challenge_token: this.mfaChallenge, code: this.mfaLoginForm.code })
+      });
+      this.accessToken = data.access_token;
+      localStorage.setItem('sso_access_token', this.accessToken);
+      this.user = data.user;
+      this.mfaChallenge = '';
+      this.mfaLoginForm.code = '';
       this.message = 'Signed in';
       await this.refresh();
     },
@@ -457,6 +513,39 @@ const app = Vue.createApp({
       this.user = null;
       localStorage.removeItem('sso_access_token');
       this.message = 'Signed out';
+    },
+    async setupMfa() {
+      this.mfaSetup = Object.assign({ code: '' }, await this.api('/api/v1/auth/mfa/setup', { method: 'POST' }));
+      this.mfaRecoveryCodes = [];
+    },
+    async enableMfa() {
+      const data = await this.api('/api/v1/auth/mfa/enable', {
+        method: 'POST',
+        body: JSON.stringify({ secret: this.mfaSetup.secret, code: this.mfaSetup.code })
+      });
+      this.mfaRecoveryCodes = data.recovery_codes || [];
+      this.mfaSetup = { secret: '', otpauth_uri: '', code: '' };
+      this.message = 'MFA enabled. Save recovery codes now.';
+      await this.refresh();
+    },
+    async disableMfa() {
+      await this.api('/api/v1/auth/mfa/disable', {
+        method: 'POST',
+        body: JSON.stringify({ code: this.mfaManageForm.code })
+      });
+      this.mfaManageForm.code = '';
+      this.mfaRecoveryCodes = [];
+      this.message = 'MFA disabled';
+      await this.refresh();
+    },
+    async regenerateRecoveryCodes() {
+      const data = await this.api('/api/v1/auth/mfa/recovery-codes', {
+        method: 'POST',
+        body: JSON.stringify({ code: this.mfaManageForm.code })
+      });
+      this.mfaManageForm.code = '';
+      this.mfaRecoveryCodes = data.recovery_codes || [];
+      this.message = 'Recovery codes regenerated. Save them now.';
     },
     async createClient() {
       const payload = {

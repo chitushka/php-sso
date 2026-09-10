@@ -43,11 +43,30 @@ class AuthService
         }
 
         if ($user->mfa_enabled) {
-            // Полная двухшаговая MFA-схема переносится отдельным этапом из Go-модуля account/mfa.
-            return ['ok' => false, 'status' => 403, 'error' => 'mfa flow is not implemented yet'];
+            $this->resetFailures($login, $ip);
+            AuditService::record($user->id, 'mfa_login_challenge_created', 'user', $user->id);
+            return ['ok' => true, 'data' => (new MfaService())->createLoginChallenge($user)];
         }
 
         $this->resetFailures($login, $ip);
+        return $this->issueLogin($user, $request);
+    }
+
+    public function verifyMfaLogin(array $body, Request $request): array
+    {
+        $user = (new MfaService())->verifyLoginChallenge(
+            (string)($body['challenge_token'] ?? ''),
+            (string)($body['code'] ?? '')
+        );
+        if (!$user) {
+            return ['ok' => false, 'status' => 401, 'error' => 'invalid mfa challenge or code'];
+        }
+
+        return $this->issueLogin($user, $request);
+    }
+
+    private function issueLogin(User $user, Request $request): array
+    {
         $sessionToken = $this->randomToken();
         $session = new Session();
         $session->user_id = $user->id;

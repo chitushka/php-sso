@@ -14,6 +14,7 @@ return [
     'rateLimitBurst' => (int)(getenv('SSO_RATE_LIMIT_BURST') ?: 10),
     'rateLimitedRoutes' => [
         'auth/login',
+        'auth/verify-mfa',
         'bootstrap/create',
         'oauth/token',
         'oauth/revoke',

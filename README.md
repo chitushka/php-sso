@@ -51,15 +51,16 @@ make lint     # проверить PHP-синтаксис
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
+- MFA TOTP setup/enable/disable, MFA challenge при login и одноразовые recovery codes.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
-- Vue-админка для bootstrap/login/OAuth clients/users/roles/groups/LDAP/audit.
+- Vue-админка для bootstrap/login/MFA/OAuth clients/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: MFA TOTP, recovery codes, password reset/email verification, identity brokering и production hardening.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: password reset/change, email verification, identity brokering и production hardening.
 
 ## Важные изменения
 
@@ -72,3 +73,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-07: перенесены LDAP providers CRUD, LDAP test bind, LDAP group mappings и шифрование bind password.
 - 2026-09-10: добавлены UI-формы RBAC-назначений для пользователей, ролей и групп.
 - 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
+- 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
