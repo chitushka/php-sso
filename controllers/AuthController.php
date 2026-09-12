@@ -130,6 +130,18 @@ class AuthController extends ApiController
         return $result['data'];
     }
 
+    public function actionUpdateProfile(): array
+    {
+        $user = (new AuthService())->currentUser(Yii::$app->request);
+        if (!$user) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $result = (new AccountService())->updateProfile($user, $this->body());
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
     public function actionRequestEmailVerification(): array
     {
         $user = (new AuthService())->currentUser(Yii::$app->request);

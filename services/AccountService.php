@@ -86,6 +86,48 @@ class AccountService
         return ['status' => 200, 'data' => ['status' => 'password_changed']];
     }
 
+    public function updateProfile(User $user, array $body): array
+    {
+        foreach (['first_name', 'last_name'] as $field) {
+            if (array_key_exists($field, $body)) {
+                $user->{$field} = trim((string)$body[$field]);
+            }
+        }
+
+        if (array_key_exists('attributes', $body)) {
+            $attributes = $this->normalizeAttributes($body['attributes']);
+            if ($attributes === null) {
+                return ['status' => 400, 'data' => ['error' => 'attributes must be an object with scalar values']];
+            }
+            $user->attributes = json_encode($attributes);
+        }
+
+        if (!$user->save(false, ['first_name', 'last_name', 'attributes'])) {
+            return ['status' => 400, 'data' => ['error' => 'invalid profile payload']];
+        }
+
+        AuditService::record($user->id, 'profile_updated', 'user', $user->id);
+
+        return ['status' => 200, 'data' => $user->publicData()];
+    }
+
+    private function normalizeAttributes($value): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $attributes = [];
+        foreach ($value as $key => $item) {
+            if (!is_scalar($item) && $item !== null) {
+                return null;
+            }
+            $attributes[(string)$key] = $item === null ? '' : (string)$item;
+        }
+
+        return $attributes;
+    }
+
     public function requestEmailVerification(User $user): array
     {
         if ((bool)$user->email_verified) {

@@ -73,6 +73,7 @@ return [
                 'POST api/v1/auth/password/forgot' => 'auth/forgot-password',
                 'POST api/v1/auth/password/reset' => 'auth/reset-password',
                 'POST api/v1/auth/password/change' => 'auth/change-password',
+                'PUT api/v1/auth/profile' => 'auth/update-profile',
                 'POST api/v1/auth/email/request' => 'auth/request-email-verification',
                 'POST api/v1/auth/email/verify' => 'auth/verify-email',
                 'POST api/v1/auth/mfa/verify' => 'auth/verify-mfa',

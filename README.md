@@ -57,6 +57,7 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
 - MFA TOTP setup/enable/disable, MFA challenge при login и одноразовые recovery codes.
 - `POST /api/v1/auth/password/forgot`, `/reset`, `/change` для password reset/change.
+- `PUT /api/v1/auth/profile` для self-service обновления first/last name и attributes.
 - `POST /api/v1/auth/email/request`, `/verify` для email verification.
 - `GET /api/v1/broker/providers`, `/oauth2/broker/{code}/login`, `/oauth2/broker/{code}/callback` для external sign-in.
 - Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
@@ -66,12 +67,12 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
-- Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account MFA/account email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
+- Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширенный account profile, интеграционные проверки совместимости и hardening гонок refresh token.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: интеграционные проверки совместимости и hardening гонок refresh token.
 
 ## Важные изменения
 
@@ -88,3 +89,4 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
 - 2026-09-12: перенесён identity brokering для Google/GitHub/OIDC: CRUD identity providers, signed state, callback, безопасная линковка по verified email, JIT-provisioning federated users и кнопки external sign-in в Vue UI.
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
+- 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.

@@ -116,6 +116,21 @@ $this->title = 'SSO Admin';
         <button v-if="!user.email_verified" @click="requestEmailVerification">Send verification email</button>
         <div class="grid">
           <div>
+            <label>First name</label>
+            <input v-model="profileForm.first_name">
+          </div>
+          <div>
+            <label>Last name</label>
+            <input v-model="profileForm.last_name">
+          </div>
+        </div>
+        <label>Attributes JSON</label>
+        <textarea rows="3" v-model="profileForm.attributesJson"></textarea>
+        <button class="primary" @click="updateProfile">Save profile</button>
+
+        <h2>Password</h2>
+        <div class="grid">
+          <div>
             <label>Current password</label>
             <input type="password" v-model="passwordForm.old_password">
           </div>
@@ -532,6 +547,7 @@ const app = Vue.createApp({
       loginForm: { username: 'admin', password: '' },
       forgotForm: { login: '' },
       resetForm: { token: '', password: '', confirm: '' },
+      profileForm: { first_name: '', last_name: '', attributesJson: '{}' },
       passwordForm: { old_password: '', new_password: '', confirm: '' },
       mfaLoginForm: { code: '' },
       mfaSetup: { secret: '', otpauth_uri: '', code: '' },
@@ -631,6 +647,7 @@ const app = Vue.createApp({
       this.brokerProviders = await this.api('/api/v1/broker/providers').catch(() => []);
       if (this.accessToken) {
         this.user = await this.api('/api/v1/auth/me').catch(() => null);
+        this.syncProfileForm();
         this.clients = await this.api('/api/v1/oauth/clients').catch(() => []);
         this.users = await this.api('/api/v1/users').catch(() => []);
         this.roles = await this.api('/api/v1/roles').catch(() => []);
@@ -662,6 +679,37 @@ const app = Vue.createApp({
     },
     startBrokerLogin(code) {
       window.location.href = '/oauth2/broker/' + encodeURIComponent(code) + '/login?continue=/';
+    },
+    syncProfileForm() {
+      if (!this.user) {
+        return;
+      }
+
+      this.profileForm = {
+        first_name: this.user.first_name || '',
+        last_name: this.user.last_name || '',
+        attributesJson: JSON.stringify(this.user.attributes || {}, null, 2)
+      };
+    },
+    async updateProfile() {
+      let attributes = {};
+      try {
+        attributes = JSON.parse(this.profileForm.attributesJson || '{}');
+      } catch (error) {
+        this.message = 'Attributes JSON is invalid';
+        return;
+      }
+
+      this.user = await this.api('/api/v1/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          first_name: this.profileForm.first_name,
+          last_name: this.profileForm.last_name,
+          attributes: attributes
+        })
+      });
+      this.syncProfileForm();
+      this.message = 'Profile updated';
     },
     async forgotPassword() {
       await this.api('/api/v1/auth/password/forgot', {
