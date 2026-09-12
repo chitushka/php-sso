@@ -195,6 +195,14 @@ try {
     assertTrue(!empty($token['json']['refresh_token']), 'token response must include refresh_token');
     assertTrue(!empty($token['json']['id_token']), 'openid token response must include id_token');
 
+    $userinfo = httpRequest('GET', $baseUrl . '/oauth2/userinfo', [
+        'headers' => ['Authorization: Bearer ' . $token['json']['access_token'], 'Accept: application/json'],
+    ]);
+    assertTrue($userinfo['status'] === 200, 'userinfo with oauth access token must return 200');
+    assertTrue(($userinfo['json']['sub'] ?? '') === $adminId, 'userinfo must return subject');
+    assertTrue(($userinfo['json']['preferred_username'] ?? '') === $adminUsername, 'userinfo profile scope must return preferred_username');
+    assertTrue(($userinfo['json']['email'] ?? '') === $adminUsername . '@example.test', 'userinfo email scope must return email');
+
     $firstRefresh = $token['json']['refresh_token'];
     $refresh = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'refresh_token',
@@ -222,6 +230,36 @@ try {
         'client_secret' => $client['json']['client_secret'],
     ]);
     assertTrue($descendant['status'] === 400, 'descendant refresh token must be revoked after reuse detection');
+
+    $profileOnlyVerifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $profileOnlyChallenge = rtrim(strtr(base64_encode(hash('sha256', $profileOnlyVerifier, true)), '+/', '-_'), '=');
+    $profileOnlyAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'openid profile',
+        'code_challenge' => $profileOnlyChallenge,
+        'code_challenge_method' => 'S256',
+    ]);
+    $profileOnlyAuthorize = httpRequest('GET', $profileOnlyAuthorizeUrl, ['cookies' => $sessionCookie]);
+    assertTrue($profileOnlyAuthorize['status'] >= 300 && $profileOnlyAuthorize['status'] < 400, 'profile-only authorize must redirect');
+    $profileLocationParts = parse_url($profileOnlyAuthorize['location']);
+    parse_str($profileLocationParts['query'] ?? '', $profileQuery);
+    $profileOnlyToken = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $profileQuery['code'] ?? '',
+        'redirect_uri' => 'http://localhost/cb',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'code_verifier' => $profileOnlyVerifier,
+    ]);
+    assertTrue($profileOnlyToken['status'] === 200, 'profile-only token exchange must return 200');
+    $profileOnlyUserinfo = httpRequest('GET', $baseUrl . '/oauth2/userinfo', [
+        'headers' => ['Authorization: Bearer ' . $profileOnlyToken['json']['access_token'], 'Accept: application/json'],
+    ]);
+    assertTrue($profileOnlyUserinfo['status'] === 200, 'profile-only userinfo must return 200');
+    assertTrue(isset($profileOnlyUserinfo['json']['preferred_username']), 'profile-only userinfo must include profile claim');
+    assertTrue(!array_key_exists('email', $profileOnlyUserinfo['json']), 'profile-only userinfo must not include email claim');
 
     $plainLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $userUsername,

@@ -20,18 +20,35 @@ class OidcController extends ApiController
 
     public function actionUserinfo(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
+        $auth = new AuthService();
+        $claims = $auth->currentClaims(Yii::$app->request);
+        $user = $auth->currentUser(Yii::$app->request);
         if (!$user) {
             return $this->fail(401, 'invalid token');
         }
 
-        return [
+        $scope = (string)($claims['scope'] ?? '');
+        $full = $scope === '';
+        $scopes = array_filter(preg_split('/\s+/', trim($scope)));
+        $data = [
             'sub' => $user->id,
-            'preferred_username' => $user->username,
-            'email' => $user->email,
-            'email_verified' => (bool)$user->email_verified,
-            'name' => trim($user->first_name . ' ' . $user->last_name),
-            'source' => $user->source,
         ];
+
+        if ($full || in_array('profile', $scopes, true)) {
+            $data['preferred_username'] = $user->username;
+            $data['source'] = $user->source;
+            if ($full) {
+                $data['name'] = trim($user->first_name . ' ' . $user->last_name);
+            }
+        }
+
+        if ($full || in_array('email', $scopes, true)) {
+            $data['email'] = $user->email;
+            if ($full) {
+                $data['email_verified'] = (bool)$user->email_verified;
+            }
+        }
+
+        return $data;
     }
 }

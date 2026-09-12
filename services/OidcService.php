@@ -16,6 +16,8 @@ class OidcService
             'authorization_endpoint' => $issuer . '/oauth2/authorize',
             'token_endpoint' => $issuer . '/oauth2/token',
             'userinfo_endpoint' => $issuer . '/oauth2/userinfo',
+            'revocation_endpoint' => $issuer . '/oauth2/revoke',
+            'introspection_endpoint' => $issuer . '/oauth2/introspect',
             'jwks_uri' => $issuer . '/.well-known/jwks.json',
             'end_session_endpoint' => $issuer . '/oauth2/logout',
             'response_types_supported' => ['code'],
@@ -23,7 +25,9 @@ class OidcService
             'subject_types_supported' => ['public'],
             'id_token_signing_alg_values_supported' => ['RS256'],
             'scopes_supported' => ['openid', 'profile', 'email'],
+            'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'email', 'preferred_username'],
             'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'none'],
+            'backchannel_logout_supported' => true,
         ];
     }
 

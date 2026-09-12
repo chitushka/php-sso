@@ -112,12 +112,7 @@ class AuthService
 
     public function currentUser(Request $request): ?User
     {
-        $header = (string)$request->headers->get('Authorization', '');
-        if (stripos($header, 'Bearer ') !== 0) {
-            return null;
-        }
-
-        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        $claims = $this->currentClaims($request);
         if (!$claims || empty($claims['sub'])) {
             return null;
         }
@@ -132,6 +127,21 @@ class AuthService
         }
 
         return $user;
+    }
+
+    public function currentClaims(Request $request): ?array
+    {
+        $header = (string)$request->headers->get('Authorization', '');
+        if (stripos($header, 'Bearer ') !== 0) {
+            return null;
+        }
+
+        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        if (!$claims || empty($claims['sub'])) {
+            return null;
+        }
+
+        return $claims;
     }
 
     public function userBySession(string $sessionToken): ?User
