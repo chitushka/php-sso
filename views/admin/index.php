@@ -18,6 +18,7 @@ $this->title = 'SSO Admin';
       <button :class="{active: view === 'roles'}" @click="view = 'roles'">Roles</button>
       <button :class="{active: view === 'groups'}" @click="view = 'groups'">Groups</button>
       <button :class="{active: view === 'ldap'}" @click="view = 'ldap'">LDAP</button>
+      <button :class="{active: view === 'identity'}" @click="view = 'identity'">Federation</button>
       <button :class="{active: view === 'audit'}" @click="view = 'audit'">Audit</button>
       <button class="primary" @click="logout">Logout</button>
     </nav>
@@ -73,6 +74,12 @@ $this->title = 'SSO Admin';
           <input type="password" v-model="loginForm.password">
           <button class="primary" @click="login">Login</button>
           <button @click="view = 'forgot'">Forgot password</button>
+          <div v-if="brokerProviders.length">
+            <p class="muted">External sign-in</p>
+            <button v-for="provider in brokerProviders" :key="provider.code" @click="startBrokerLogin(provider.code)">
+              Continue with {{ provider.name }}
+            </button>
+          </div>
         </template>
         <template v-else>
           <p class="muted">Enter TOTP or recovery code.</p>
@@ -403,6 +410,85 @@ $this->title = 'SSO Admin';
         <pre>{{ ldapProviders }}</pre>
       </div>
 
+      <div class="panel" v-if="view === 'identity'">
+        <h1>Identity providers</h1>
+        <p class="muted">Register callback URL as {{ discovery.issuer }}/oauth2/broker/{code}/callback.</p>
+        <div class="grid">
+          <div>
+            <label>Code</label>
+            <input v-model="identityForm.code" :disabled="!!identityForm.id">
+          </div>
+          <div>
+            <label>Name</label>
+            <input v-model="identityForm.name">
+          </div>
+          <div>
+            <label>Type</label>
+            <select v-model="identityForm.type">
+              <option value="google">google</option>
+              <option value="github">github</option>
+              <option value="oidc">oidc</option>
+            </select>
+          </div>
+          <div>
+            <label>Client ID</label>
+            <input v-model="identityForm.client_id">
+          </div>
+          <div>
+            <label>Client secret</label>
+            <input type="password" v-model="identityForm.client_secret">
+          </div>
+          <div>
+            <label>Scopes</label>
+            <input v-model="identityForm.scopes">
+          </div>
+        </div>
+        <label><input type="checkbox" v-model="identityForm.enabled"> Enabled</label>
+        <div class="grid" v-if="identityForm.type === 'oidc'">
+          <div>
+            <label>Authorize URL</label>
+            <input v-model="identityForm.authorize_url">
+          </div>
+          <div>
+            <label>Token URL</label>
+            <input v-model="identityForm.token_url">
+          </div>
+          <div>
+            <label>Userinfo URL</label>
+            <input v-model="identityForm.userinfo_url">
+          </div>
+        </div>
+        <button class="primary" @click="saveIdentityProvider">{{ identityForm.id ? 'Update provider' : 'Create provider' }}</button>
+        <button @click="resetIdentityForm">Reset form</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Client ID</th>
+                <th>Enabled</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="provider in identityProviders" :key="provider.id">
+                <td>{{ provider.code }}</td>
+                <td>{{ provider.name }}</td>
+                <td>{{ provider.type }}</td>
+                <td>{{ provider.client_id }}</td>
+                <td>{{ provider.enabled ? 'yes' : 'no' }}</td>
+                <td>
+                  <button @click="editIdentityProvider(provider)">Edit</button>
+                  <button @click="deleteIdentityProvider(provider)">Delete</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <p class="muted">{{ message }}</p>
     </section>
   </main>
@@ -427,6 +513,8 @@ const app = Vue.createApp({
       groups: [],
       audit: [],
       ldapProviders: [],
+      brokerProviders: [],
+      identityProviders: [],
       selectedUser: null,
       selectedUserRoles: [],
       selectedUserGroups: [],
@@ -468,11 +556,34 @@ const app = Vue.createApp({
         display_name_attribute: 'displayName',
         group_attribute: 'memberOf',
         enabled: true
+      },
+      identityForm: {
+        id: '',
+        code: '',
+        name: '',
+        type: 'google',
+        client_id: '',
+        client_secret: '',
+        authorize_url: '',
+        token_url: '',
+        userinfo_url: '',
+        scopes: 'openid profile email',
+        enabled: true
       }
     };
   },
   async mounted() {
+    const hashMatch = window.location.hash.match(/broker_token=([^&]+)/);
+    if (hashMatch) {
+      this.accessToken = decodeURIComponent(hashMatch[1]);
+      localStorage.setItem('sso_access_token', this.accessToken);
+      history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    }
     const params = new URLSearchParams(window.location.search);
+    if (params.get('broker_error')) {
+      this.message = 'External sign-in failed';
+      history.replaceState({}, document.title, '/');
+    }
     if (params.get('token') && window.location.pathname.indexOf('reset-password') !== -1) {
       this.resetForm.token = params.get('token');
       this.view = 'reset';
@@ -517,6 +628,7 @@ const app = Vue.createApp({
     async refresh() {
       this.bootstrap = await this.api('/api/v1/bootstrap/status');
       this.discovery = await this.api('/.well-known/openid-configuration');
+      this.brokerProviders = await this.api('/api/v1/broker/providers').catch(() => []);
       if (this.accessToken) {
         this.user = await this.api('/api/v1/auth/me').catch(() => null);
         this.clients = await this.api('/api/v1/oauth/clients').catch(() => []);
@@ -525,6 +637,7 @@ const app = Vue.createApp({
         this.permissions = await this.api('/api/v1/permissions').catch(() => []);
         this.groups = await this.api('/api/v1/groups').catch(() => []);
         this.ldapProviders = await this.api('/api/v1/ldap/providers').catch(() => []);
+        this.identityProviders = await this.api('/api/v1/identity-providers').catch(() => []);
         await this.reloadSelectedAssignments();
       }
     },
@@ -546,6 +659,9 @@ const app = Vue.createApp({
       this.user = data.user;
       this.message = 'Signed in';
       await this.refresh();
+    },
+    startBrokerLogin(code) {
+      window.location.href = '/oauth2/broker/' + encodeURIComponent(code) + '/login?continue=/';
     },
     async forgotPassword() {
       await this.api('/api/v1/auth/password/forgot', {
@@ -840,6 +956,39 @@ const app = Vue.createApp({
       this.message = 'LDAP provider created: ' + data.name;
       this.ldapForm.name = '';
       this.ldapForm.bind_password = '';
+      await this.refresh();
+    },
+    resetIdentityForm() {
+      this.identityForm = {
+        id: '',
+        code: '',
+        name: '',
+        type: 'google',
+        client_id: '',
+        client_secret: '',
+        authorize_url: '',
+        token_url: '',
+        userinfo_url: '',
+        scopes: 'openid profile email',
+        enabled: true
+      };
+    },
+    editIdentityProvider(provider) {
+      this.identityForm = Object.assign({}, provider, { client_secret: '' });
+    },
+    async saveIdentityProvider() {
+      const payload = Object.assign({}, this.identityForm);
+      const url = payload.id ? '/api/v1/identity-providers/' + payload.id : '/api/v1/identity-providers';
+      const method = payload.id ? 'PUT' : 'POST';
+      delete payload.id;
+      const data = await this.api(url, { method: method, body: JSON.stringify(payload) });
+      this.message = 'Identity provider saved: ' + data.code;
+      this.resetIdentityForm();
+      await this.refresh();
+    },
+    async deleteIdentityProvider(provider) {
+      await this.api('/api/v1/identity-providers/' + provider.id, { method: 'DELETE' });
+      this.message = 'Identity provider deleted';
       await this.refresh();
     }
   }

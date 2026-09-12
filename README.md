@@ -55,15 +55,17 @@ make lint     # проверить PHP-синтаксис
 - MFA TOTP setup/enable/disable, MFA challenge при login и одноразовые recovery codes.
 - `POST /api/v1/auth/password/forgot`, `/reset`, `/change` для password reset/change.
 - `POST /api/v1/auth/email/request`, `/verify` для email verification.
+- `GET /api/v1/broker/providers`, `/oauth2/broker/{code}/login`, `/oauth2/broker/{code}/callback` для external sign-in.
+- Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
-- Vue-админка для bootstrap/login/forgot/reset password/account MFA/account email verification/OAuth clients/users/roles/groups/LDAP/audit.
+- Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account MFA/account email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: identity brokering, расширенный account profile и production hardening.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширенный account profile, cleanup expired records, trusted proxy IP и production-настройки shared rate limit.
 
 ## Важные изменения
 
@@ -78,3 +80,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
 - 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
+- 2026-09-12: перенесён identity brokering для Google/GitHub/OIDC: CRUD identity providers, signed state, callback, безопасная линковка по verified email, JIT-provisioning federated users и кнопки external sign-in в Vue UI.

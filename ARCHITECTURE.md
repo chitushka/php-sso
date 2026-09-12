@@ -33,6 +33,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
 - `MfaService` — TOTP setup/enable/disable, одноразовые recovery codes и MFA challenge для login.
 - `AccountService` + `MailService` — password forgot/reset/change, email verification и доставка reset/verification ссылок через SMTP или лог в dev-режиме.
+- `BrokerController` + `BrokerService` — identity brokering для Google/GitHub/generic OIDC, admin CRUD identity providers, signed state, callback, linking/JIT provisioning federated users.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с фильтрами.
@@ -69,9 +70,11 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 
 `AccountService` использует `one_time_tokens.purpose=password_reset` и `email_verify` с SHA-256 hash от сырого токена. `POST /api/v1/auth/password/forgot` всегда возвращает 200 при валидном body, чтобы не раскрывать наличие пользователя; reset-ссылка отправляется через `MailService`, а без SMTP пишется в лог категории `mail`. `POST /api/v1/auth/password/reset` меняет пароль локального аккаунта, отзывает все `sessions`, `refresh_tokens` и выставляет `tokens_invalid_before`. `POST /api/v1/auth/password/change` доступен только локальным аккаунтам и требует текущий пароль. `POST /api/v1/auth/email/verify` помечает email подтверждённым и переводит `pending`-аккаунт в `active`.
 
+`BrokerService` хранит identity provider client secrets в `identity_providers.client_secret` через `CryptoService`. `GET /api/v1/broker/providers` отдаёт только включённые провайдеры для login UI. `GET /oauth2/broker/{code}/login` создаёт HMAC-signed state на 10 минут и перенаправляет во внешний IdP; callback обменивает authorization code, читает userinfo и создаёт обычную SSO cookie-сессию плюс Bearer JWT во fragment `#broker_token=...`. Линковка существующего аккаунта разрешена только при `email_verified=true` от IdP; MFA-защищённые локальные аккаунты не линкуются автоматически. Если подходящего аккаунта нет, создаётся `source=federated` пользователь и запись `federated_identities`.
+
 ## UI
 
-Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge, forgot/reset password, account password/email verification, OAuth clients, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: identity providers и расширенный account profile.
+Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: расширенный account profile и production/admin maintenance.
 
 ## Документация
 

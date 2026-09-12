@@ -105,6 +105,11 @@ class AuthService
         ];
     }
 
+    public function issueFederatedLogin(User $user, Request $request): array
+    {
+        return $this->issueLogin($user, $request);
+    }
+
     public function currentUser(Request $request): ?User
     {
         $header = (string)$request->headers->get('Authorization', '');
