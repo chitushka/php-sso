@@ -72,6 +72,7 @@ $this->title = 'SSO Admin';
           <label>Password</label>
           <input type="password" v-model="loginForm.password">
           <button class="primary" @click="login">Login</button>
+          <button @click="view = 'forgot'">Forgot password</button>
         </template>
         <template v-else>
           <p class="muted">Enter TOTP or recovery code.</p>
@@ -82,7 +83,46 @@ $this->title = 'SSO Admin';
         </template>
       </div>
 
+      <div class="panel login" v-if="view === 'forgot'">
+        <h1>Forgot password</h1>
+        <label>Username or email</label>
+        <input v-model="forgotForm.login">
+        <button class="primary" @click="forgotPassword">Send reset link</button>
+        <button @click="view = 'login'">Back to login</button>
+      </div>
+
+      <div class="panel login" v-if="view === 'reset'">
+        <h1>Reset password</h1>
+        <label>Token</label>
+        <input v-model="resetForm.token">
+        <label>New password</label>
+        <input type="password" v-model="resetForm.password">
+        <label>Repeat password</label>
+        <input type="password" v-model="resetForm.confirm">
+        <button class="primary" @click="resetPassword">Save password</button>
+        <button @click="view = 'login'">Back to login</button>
+      </div>
+
       <div class="panel login" v-if="view === 'dashboard' && user">
+        <h2>Account</h2>
+        <p class="muted">{{ user.email }} · {{ user.email_verified ? 'email verified' : 'email not verified' }}</p>
+        <button v-if="!user.email_verified" @click="requestEmailVerification">Send verification email</button>
+        <div class="grid">
+          <div>
+            <label>Current password</label>
+            <input type="password" v-model="passwordForm.old_password">
+          </div>
+          <div>
+            <label>New password</label>
+            <input type="password" v-model="passwordForm.new_password">
+          </div>
+          <div>
+            <label>Repeat password</label>
+            <input type="password" v-model="passwordForm.confirm">
+          </div>
+        </div>
+        <button class="primary" @click="changePassword">Change password</button>
+
         <h2>Account MFA</h2>
         <p class="muted">{{ user.mfa_enabled ? 'MFA enabled' : 'MFA disabled' }}</p>
         <template v-if="!user.mfa_enabled">
@@ -402,6 +442,9 @@ const app = Vue.createApp({
       },
       bootstrapForm: { username: 'admin', email: 'admin@example.com', password: '' },
       loginForm: { username: 'admin', password: '' },
+      forgotForm: { login: '' },
+      resetForm: { token: '', password: '', confirm: '' },
+      passwordForm: { old_password: '', new_password: '', confirm: '' },
       mfaLoginForm: { code: '' },
       mfaSetup: { secret: '', otpauth_uri: '', code: '' },
       mfaManageForm: { code: '' },
@@ -428,8 +471,18 @@ const app = Vue.createApp({
       }
     };
   },
-  mounted() {
-    this.refresh();
+  async mounted() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('token') && window.location.pathname.indexOf('reset-password') !== -1) {
+      this.resetForm.token = params.get('token');
+      this.view = 'reset';
+    }
+    if (params.get('token') && window.location.pathname.indexOf('verify-email') !== -1) {
+      await this.verifyEmail(params.get('token')).catch(error => {
+        this.message = error.message;
+      });
+    }
+    await this.refresh();
   },
   computed: {
     availableUserRoles() {
@@ -493,6 +546,57 @@ const app = Vue.createApp({
       this.user = data.user;
       this.message = 'Signed in';
       await this.refresh();
+    },
+    async forgotPassword() {
+      await this.api('/api/v1/auth/password/forgot', {
+        method: 'POST',
+        body: JSON.stringify({ login: this.forgotForm.login })
+      });
+      this.forgotForm.login = '';
+      this.message = 'If the account exists, a reset link was sent.';
+      this.view = 'login';
+    },
+    async resetPassword() {
+      if (this.resetForm.password !== this.resetForm.confirm) {
+        this.message = 'Passwords do not match';
+        return;
+      }
+
+      await this.api('/api/v1/auth/password/reset', {
+        method: 'POST',
+        body: JSON.stringify({ token: this.resetForm.token, password: this.resetForm.password })
+      });
+      this.resetForm = { token: '', password: '', confirm: '' };
+      this.message = 'Password reset. Sign in with the new password.';
+      this.view = 'login';
+    },
+    async changePassword() {
+      if (this.passwordForm.new_password !== this.passwordForm.confirm) {
+        this.message = 'Passwords do not match';
+        return;
+      }
+
+      await this.api('/api/v1/auth/password/change', {
+        method: 'POST',
+        body: JSON.stringify({
+          old_password: this.passwordForm.old_password,
+          new_password: this.passwordForm.new_password
+        })
+      });
+      this.passwordForm = { old_password: '', new_password: '', confirm: '' };
+      this.message = 'Password changed';
+    },
+    async requestEmailVerification() {
+      await this.api('/api/v1/auth/email/request', { method: 'POST' });
+      this.message = 'Verification email sent.';
+    },
+    async verifyEmail(token) {
+      await this.api('/api/v1/auth/email/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token: token })
+      });
+      this.message = 'Email verified.';
+      history.replaceState({}, document.title, '/');
     },
     async verifyMfaLogin() {
       const data = await this.api('/api/v1/auth/mfa/verify', {

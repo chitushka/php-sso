@@ -46,7 +46,7 @@
 - Перенести identity brokering для Google/GitHub/OIDC.
 - Добавить trusted proxy IP, cleanup expired records и production-настройки shared rate limit для горизонтального масштабирования.
 
-Статус: частично выполнено. LDAP Search + Bind authentication при login перенесён: включённые LDAP providers используются как fallback после локальной проверки пароля, LDAP-пользователь создаётся/обновляется в `users`, а LDAP group mappings синхронизируют группы с `source=ldap`. MFA TOTP и recovery codes перенесены: login выдаёт одноразовый MFA challenge, TOTP защищён от повторного counter, recovery codes одноразовые. Email verification, password reset/change, identity brokering и production hardening остаются следующими подпунктами.
+Статус: частично выполнено. LDAP Search + Bind authentication при login перенесён: включённые LDAP providers используются как fallback после локальной проверки пароля, LDAP-пользователь создаётся/обновляется в `users`, а LDAP group mappings синхронизируют группы с `source=ldap`. MFA TOTP и recovery codes перенесены: login выдаёт одноразовый MFA challenge, TOTP защищён от повторного counter, recovery codes одноразовые. Password reset/change и email verification перенесены через hashed one-time tokens; reset отзывает пользовательские сессии, refresh tokens и ранее выданные Bearer JWT. Identity brokering и production hardening остаются следующими подпунктами.
 
 ## Этап 6. Проверка совместимости
 

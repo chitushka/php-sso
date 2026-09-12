@@ -15,9 +15,18 @@ return [
     'rateLimitedRoutes' => [
         'auth/login',
         'auth/verify-mfa',
+        'auth/forgot-password',
+        'auth/reset-password',
+        'auth/verify-email',
         'bootstrap/create',
         'oauth/token',
         'oauth/revoke',
         'oauth/introspect',
     ],
+    'smtpHost' => getenv('SSO_SMTP_HOST') ?: '',
+    'smtpPort' => (int)(getenv('SSO_SMTP_PORT') ?: 25),
+    'smtpUsername' => getenv('SSO_SMTP_USERNAME') ?: '',
+    'smtpPassword' => getenv('SSO_SMTP_PASSWORD') ?: '',
+    'smtpFrom' => getenv('SSO_SMTP_FROM') ?: '',
+    'smtpStartTls' => filter_var(getenv('SSO_SMTP_STARTTLS') ?: false, FILTER_VALIDATE_BOOLEAN),
 ];

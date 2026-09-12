@@ -33,6 +33,7 @@ make lint     # проверить PHP-синтаксис
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
 - `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
 - `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
+- `SSO_SMTP_HOST`, `SSO_SMTP_PORT`, `SSO_SMTP_USERNAME`, `SSO_SMTP_PASSWORD`, `SSO_SMTP_FROM`, `SSO_SMTP_STARTTLS` — SMTP для reset/verification писем. Если `SSO_SMTP_HOST` или `SSO_SMTP_FROM` пустые, письмо пишется в лог приложения.
 
 Для production замените все placeholder-секреты.
 
@@ -52,15 +53,17 @@ make lint     # проверить PHP-синтаксис
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
 - MFA TOTP setup/enable/disable, MFA challenge при login и одноразовые recovery codes.
+- `POST /api/v1/auth/password/forgot`, `/reset`, `/change` для password reset/change.
+- `POST /api/v1/auth/email/request`, `/verify` для email verification.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
-- Vue-админка для bootstrap/login/MFA/OAuth clients/users/roles/groups/LDAP/audit.
+- Vue-админка для bootstrap/login/forgot/reset password/account MFA/account email verification/OAuth clients/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: password reset/change, email verification, identity brokering и production hardening.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: identity brokering, расширенный account profile и production hardening.
 
 ## Важные изменения
 
@@ -74,3 +77,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-10: добавлены UI-формы RBAC-назначений для пользователей, ролей и групп.
 - 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
 - 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
+- 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.

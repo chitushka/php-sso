@@ -32,6 +32,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
 - `MfaService` — TOTP setup/enable/disable, одноразовые recovery codes и MFA challenge для login.
+- `AccountService` + `MailService` — password forgot/reset/change, email verification и доставка reset/verification ссылок через SMTP или лог в dev-режиме.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с фильтрами.
@@ -66,9 +67,11 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 
 Для пользователей с `mfa_enabled=true` успешная проверка пароля не создаёт сессию сразу: `AuthService` создаёт `one_time_tokens.purpose=mfa_login` и возвращает `challenge_token`. `POST /api/v1/auth/mfa/verify` принимает challenge и TOTP/recovery code, после чего создаёт обычную cookie-сессию и Bearer JWT. TOTP хранится в `users.mfa_secret` через `CryptoService`, `mfa_last_used_counter` блокирует повтор counter, recovery codes хранятся в `mfa_recovery_codes` как password hash и помечаются `used_at`.
 
+`AccountService` использует `one_time_tokens.purpose=password_reset` и `email_verify` с SHA-256 hash от сырого токена. `POST /api/v1/auth/password/forgot` всегда возвращает 200 при валидном body, чтобы не раскрывать наличие пользователя; reset-ссылка отправляется через `MailService`, а без SMTP пишется в лог категории `mail`. `POST /api/v1/auth/password/reset` меняет пароль локального аккаунта, отзывает все `sessions`, `refresh_tokens` и выставляет `tokens_invalid_before`. `POST /api/v1/auth/password/change` доступен только локальным аккаунтам и требует текущий пароль. `POST /api/v1/auth/email/verify` помечает email подтверждённым и переводит `pending`-аккаунт в `active`.
+
 ## UI
 
-Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge, OAuth clients, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие страницы должны переноситься по модулям: account, identity providers и password recovery flows.
+Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge, forgot/reset password, account password/email verification, OAuth clients, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: identity providers и расширенный account profile.
 
 ## Документация
 

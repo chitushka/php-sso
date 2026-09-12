@@ -2,6 +2,7 @@
 
 namespace app\controllers;
 
+use app\services\AccountService;
 use app\services\AuthService;
 use app\services\MfaService;
 use Yii;
@@ -86,6 +87,66 @@ class AuthController extends ApiController
         (new AuthService())->revokeAllSessions($user);
         Yii::$app->response->cookies->remove('sso_session');
         return ['status' => 'all_revoked'];
+    }
+
+    public function actionForgotPassword(): array
+    {
+        $login = trim((string)($this->body()['login'] ?? ''));
+        if ($login === '') {
+            return $this->fail(400, 'login is required');
+        }
+
+        (new AccountService())->forgotPassword($login);
+        return ['status' => 'ok'];
+    }
+
+    public function actionResetPassword(): array
+    {
+        $body = $this->body();
+        $result = (new AccountService())->resetPassword(
+            (string)($body['token'] ?? ''),
+            (string)($body['password'] ?? '')
+        );
+
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionChangePassword(): array
+    {
+        $user = (new AuthService())->currentUser(Yii::$app->request);
+        if (!$user) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $body = $this->body();
+        $result = (new AccountService())->changePassword(
+            $user,
+            (string)($body['old_password'] ?? ''),
+            (string)($body['new_password'] ?? '')
+        );
+
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionRequestEmailVerification(): array
+    {
+        $user = (new AuthService())->currentUser(Yii::$app->request);
+        if (!$user) {
+            return $this->fail(401, 'invalid token');
+        }
+
+        $result = (new AccountService())->requestEmailVerification($user);
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
+    }
+
+    public function actionVerifyEmail(): array
+    {
+        $result = (new AccountService())->verifyEmail((string)($this->body()['token'] ?? ''));
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
     }
 
     public function actionMfaSetup(): array
