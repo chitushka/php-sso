@@ -86,7 +86,7 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
 
-`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет login, OAuth2 Authorization Code + PKCE, OIDC `id_token`, UserInfo scope filtering, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts, затем удаляет созданные записи.
+`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет OIDC Discovery/JWKS, login, OAuth2 Authorization Code + PKCE, `client_secret_post` и `client_secret_basic`, одноразовость authorization code, RS256 `id_token` claims, UserInfo scope filtering, introspection active/inactive token, revocation refresh token, client_credentials token contract, consent-required/grant flow, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts для authorize/token/revoke/introspect, затем удаляет созданные записи. Цель `make integration` поднимает встроенный PHP server с высоким test-local rate limit, чтобы расширенный smoke flow проверял endpoint-контракты без ложных 429.
 
 ## UI
 
@@ -99,3 +99,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 - `PLAN.md` — статус и порядок переноса.
 - `ARCHITECTURE.md` — архитектурные решения и границы модулей.
 - `README.md` — пользовательские команды, возможности и важные изменения.
+- `MIGRATION_NOTES.md` — операционный порядок cutover/rollback при изменениях, влияющих на переход с Go-сервиса.
+
+## Переход с Go-сервиса
+
+`MIGRATION_NOTES.md` фиксирует production cutover с Go-версии на PHP/Yii2: совместимые публичные маршруты, подготовку `.env`, порядок применения Yii2-миграций, smoke-checklist после переключения reverse proxy и rollback через дамп PostgreSQL. Документ намеренно отделён от архитектуры, потому что описывает операционную процедуру, а не runtime-модуль приложения.

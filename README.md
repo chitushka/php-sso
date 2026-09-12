@@ -21,7 +21,7 @@ make up       # запустить app + PostgreSQL
 make migrate  # применить Yii2-миграции
 make lint     # проверить PHP-синтаксис
 make cleanup  # удалить истёкшие auth/OAuth артефакты
-make integration # прогнать OAuth/OIDC smoke flow
+make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 ```
 
 ## Конфигурация
@@ -66,10 +66,10 @@ make integration # прогнать OAuth/OIDC smoke flow
 - `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
-- OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
+- OAuth2 Authorization Code + PKCE, одноразовый authorization code, `client_secret_post`/`client_secret_basic`, consent flow, refresh token, revoke, introspect, client_credentials.
 - Refresh token rotation с reuse detection: повтор старого refresh token отзывает всю token family.
 - Public OAuth clients требуют PKCE S256; ошибки OAuth endpoints возвращаются в RFC-style формате `error` + `error_description`.
-- OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
+- OIDC Discovery, JWKS, UserInfo и RS256 ID Token с проверкой issuer/audience/nonce claims в smoke flow.
 - OIDC UserInfo scope filtering: `profile` раскрывает profile claims, `email` раскрывает email.
 - RP-initiated logout проверяет `id_token_hint`, registered `post_logout_redirect_uri` и отзывает refresh tokens пользователя.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
@@ -77,7 +77,7 @@ make integration # прогнать OAuth/OIDC smoke flow
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширение интеграционных проверок и сверка контрактов ошибок с Go-сервисом.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: проверка OAuth/OIDC flow внешним тестовым клиентом и дальнейшая сверка endpoint-контрактов с Go-сервисом.
 
 ## Важные изменения
 
@@ -97,6 +97,8 @@ make integration # прогнать OAuth/OIDC smoke flow
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
 - 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.
 - 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, UserInfo scope filtering, RP logout validation, refresh rotation/reuse detection, RBAC enforcement и базовых OAuth error contracts.
+- 2026-09-12: интеграционный OAuth/OIDC smoke flow расширен проверками Discovery/JWKS, RS256 `id_token` claims, одноразовости authorization code, introspection active/inactive token, revocation refresh token, `client_secret_basic`, client_credentials token contract, consent-required/grant сценария и OAuth error contracts для authorize/revoke/introspect.
+- 2026-09-12: подготовлены `MIGRATION_NOTES.md` для cutover с Go-сервиса на PHP/Yii2: совместимость контрактов, миграции БД, checklist переключения и rollback.
 - 2026-09-12: public OAuth clients теперь требуют PKCE S256 на authorize.
 - 2026-09-12: OIDC discovery дополнен revocation/introspection metadata, UserInfo фильтрует claims по OAuth scope.
 - 2026-09-12: RP-initiated logout валидирует `id_token_hint` и registered `post_logout_redirect_uri`, отзывает SSO-сессию и refresh tokens пользователя.

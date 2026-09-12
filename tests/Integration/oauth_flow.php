@@ -30,6 +30,13 @@ function assertTrue($condition, string $message): void
     }
 }
 
+function assertOAuthError(array $response, int $status, string $error, string $message): void
+{
+    assertTrue($response['status'] === $status, $message . ' must return ' . $status);
+    assertTrue(($response['json']['error'] ?? '') === $error, $message . ' must return ' . $error);
+    assertTrue(isset($response['json']['error_description']), $message . ' must include error_description');
+}
+
 function httpRequest(string $method, string $url, array $options = []): array
 {
     $headers = $options['headers'] ?? [];
@@ -99,12 +106,27 @@ function jsonRequest(string $method, string $url, array $payload, ?string $token
     ]);
 }
 
-function formRequest(string $url, array $payload): array
+function formRequest(string $url, array $payload, array $headers = []): array
 {
     return httpRequest('POST', $url, [
-        'headers' => ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'],
+        'headers' => array_merge(['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'], $headers),
         'body' => http_build_query($payload),
     ]);
+}
+
+function basicAuthHeader(string $username, string $password): string
+{
+    return 'Authorization: Basic ' . base64_encode(rawurlencode($username) . ':' . rawurlencode($password));
+}
+
+function jwtPart(string $jwt, int $index): array
+{
+    $parts = explode('.', $jwt);
+    assertTrue(count($parts) === 3, 'JWT must contain three parts');
+    $decoded = base64_decode(strtr($parts[$index], '-_', '+/'));
+    $json = json_decode((string)$decoded, true);
+    assertTrue(is_array($json), 'JWT part must contain JSON object');
+    return $json;
 }
 
 function createUser(\yii\db\Connection $db, string $username, string $password): string
@@ -160,6 +182,44 @@ try {
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
     $createdClientIds[] = $client['json']['id'];
 
+    $configuration = httpRequest('GET', $baseUrl . '/.well-known/openid-configuration', [
+        'headers' => ['Accept: application/json'],
+    ]);
+    assertTrue($configuration['status'] === 200, 'OIDC discovery must return 200');
+    assertTrue(!empty($configuration['json']['issuer']), 'OIDC discovery must include issuer');
+    assertTrue(($configuration['json']['authorization_endpoint'] ?? '') === $configuration['json']['issuer'] . '/oauth2/authorize', 'OIDC discovery must include authorization endpoint');
+    assertTrue(($configuration['json']['token_endpoint'] ?? '') === $configuration['json']['issuer'] . '/oauth2/token', 'OIDC discovery must include token endpoint');
+    assertTrue(($configuration['json']['revocation_endpoint'] ?? '') === $configuration['json']['issuer'] . '/oauth2/revoke', 'OIDC discovery must include revocation endpoint');
+    assertTrue(($configuration['json']['introspection_endpoint'] ?? '') === $configuration['json']['issuer'] . '/oauth2/introspect', 'OIDC discovery must include introspection endpoint');
+    assertTrue(in_array('authorization_code', $configuration['json']['grant_types_supported'] ?? [], true), 'OIDC discovery must support authorization_code');
+    assertTrue(in_array('RS256', $configuration['json']['id_token_signing_alg_values_supported'] ?? [], true), 'OIDC discovery must support RS256');
+
+    $jwks = httpRequest('GET', $baseUrl . '/.well-known/jwks.json', [
+        'headers' => ['Accept: application/json'],
+    ]);
+    assertTrue($jwks['status'] === 200, 'JWKS must return 200');
+    assertTrue(!empty($jwks['json']['keys'][0]['kid']), 'JWKS must include key id');
+    assertTrue(($jwks['json']['keys'][0]['kty'] ?? '') === 'RSA', 'JWKS key must be RSA');
+    assertTrue(($jwks['json']['keys'][0]['alg'] ?? '') === 'RS256', 'JWKS key must use RS256');
+
+    $loginRequiredUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'openid',
+    ]);
+    $loginRequired = httpRequest('GET', $loginRequiredUrl, ['headers' => ['Accept: application/json']]);
+    assertOAuthError($loginRequired, 401, 'login_required', 'authorize without SSO session');
+
+    $badRedirectUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/not-registered',
+        'scope' => 'openid',
+    ]);
+    $badRedirect = httpRequest('GET', $badRedirectUrl, ['cookies' => $sessionCookie]);
+    assertOAuthError($badRedirect, 400, 'invalid_request', 'authorize with unregistered redirect_uri');
+
     $verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
     $authorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
@@ -195,6 +255,67 @@ try {
     assertTrue(!empty($token['json']['access_token']), 'token response must include access_token');
     assertTrue(!empty($token['json']['refresh_token']), 'token response must include refresh_token');
     assertTrue(!empty($token['json']['id_token']), 'openid token response must include id_token');
+
+    $idTokenHeader = jwtPart($token['json']['id_token'], 0);
+    $idTokenPayload = jwtPart($token['json']['id_token'], 1);
+    assertTrue(($idTokenHeader['alg'] ?? '') === 'RS256', 'id_token must use RS256');
+    assertTrue(($idTokenHeader['kid'] ?? '') === $jwks['json']['keys'][0]['kid'], 'id_token kid must match JWKS');
+    assertTrue(($idTokenPayload['iss'] ?? '') === $configuration['json']['issuer'], 'id_token issuer must match discovery');
+    assertTrue(($idTokenPayload['sub'] ?? '') === $adminId, 'id_token subject must match user');
+    assertTrue(($idTokenPayload['aud'] ?? '') === $client['json']['client_id'], 'id_token audience must match client');
+    assertTrue(($idTokenPayload['nonce'] ?? '') === 'nonce-' . $suffix, 'id_token nonce must match authorize request');
+
+    $codeReuse = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $query['code'],
+        'redirect_uri' => 'http://localhost/cb',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'code_verifier' => $verifier,
+    ]);
+    assertTrue($codeReuse['status'] === 400, 'authorization code reuse must return 400');
+    assertTrue(($codeReuse['json']['error'] ?? '') === 'invalid_grant', 'authorization code reuse must return invalid_grant');
+
+    $introspection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $token['json']['access_token'],
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($introspection['status'] === 200, 'introspection must return 200');
+    assertTrue(($introspection['json']['active'] ?? false) === true, 'introspection must mark issued access token active');
+    assertTrue(($introspection['json']['sub'] ?? '') === $adminId, 'introspection must include access token subject');
+    assertTrue(($introspection['json']['client_id'] ?? '') === $client['json']['client_id'], 'introspection must include client_id');
+
+    $inactiveIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => 'not-a-token',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($inactiveIntrospection['status'] === 200, 'inactive introspection must return 200');
+    assertTrue(($inactiveIntrospection['json']['active'] ?? true) === false, 'introspection must mark invalid token inactive');
+
+    $basicVerifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $basicChallenge = rtrim(strtr(base64_encode(hash('sha256', $basicVerifier, true)), '+/', '-_'), '=');
+    $basicAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'openid profile',
+        'code_challenge' => $basicChallenge,
+        'code_challenge_method' => 'S256',
+    ]);
+    $basicAuthorize = httpRequest('GET', $basicAuthorizeUrl, ['cookies' => $sessionCookie]);
+    assertTrue($basicAuthorize['status'] >= 300 && $basicAuthorize['status'] < 400, 'basic-auth authorize must redirect');
+    $basicLocationParts = parse_url($basicAuthorize['location']);
+    parse_str($basicLocationParts['query'] ?? '', $basicQuery);
+    $basicToken = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $basicQuery['code'] ?? '',
+        'redirect_uri' => 'http://localhost/cb',
+        'code_verifier' => $basicVerifier,
+    ], [basicAuthHeader($client['json']['client_id'], $client['json']['client_secret'])]);
+    assertTrue($basicToken['status'] === 200, 'client_secret_basic token exchange must return 200');
+    assertTrue(!empty($basicToken['json']['access_token']), 'client_secret_basic token exchange must include access_token');
 
     $userinfo = httpRequest('GET', $baseUrl . '/oauth2/userinfo', [
         'headers' => ['Authorization: Bearer ' . $token['json']['access_token'], 'Accept: application/json'],
@@ -262,6 +383,66 @@ try {
     assertTrue(isset($profileOnlyUserinfo['json']['preferred_username']), 'profile-only userinfo must include profile claim');
     assertTrue(!array_key_exists('email', $profileOnlyUserinfo['json']), 'profile-only userinfo must not include email claim');
 
+    $revoke = formRequest($baseUrl . '/oauth2/revoke', [
+        'token' => $profileOnlyToken['json']['refresh_token'] ?? '',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($revoke['status'] === 200, 'revocation must return 200 for authenticated client');
+
+    $revokedRefresh = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $profileOnlyToken['json']['refresh_token'] ?? '',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($revokedRefresh['status'] === 400, 'revoked refresh token must return 400');
+    assertTrue(($revokedRefresh['json']['error'] ?? '') === 'invalid_grant', 'revoked refresh token must return invalid_grant');
+
+    $consentClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
+        'name' => 'Integration consent client ' . $suffix,
+        'client_id' => 'itest-consent-' . $suffix,
+        'type' => 'confidential',
+        'redirect_uris' => ['http://localhost/consent-cb'],
+        'allowed_scopes' => ['openid', 'profile'],
+        'skip_consent' => false,
+    ], $adminToken);
+    assertTrue($consentClient['status'] === 201, 'create consent oauth client must return 201');
+    $createdClientIds[] = $consentClient['json']['id'];
+
+    $consentAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $consentClient['json']['client_id'],
+        'redirect_uri' => 'http://localhost/consent-cb',
+        'scope' => 'openid profile',
+        'code_challenge' => $challenge,
+        'code_challenge_method' => 'S256',
+    ]);
+    $consentRequired = httpRequest('GET', $consentAuthorizeUrl, ['cookies' => $sessionCookie]);
+    assertTrue($consentRequired['status'] === 403, 'client without consent must return 403');
+    assertTrue(($consentRequired['json']['error'] ?? '') === 'consent_required', 'client without consent must return consent_required');
+
+    $consentInfo = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'openid profile',
+    ]), ['headers' => ['Accept: application/json']]);
+    assertTrue($consentInfo['status'] === 200, 'consent info must return 200');
+    assertTrue(($consentInfo['json']['client_id'] ?? '') === $consentClient['json']['client_id'], 'consent info must include client_id');
+    assertTrue(in_array('openid', $consentInfo['json']['scopes'] ?? [], true), 'consent info must include requested openid scope');
+
+    $grantConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'openid profile',
+    ], null, $sessionCookie);
+    assertTrue($grantConsent['status'] === 200, 'grant consent must return 200');
+    assertTrue(($grantConsent['json']['status'] ?? '') === 'granted', 'grant consent must return granted status');
+
+    $consentedAuthorize = httpRequest('GET', $consentAuthorizeUrl, ['cookies' => $sessionCookie]);
+    assertTrue($consentedAuthorize['status'] >= 300 && $consentedAuthorize['status'] < 400, 'authorize after consent must redirect');
+    $consentedLocationParts = parse_url($consentedAuthorize['location']);
+    parse_str($consentedLocationParts['query'] ?? '', $consentedQuery);
+    assertTrue(!empty($consentedQuery['code']), 'authorize after consent must include code');
+
     $plainLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $userUsername,
         'password' => $password,
@@ -285,8 +466,45 @@ try {
         'client_id' => $client['json']['client_id'],
         'client_secret' => 'wrong-secret',
     ]);
-    assertTrue($badSecret['status'] === 401, 'bad client secret must return 401');
-    assertTrue(($badSecret['json']['error'] ?? '') === 'invalid_client', 'bad client secret must return invalid_client');
+    assertOAuthError($badSecret, 401, 'invalid_client', 'bad client secret');
+
+    $clientCredentials = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'scope' => 'profile',
+    ]);
+    assertTrue($clientCredentials['status'] === 200, 'client_credentials must return 200');
+    assertTrue(!empty($clientCredentials['json']['access_token']), 'client_credentials must include access_token');
+    assertTrue(($clientCredentials['json']['token_type'] ?? '') === 'Bearer', 'client_credentials must return Bearer token');
+    assertTrue(empty($clientCredentials['json']['refresh_token']), 'client_credentials must not include refresh_token');
+    assertTrue(empty($clientCredentials['json']['id_token']), 'client_credentials must not include id_token');
+
+    $clientCredentialsClaims = jwtPart($clientCredentials['json']['access_token'], 1);
+    assertTrue(($clientCredentialsClaims['client_id'] ?? '') === $client['json']['client_id'], 'client_credentials token must include client_id');
+    assertTrue(($clientCredentialsClaims['purpose'] ?? '') === 'client_credentials', 'client_credentials token must include purpose');
+
+    $badClientCredentialsScope = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'scope' => 'not-allowed',
+    ]);
+    assertOAuthError($badClientCredentialsScope, 400, 'invalid_scope', 'client_credentials with invalid scope');
+
+    $badRevokeClient = formRequest($baseUrl . '/oauth2/revoke', [
+        'token' => 'not-a-token',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => 'wrong-secret',
+    ]);
+    assertOAuthError($badRevokeClient, 401, 'invalid_client', 'revoke with bad client secret');
+
+    $badIntrospectClient = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => 'not-a-token',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => 'wrong-secret',
+    ]);
+    assertOAuthError($badIntrospectClient, 401, 'invalid_client', 'introspect with bad client secret');
 
     $badScopeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
@@ -321,6 +539,13 @@ try {
     assertTrue($missingPkce['status'] === 400, 'public client without PKCE S256 must return 400');
     assertTrue(($missingPkce['json']['error'] ?? '') === 'invalid_request', 'public client without PKCE must return invalid_request');
     assertTrue(($missingPkce['json']['error_description'] ?? '') === 'PKCE S256 required', 'public client without PKCE must describe PKCE S256 requirement');
+
+    $publicClientCredentials = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $publicClient['json']['client_id'],
+        'scope' => 'profile',
+    ]);
+    assertOAuthError($publicClientCredentials, 401, 'invalid_client', 'public client_credentials grant');
 
     $badLogout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
         'id_token_hint' => $token['json']['id_token'],
