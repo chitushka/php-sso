@@ -24,6 +24,7 @@ return [
     ],
     'components' => [
         'request' => [
+            'class' => app\components\TrustedRequest::class,
             'cookieValidationKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
             'parsers' => [
                 'application/json' => yii\web\JsonParser::class,
@@ -35,9 +36,15 @@ return [
             ],
         ],
         'db' => $db,
-        'cache' => [
-            'class' => yii\caching\FileCache::class,
-        ],
+        'cache' => (getenv('SSO_CACHE_DRIVER') === 'db')
+            ? [
+                'class' => yii\caching\DbCache::class,
+                'db' => 'db',
+                'cacheTable' => 'cache',
+            ]
+            : [
+                'class' => yii\caching\FileCache::class,
+            ],
         'log' => [
             'targets' => [
                 [

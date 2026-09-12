@@ -12,6 +12,8 @@ return [
     'maxBodyBytes' => (int)(getenv('SSO_MAX_BODY_BYTES') ?: 1048576),
     'rateLimitPerMinute' => (int)(getenv('SSO_RATE_LIMIT_PER_MINUTE') ?: 30),
     'rateLimitBurst' => (int)(getenv('SSO_RATE_LIMIT_BURST') ?: 10),
+    'cacheDriver' => getenv('SSO_CACHE_DRIVER') ?: 'file',
+    'trustedProxies' => getenv('SSO_TRUSTED_PROXIES') ?: '',
     'rateLimitedRoutes' => [
         'auth/login',
         'auth/verify-mfa',

@@ -20,6 +20,7 @@ make build    # собрать Docker-образ
 make up       # запустить app + PostgreSQL
 make migrate  # применить Yii2-миграции
 make lint     # проверить PHP-синтаксис
+make cleanup  # удалить истёкшие auth/OAuth артефакты
 ```
 
 ## Конфигурация
@@ -32,6 +33,8 @@ make lint     # проверить PHP-синтаксис
 - `SSO_ENCRYPTION_KEY` — ключ для будущего шифрования секретов, минимум 32 символа.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
 - `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
+- `SSO_CACHE_DRIVER` — `file` по умолчанию или `db` для PostgreSQL-backed Yii cache/rate limit при нескольких app-инстансах.
+- `SSO_TRUSTED_PROXIES` — comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
 - `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
 - `SSO_SMTP_HOST`, `SSO_SMTP_PORT`, `SSO_SMTP_USERNAME`, `SSO_SMTP_PASSWORD`, `SSO_SMTP_FROM`, `SSO_SMTP_STARTTLS` — SMTP для reset/verification писем. Если `SSO_SMTP_HOST` или `SSO_SMTP_FROM` пустые, письмо пишется в лог приложения.
 
@@ -57,6 +60,9 @@ make lint     # проверить PHP-синтаксис
 - `POST /api/v1/auth/email/request`, `/verify` для email verification.
 - `GET /api/v1/broker/providers`, `/oauth2/broker/{code}/login`, `/oauth2/broker/{code}/callback` для external sign-in.
 - Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
+- Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
+- `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
+- Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
@@ -65,7 +71,7 @@ make lint     # проверить PHP-синтаксис
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширенный account profile, cleanup expired records, trusted proxy IP и production-настройки shared rate limit.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширенный account profile, интеграционные проверки совместимости и hardening гонок refresh token.
 
 ## Важные изменения
 
@@ -81,3 +87,4 @@ make lint     # проверить PHP-синтаксис
 - 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
 - 2026-09-12: перенесён identity brokering для Google/GitHub/OIDC: CRUD identity providers, signed state, callback, безопасная линковка по verified email, JIT-provisioning federated users и кнопки external sign-in в Vue UI.
+- 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.

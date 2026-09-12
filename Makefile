@@ -1,4 +1,4 @@
-.PHONY: build up down migrate lint
+.PHONY: build up down migrate lint cleanup
 
 build:
 	docker compose build
@@ -14,3 +14,6 @@ migrate:
 
 lint:
 	docker compose run --rm app composer lint
+
+cleanup:
+	docker compose run --rm app php yii cleanup/run

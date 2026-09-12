@@ -40,6 +40,8 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `AuditService` — запись важных событий.
 - `CryptoService` — AES-256-GCM шифрование секретов без Composer-зависимостей.
 - `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
+- `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
+- `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
 
 ## База данных
@@ -52,7 +54,7 @@ UUID генерируются PostgreSQL через `pgcrypto/gen_random_uuid()`
 
 Все runtime-настройки используют namespace `SSO_*`. Основные переменные: `SSO_DATABASE_URL`, `SSO_ISSUER`, `SSO_JWT_SECRET`, `SSO_ENCRYPTION_KEY`, `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL`.
 
-Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`. Максимальный размер тела запроса задаёт `SSO_MAX_BODY_BYTES`.
+Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`. По умолчанию token bucket хранится в `FileCache`; для нескольких app-инстансов можно задать `SSO_CACHE_DRIVER=db`, тогда Yii2 cache использует таблицу `cache` в PostgreSQL. Максимальный размер тела запроса задаёт `SSO_MAX_BODY_BYTES`. `SSO_TRUSTED_PROXIES` содержит comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
 
 ## Защитные механизмы
 
@@ -71,6 +73,10 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 `AccountService` использует `one_time_tokens.purpose=password_reset` и `email_verify` с SHA-256 hash от сырого токена. `POST /api/v1/auth/password/forgot` всегда возвращает 200 при валидном body, чтобы не раскрывать наличие пользователя; reset-ссылка отправляется через `MailService`, а без SMTP пишется в лог категории `mail`. `POST /api/v1/auth/password/reset` меняет пароль локального аккаунта, отзывает все `sessions`, `refresh_tokens` и выставляет `tokens_invalid_before`. `POST /api/v1/auth/password/change` доступен только локальным аккаунтам и требует текущий пароль. `POST /api/v1/auth/email/verify` помечает email подтверждённым и переводит `pending`-аккаунт в `active`.
 
 `BrokerService` хранит identity provider client secrets в `identity_providers.client_secret` через `CryptoService`. `GET /api/v1/broker/providers` отдаёт только включённые провайдеры для login UI. `GET /oauth2/broker/{code}/login` создаёт HMAC-signed state на 10 минут и перенаправляет во внешний IdP; callback обменивает authorization code, читает userinfo и создаёт обычную SSO cookie-сессию плюс Bearer JWT во fragment `#broker_token=...`. Линковка существующего аккаунта разрешена только при `email_verified=true` от IdP; MFA-защищённые локальные аккаунты не линкуются автоматически. Если подходящего аккаунта нет, создаётся `source=federated` пользователь и запись `federated_identities`.
+
+`TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
+
+`php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
 
 ## UI
 

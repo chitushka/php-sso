@@ -257,6 +257,12 @@ CREATE TABLE IF NOT EXISTS federated_identities (
     PRIMARY KEY (provider_id, external_subject)
 );
 
+CREATE TABLE IF NOT EXISTS cache (
+    id CHAR(128) PRIMARY KEY,
+    expire INTEGER,
+    data BYTEA
+);
+
 CREATE INDEX IF NOT EXISTS idx_ldap_providers_enabled ON ldap_providers(enabled);
 CREATE INDEX IF NOT EXISTS idx_users_ldap_provider_id ON users(ldap_provider_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
@@ -330,6 +336,7 @@ SQL);
     {
         $this->db->pdo->exec(<<<'SQL'
 DROP TABLE IF EXISTS federated_identities CASCADE;
+DROP TABLE IF EXISTS cache CASCADE;
 DROP TABLE IF EXISTS identity_providers CASCADE;
 DROP TABLE IF EXISTS ldap_group_mappings CASCADE;
 DROP TABLE IF EXISTS user_groups CASCADE;
