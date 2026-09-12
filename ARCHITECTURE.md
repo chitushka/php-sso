@@ -80,11 +80,13 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `OidcController::actionUserinfo()` фильтрует claims по scope OAuth access token: `profile` раскрывает `preferred_username` и `source`, `email` раскрывает `email`. Локальные first-party Bearer tokens без `scope` сохраняют полный исторический ответ.
 
+`OAuthService::logout()` реализует RP-initiated logout: валидирует RS256 `id_token_hint` по stored OIDC signing key, issuer и возрасту hint; отзывает текущую `sso_session` cookie-сессию и refresh tokens пользователя; `post_logout_redirect_uri` разрешён только если он зарегистрирован у клиента из `id_token_hint`.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
 
-`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет login, OAuth2 Authorization Code + PKCE, OIDC `id_token` и UserInfo scope filtering, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts, затем удаляет созданные записи.
+`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет login, OAuth2 Authorization Code + PKCE, OIDC `id_token`, UserInfo scope filtering, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts, затем удаляет созданные записи.
 
 ## UI
 

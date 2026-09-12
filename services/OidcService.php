@@ -7,6 +7,8 @@ use Yii;
 
 class OidcService
 {
+    private const MAX_LOGOUT_HINT_AGE = 86400;
+
     public function configuration(): array
     {
         $issuer = Yii::$app->params['issuer'];
@@ -73,6 +75,52 @@ class OidcService
         openssl_sign($header . '.' . $body, $signature, $key['private_key_pem'], OPENSSL_ALGO_SHA256);
 
         return $header . '.' . $body . '.' . JwtService::base64url($signature);
+    }
+
+    public function verifyIdTokenHint(string $token): ?array
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 3) {
+            return null;
+        }
+
+        [$encodedHeader, $encodedPayload, $encodedSignature] = $parts;
+        $header = json_decode(JwtService::base64urlDecode($encodedHeader), true);
+        $payload = json_decode(JwtService::base64urlDecode($encodedPayload), true);
+        if (!is_array($header) || !is_array($payload) || ($header['alg'] ?? '') !== 'RS256') {
+            return null;
+        }
+
+        $key = Yii::$app->db->createCommand(
+            "SELECT public_key_pem FROM oidc_signing_keys WHERE kid = :kid AND status IN ('active', 'retiring')",
+            [':kid' => (string)($header['kid'] ?? '')]
+        )->queryOne();
+        if (!$key) {
+            return null;
+        }
+
+        $signature = JwtService::base64urlDecode($encodedSignature);
+        $verified = openssl_verify(
+            $encodedHeader . '.' . $encodedPayload,
+            $signature,
+            $key['public_key_pem'],
+            OPENSSL_ALGO_SHA256
+        );
+        if ($verified !== 1) {
+            return null;
+        }
+
+        if (($payload['iss'] ?? '') !== Yii::$app->params['issuer']) {
+            return null;
+        }
+        if (empty($payload['sub']) || empty($payload['aud'])) {
+            return null;
+        }
+        if (!empty($payload['iat']) && time() - (int)$payload['iat'] > self::MAX_LOGOUT_HINT_AGE) {
+            return null;
+        }
+
+        return $payload;
     }
 
     private function activeKey(): array

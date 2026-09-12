@@ -153,6 +153,7 @@ try {
         'type' => 'confidential',
         'redirect_uris' => ['http://localhost/cb'],
         'allowed_scopes' => ['openid', 'profile', 'email'],
+        'post_logout_redirect_uris' => ['http://localhost/logout-cb'],
         'skip_consent' => true,
     ], $adminToken);
     assertTrue($client['status'] === 201, 'create oauth client must return 201');
@@ -320,6 +321,22 @@ try {
     assertTrue($missingPkce['status'] === 400, 'public client without PKCE S256 must return 400');
     assertTrue(($missingPkce['json']['error'] ?? '') === 'invalid_request', 'public client without PKCE must return invalid_request');
     assertTrue(($missingPkce['json']['error_description'] ?? '') === 'PKCE S256 required', 'public client without PKCE must describe PKCE S256 requirement');
+
+    $badLogout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
+        'id_token_hint' => $token['json']['id_token'],
+        'post_logout_redirect_uri' => 'http://localhost/not-registered',
+    ]), ['cookies' => $sessionCookie]);
+    assertTrue($badLogout['status'] === 400, 'unregistered post_logout_redirect_uri must return 400');
+    assertTrue(($badLogout['json']['error'] ?? '') === 'invalid_request', 'unregistered post_logout_redirect_uri must return invalid_request');
+
+    $logout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
+        'id_token_hint' => $token['json']['id_token'],
+        'post_logout_redirect_uri' => 'http://localhost/logout-cb',
+        'state' => 'logout-state-' . $suffix,
+    ]));
+    assertTrue($logout['status'] >= 300 && $logout['status'] < 400, 'registered logout redirect must redirect');
+    assertTrue(strpos($logout['location'], 'http://localhost/logout-cb') === 0, 'logout must redirect to registered uri');
+    assertTrue(strpos($logout['location'], 'state=logout-state-' . $suffix) !== false, 'logout redirect must preserve state');
 
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {

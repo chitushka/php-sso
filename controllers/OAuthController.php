@@ -139,15 +139,18 @@ class OAuthController extends ApiController
 
     public function actionLogout()
     {
+        $result = (new OAuthService())->logout(Yii::$app->request);
         Yii::$app->response->cookies->remove('sso_session');
-        $redirect = Yii::$app->request->get('post_logout_redirect_uri', '');
-        $state = Yii::$app->request->get('state', '');
 
-        if ($redirect !== '') {
-            return $this->redirect($redirect . ($state !== '' ? ((strpos($redirect, '?') === false ? '?' : '&') . http_build_query(['state' => $state])) : ''));
+        if (!$result['ok']) {
+            return $this->oauthError($result['status'], $result['error'], $result['description']);
         }
 
-        return ['status' => 'logged_out'];
+        if (isset($result['redirect'])) {
+            return $this->redirect($result['redirect']);
+        }
+
+        return $result['data'];
     }
 
     private function oauthError(int $status, string $error, string $description): array

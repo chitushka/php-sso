@@ -248,6 +248,51 @@ class OAuthService
         return ['ok' => true];
     }
 
+    public function logout(Request $request): array
+    {
+        $sessionToken = $request->cookies->getValue('sso_session', '');
+        $user = (new AuthService())->userBySession($sessionToken);
+        $hint = (string)$request->get('id_token_hint', $request->post('id_token_hint', ''));
+        $redirect = (string)$request->get('post_logout_redirect_uri', $request->post('post_logout_redirect_uri', ''));
+        $state = (string)$request->get('state', $request->post('state', ''));
+        $client = null;
+
+        if ($hint !== '') {
+            $claims = (new OidcService())->verifyIdTokenHint($hint);
+            if ($claims) {
+                $client = OAuthClient::findOne(['client_id' => (string)$claims['aud']]);
+                if (!$user && !empty($claims['sub'])) {
+                    $user = User::findOne(['id' => (string)$claims['sub'], 'status' => User::STATUS_ACTIVE]);
+                }
+            }
+        }
+
+        if ($sessionToken !== '') {
+            (new AuthService())->logout($sessionToken);
+        }
+        if ($user) {
+            RefreshToken::updateAll(
+                ['revoked_at' => new Expression('now()')],
+                ['user_id' => $user->id, 'revoked_at' => null]
+            );
+            AuditService::record($user->id, 'logout', 'user', $user->id);
+        }
+
+        if ($redirect === '') {
+            return ['ok' => true, 'data' => ['status' => 'logged_out']];
+        }
+
+        if (!$client || !in_array($redirect, OAuthClient::parsePgArray($client->post_logout_redirect_uris), true)) {
+            return $this->oauthFail(400, 'invalid_request', 'invalid post_logout_redirect_uri');
+        }
+
+        if ($state !== '') {
+            $redirect .= (strpos($redirect, '?') === false ? '?' : '&') . http_build_query(['state' => $state]);
+        }
+
+        return ['ok' => true, 'redirect' => $redirect];
+    }
+
     private function authorizationCodeToken(Request $request, OAuthClient $client): array
     {
         $code = OAuthAuthorizationCode::find()
