@@ -66,13 +66,14 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
+- Refresh token rotation с reuse detection: повтор старого refresh token отзывает всю token family.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: интеграционные проверки совместимости и hardening гонок refresh token.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: интеграционные проверки совместимости OAuth/OIDC flow.
 
 ## Важные изменения
 
@@ -90,3 +91,4 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - 2026-09-12: перенесён identity brokering для Google/GitHub/OIDC: CRUD identity providers, signed state, callback, безопасная линковка по verified email, JIT-provisioning federated users и кнопки external sign-in в Vue UI.
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
+- 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.

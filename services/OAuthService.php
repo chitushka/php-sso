@@ -5,6 +5,7 @@ namespace app\services;
 use app\models\OAuthAuthorizationCode;
 use app\models\OAuthClient;
 use app\models\RefreshToken;
+use app\models\User;
 use Yii;
 use yii\db\Expression;
 use yii\web\Request;
@@ -260,24 +261,54 @@ class OAuthService
         $code->used_at = new Expression('now()');
         $code->save(false, ['used_at']);
 
-        return $this->tokenResponse($code->user_id, $client, $code->scope, $code->nonce);
+        return $this->tokenResponse($code->user_id, $client, $code->scope, $code->nonce, null);
     }
 
     private function refreshToken(Request $request, OAuthClient $client): array
     {
+        $refreshToken = (string)$request->post('refresh_token');
+        if ($refreshToken === '') {
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
+
         $old = RefreshToken::find()
-            ->where(['token_hash' => hash('sha256', (string)$request->post('refresh_token')), 'client_id' => $client->client_id, 'revoked_at' => null, 'rotated_at' => null])
-            ->andWhere(['>', 'expires_at', new Expression('now()')])
+            ->where(['token_hash' => hash('sha256', $refreshToken), 'client_id' => $client->client_id])
             ->one();
 
         if (!$old) {
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        $old->rotated_at = new Expression('now()');
-        $old->save(false, ['rotated_at']);
+        if ($old->revoked_at || strtotime($old->expires_at) <= time()) {
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
 
-        return $this->tokenResponse($old->user_id, $client, $old->scope, '');
+        if ($old->rotated_at) {
+            $this->revokeRefreshFamily((string)$old->family_id, $client);
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
+
+        $user = User::findOne(['id' => $old->user_id, 'status' => User::STATUS_ACTIVE]);
+        if (!$user) {
+            $this->revokeRefreshFamily((string)$old->family_id, $client);
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
+
+        // Атомарный guard: только один конкурентный refresh может пометить token rotated.
+        $rotated = RefreshToken::updateAll(
+            ['rotated_at' => new Expression('now()')],
+            [
+                'and',
+                ['id' => $old->id, 'rotated_at' => null, 'revoked_at' => null],
+                ['>', 'expires_at', new Expression('now()')],
+            ]
+        );
+        if ($rotated === 0) {
+            $this->revokeRefreshFamily((string)$old->family_id, $client);
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
+
+        return $this->tokenResponse($old->user_id, $client, $old->scope, '', (string)$old->family_id);
     }
 
     private function clientCredentialsToken(Request $request, OAuthClient $client): array
@@ -304,7 +335,7 @@ class OAuthService
         ]];
     }
 
-    private function tokenResponse(string $userId, OAuthClient $client, string $scope, string $nonce): array
+    private function tokenResponse(string $userId, OAuthClient $client, string $scope, string $nonce, ?string $familyId): array
     {
         $accessToken = (new JwtService())->issue($userId, [
             'client_id' => $client->client_id,
@@ -314,7 +345,7 @@ class OAuthService
 
         $rt = new RefreshToken();
         $rt->token_hash = hash('sha256', $refreshToken);
-        $rt->family_id = Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
+        $rt->family_id = $familyId ?: Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
         $rt->user_id = $userId;
         $rt->client_id = $client->client_id;
         $rt->scope = $scope;
@@ -334,6 +365,15 @@ class OAuthService
         }
 
         return ['ok' => true, 'data' => $data];
+    }
+
+    private function revokeRefreshFamily(string $familyId, OAuthClient $client): void
+    {
+        RefreshToken::updateAll(
+            ['revoked_at' => new Expression('now()')],
+            ['family_id' => $familyId, 'revoked_at' => null]
+        );
+        AuditService::record(null, 'refresh_token_reuse_detected', 'oauth_client', $client->client_id);
     }
 
     private function clientFromRequest(Request $request): ?OAuthClient

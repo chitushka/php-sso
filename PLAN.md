@@ -29,7 +29,7 @@
 - Поддержать OIDC Discovery, JWKS, RS256 ID Token и UserInfo.
 - Сверить ответы ошибок с RFC 6749.
 
-Статус: базовая реализация выполнена; нужны интеграционные тесты и hardening гонок refresh token.
+Статус: базовая реализация выполнена; refresh token rotation hardened против гонок и reuse: family сохраняется при rotation, а повторное/параллельное использование старого refresh token отзывает всю family. Нужны интеграционные тесты полного OAuth/OIDC flow.
 
 ## Этап 4. Административные модули
 
@@ -46,7 +46,7 @@
 - Перенести identity brokering для Google/GitHub/OIDC.
 - Добавить trusted proxy IP, cleanup expired records и production-настройки shared rate limit для горизонтального масштабирования.
 
-Статус: частично выполнено. LDAP Search + Bind authentication при login перенесён: включённые LDAP providers используются как fallback после локальной проверки пароля, LDAP-пользователь создаётся/обновляется в `users`, а LDAP group mappings синхронизируют группы с `source=ldap`. MFA TOTP и recovery codes перенесены: login выдаёт одноразовый MFA challenge, TOTP защищён от повторного counter, recovery codes одноразовые. Password reset/change и email verification перенесены через hashed one-time tokens; reset отзывает пользовательские сессии, refresh tokens и ранее выданные Bearer JWT. Identity brokering для Google/GitHub/OIDC перенесён: admin CRUD провайдеров, public список кнопок входа, signed state, callback, JIT-provisioning и безопасная линковка по verified email. Production hardening частично перенесён: trusted proxy IP resolution, cleanup expired records и опциональный DB-backed cache для rate limit. Расширенный account profile перенесён для self-service обновления first/last name и attributes. Следующими остаются интеграционные проверки совместимости и hardening гонок refresh token.
+Статус: частично выполнено. LDAP Search + Bind authentication при login перенесён: включённые LDAP providers используются как fallback после локальной проверки пароля, LDAP-пользователь создаётся/обновляется в `users`, а LDAP group mappings синхронизируют группы с `source=ldap`. MFA TOTP и recovery codes перенесены: login выдаёт одноразовый MFA challenge, TOTP защищён от повторного counter, recovery codes одноразовые. Password reset/change и email verification перенесены через hashed one-time tokens; reset отзывает пользовательские сессии, refresh tokens и ранее выданные Bearer JWT. Identity brokering для Google/GitHub/OIDC перенесён: admin CRUD провайдеров, public список кнопок входа, signed state, callback, JIT-provisioning и безопасная линковка по verified email. Production hardening частично перенесён: trusted proxy IP resolution, cleanup expired records и опциональный DB-backed cache для rate limit. Расширенный account profile перенесён для self-service обновления first/last name и attributes. Следующими остаются интеграционные проверки совместимости.
 
 ## Этап 6. Проверка совместимости
 
