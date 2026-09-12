@@ -15,7 +15,7 @@ $adminUsername = 'itest-admin-' . $suffix;
 $userUsername = 'itest-user-' . $suffix;
 $password = 'IntegrationPass123!';
 $createdUserIds = [];
-$createdClientId = null;
+$createdClientIds = [];
 
 function failTest(string $message): void
 {
@@ -157,11 +157,7 @@ try {
     ], $adminToken);
     assertTrue($client['status'] === 201, 'create oauth client must return 201');
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
-    $createdClientId = $client['json']['id'];
-    $clientDbRow = $db->createCommand(
-        'SELECT redirect_uris::text AS redirect_uris, allowed_scopes::text AS allowed_scopes FROM oauth_clients WHERE id = :id',
-        [':id' => $createdClientId]
-    )->queryOne();
+    $createdClientIds[] = $client['json']['id'];
 
     $verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
@@ -179,7 +175,6 @@ try {
     assertTrue(
         $authorize['status'] >= 300 && $authorize['status'] < 400,
         'authorize must redirect, got status ' . $authorize['status'] . ' body ' . (string)$authorize['body']
-        . ' client ' . json_encode($client['json']) . ' db ' . json_encode($clientDbRow)
     );
 
     $locationParts = parse_url($authorize['location']);
@@ -238,10 +233,60 @@ try {
     ]);
     assertTrue($rbac['status'] === 403, 'plain user must not list users');
 
+    $unsupported = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'password',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($unsupported['status'] === 400, 'unsupported grant_type must return 400');
+    assertTrue(($unsupported['json']['error'] ?? '') === 'unsupported_grant_type', 'unsupported grant_type must return unsupported_grant_type');
+
+    $badSecret = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => 'wrong-secret',
+    ]);
+    assertTrue($badSecret['status'] === 401, 'bad client secret must return 401');
+    assertTrue(($badSecret['json']['error'] ?? '') === 'invalid_client', 'bad client secret must return invalid_client');
+
+    $badScopeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'not-allowed',
+        'code_challenge' => $challenge,
+        'code_challenge_method' => 'S256',
+    ]);
+    $badScope = httpRequest('GET', $badScopeUrl, ['cookies' => $sessionCookie]);
+    assertTrue($badScope['status'] === 400, 'invalid authorize scope must return 400');
+    assertTrue(($badScope['json']['error'] ?? '') === 'invalid_scope', 'invalid authorize scope must return invalid_scope');
+
+    $publicClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
+        'name' => 'Integration public client ' . $suffix,
+        'client_id' => 'itest-public-' . $suffix,
+        'type' => 'public',
+        'redirect_uris' => ['http://localhost/public-cb'],
+        'allowed_scopes' => ['openid', 'profile'],
+        'skip_consent' => true,
+    ], $adminToken);
+    assertTrue($publicClient['status'] === 201, 'create public oauth client must return 201');
+    $createdClientIds[] = $publicClient['json']['id'];
+
+    $missingPkceUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $publicClient['json']['client_id'],
+        'redirect_uri' => 'http://localhost/public-cb',
+        'scope' => 'openid profile',
+    ]);
+    $missingPkce = httpRequest('GET', $missingPkceUrl, ['cookies' => $sessionCookie]);
+    assertTrue($missingPkce['status'] === 400, 'public client without PKCE S256 must return 400');
+    assertTrue(($missingPkce['json']['error'] ?? '') === 'invalid_request', 'public client without PKCE must return invalid_request');
+    assertTrue(($missingPkce['json']['error_description'] ?? '') === 'PKCE S256 required', 'public client without PKCE must describe PKCE S256 requirement');
+
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {
-    if ($createdClientId !== null) {
-        $db->createCommand('DELETE FROM oauth_clients WHERE id = :id', [':id' => $createdClientId])->execute();
+    foreach ($createdClientIds as $clientId) {
+        $db->createCommand('DELETE FROM oauth_clients WHERE id = :id', [':id' => $clientId])->execute();
     }
     foreach ($createdUserIds as $userId) {
         $db->createCommand('DELETE FROM users WHERE id = :id', [':id' => $userId])->execute();

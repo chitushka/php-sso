@@ -76,11 +76,13 @@ LDAP bind password сохраняется в `ldap_providers.bind_password` в �
 
 Refresh token rotation сохраняет `refresh_tokens.family_id` между поколениями. При refresh grant старый token помечается `rotated_at` атомарным `UPDATE ... WHERE rotated_at IS NULL`; если token уже rotated или параллельный запрос проиграл этот guard, вся refresh family получает `revoked_at`, а в audit пишется `refresh_token_reuse_detected`.
 
+Для public OAuth clients `OAuthService::authorize()` требует `code_challenge_method=S256` и непустой `code_challenge`; отсутствие PKCE возвращает RFC-style `invalid_request` с описанием `PKCE S256 required`.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
 
-`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиент в PostgreSQL, проверяет login, OAuth2 Authorization Code + PKCE, OIDC `id_token`, refresh rotation/reuse detection и RBAC enforcement, затем удаляет созданные записи.
+`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет login, OAuth2 Authorization Code + PKCE, OIDC `id_token`, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts, затем удаляет созданные записи.
 
 ## UI
 

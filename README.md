@@ -68,6 +68,7 @@ make integration # прогнать OAuth/OIDC smoke flow
 - CRUD-основа OAuth-клиентов.
 - OAuth2 Authorization Code + PKCE, refresh token, revoke, introspect, client_credentials.
 - Refresh token rotation с reuse detection: повтор старого refresh token отзывает всю token family.
+- Public OAuth clients требуют PKCE S256; ошибки OAuth endpoints возвращаются в RFC-style формате `error` + `error_description`.
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
@@ -93,4 +94,5 @@ make integration # прогнать OAuth/OIDC smoke flow
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
 - 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.
-- 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, refresh rotation/reuse detection и RBAC enforcement.
+- 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, refresh rotation/reuse detection, RBAC enforcement и базовых OAuth error contracts.
+- 2026-09-12: public OAuth clients теперь требуют PKCE S256 на authorize.

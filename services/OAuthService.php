@@ -126,6 +126,11 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
         }
 
+        if ($client->type === OAuthClient::TYPE_PUBLIC
+            && ((string)$request->get('code_challenge', '') === '' || (string)$request->get('code_challenge_method', '') !== 'S256')) {
+            return $this->oauthFail(400, 'invalid_request', 'PKCE S256 required');
+        }
+
         $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
         if (!$user) {
             return $this->oauthFail(401, 'login_required', 'no active session, authenticate first');
