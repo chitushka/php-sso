@@ -3,6 +3,7 @@
 namespace app\models;
 
 use yii\db\ActiveRecord;
+use yii\db\ArrayExpression;
 
 class OAuthClient extends ActiveRecord
 {
@@ -34,8 +35,30 @@ class OAuthClient extends ActiveRecord
 
     public static function parsePgArray($value): array
     {
+        if ($value instanceof ArrayExpression) {
+            $value = $value->getValue();
+        }
+
         if (is_array($value)) {
-            return $value;
+            $items = [];
+            foreach ($value as $key => $item) {
+                if ($item === null && is_string($key)) {
+                    $item = $key;
+                }
+                if ($item instanceof ArrayExpression) {
+                    $item = $item->getValue();
+                }
+                if (is_array($item)) {
+                    $items = array_merge($items, self::parsePgArray($item));
+                    continue;
+                }
+                $normalized = trim((string)$item, "{}\" ");
+                if ($normalized !== '') {
+                    $items[] = $normalized;
+                }
+            }
+
+            return $items;
         }
 
         $value = trim((string)$value);
@@ -53,12 +76,8 @@ class OAuthClient extends ActiveRecord
         }, str_getcsv($value))));
     }
 
-    public static function toPgArray(array $items): string
+    public static function toPgArray(array $items): ArrayExpression
     {
-        $quoted = array_map(static function ($item) {
-            return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], (string)$item) . '"';
-        }, array_values($items));
-
-        return '{' . implode(',', $quoted) . '}';
+        return new ArrayExpression(array_values(array_map('strval', $items)), 'text');
     }
 }

@@ -29,7 +29,7 @@
 - Поддержать OIDC Discovery, JWKS, RS256 ID Token и UserInfo.
 - Сверить ответы ошибок с RFC 6749.
 
-Статус: базовая реализация выполнена; refresh token rotation hardened против гонок и reuse: family сохраняется при rotation, а повторное/параллельное использование старого refresh token отзывает всю family. Нужны интеграционные тесты полного OAuth/OIDC flow.
+Статус: базовая реализация выполнена; refresh token rotation hardened против гонок и reuse: family сохраняется при rotation, а повторное/параллельное использование старого refresh token отзывает всю family. Добавлен HTTP smoke flow для Authorization Code + PKCE, OIDC id_token, refresh rotation/reuse detection и RBAC enforcement. Нужна дальнейшая сверка контрактов ошибок с Go-сервисом.
 
 ## Этап 4. Административные модули
 
@@ -55,4 +55,4 @@
 - Проверить OAuth/OIDC flow внешним тестовым клиентом.
 - Подготовить migration notes для перехода с Go-версии.
 
-Статус: запланировано.
+Статус: частично выполнено. Добавлен dependency-free HTTP smoke test `tests/Integration/oauth_flow.php`, запускаемый через `make integration`; PHPUnit-набор и полная сверка endpoint-контрактов ещё запланированы.

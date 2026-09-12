@@ -21,6 +21,7 @@ make up       # запустить app + PostgreSQL
 make migrate  # применить Yii2-миграции
 make lint     # проверить PHP-синтаксис
 make cleanup  # удалить истёкшие auth/OAuth артефакты
+make integration # прогнать OAuth/OIDC smoke flow
 ```
 
 ## Конфигурация
@@ -73,7 +74,7 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: интеграционные проверки совместимости OAuth/OIDC flow.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Ближайшие задачи: расширение интеграционных проверок и сверка контрактов ошибок с Go-сервисом.
 
 ## Важные изменения
 
@@ -92,3 +93,4 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
 - 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.
+- 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, refresh rotation/reuse detection и RBAC enforcement.
