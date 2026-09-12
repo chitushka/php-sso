@@ -27,6 +27,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - consent-required/grant flow.
 - базовые OAuth error contracts.
 - RBAC enforcement для admin API.
+- внешний RP client flow через `make integration-client`.
 
 ## Подготовка
 
@@ -124,6 +125,6 @@ Rollback должен возвращать трафик на Go-сервис и 
 - Проверить, что `.env` не попадает в Git.
 - Прогнать `composer lint`.
 - Прогнать `make integration` в окружении с Docker и `make`.
-- Проверить внешний OAuth/OIDC flow настоящим клиентом.
+- Прогнать `make integration-client` в окружении с Docker и `make`, затем проверить внешний OAuth/OIDC flow настоящим production-клиентом.
 - Настроить регулярный `php yii cleanup/run`.
 - Проверить SMTP-доставку reset/verification писем.

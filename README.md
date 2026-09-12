@@ -22,6 +22,7 @@ make migrate  # применить Yii2-миграции
 make lint     # проверить PHP-синтаксис
 make cleanup  # удалить истёкшие auth/OAuth артефакты
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
+make integration-client # прогнать внешний OAuth/OIDC RP client flow
 ```
 
 ## Конфигурация
@@ -77,7 +78,7 @@ make integration # прогнать OAuth/OIDC smoke flow с test-local rate lim
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: проверка OAuth/OIDC flow внешним тестовым клиентом и дальнейшая сверка endpoint-контрактов с Go-сервисом.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: PHPUnit-набор и дальнейшая сверка endpoint-контрактов с Go-сервисом.
 
 ## Важные изменения
 
@@ -99,6 +100,7 @@ make integration # прогнать OAuth/OIDC smoke flow с test-local rate lim
 - 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, UserInfo scope filtering, RP logout validation, refresh rotation/reuse detection, RBAC enforcement и базовых OAuth error contracts.
 - 2026-09-12: интеграционный OAuth/OIDC smoke flow расширен проверками Discovery/JWKS, RS256 `id_token` claims, одноразовости authorization code, introspection active/inactive token, revocation refresh token, `client_secret_basic`, client_credentials token contract, consent-required/grant сценария и OAuth error contracts для authorize/revoke/introspect.
 - 2026-09-12: подготовлены `MIGRATION_NOTES.md` для cutover с Go-сервиса на PHP/Yii2: совместимость контрактов, миграции БД, checklist переключения и rollback.
+- 2026-09-12: добавлен `make integration-client` с dependency-free внешним OAuth/OIDC RP client flow через Discovery, Authorization Code + PKCE, `client_secret_basic`, UserInfo, refresh token и RP logout.
 - 2026-09-12: public OAuth clients теперь требуют PKCE S256 на authorize.
 - 2026-09-12: OIDC discovery дополнен revocation/introspection metadata, UserInfo фильтрует claims по OAuth scope.
 - 2026-09-12: RP-initiated logout валидирует `id_token_hint` и registered `post_logout_redirect_uri`, отзывает SSO-сессию и refresh tokens пользователя.
