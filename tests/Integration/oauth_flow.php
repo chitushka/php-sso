@@ -119,6 +119,39 @@ function basicAuthHeader(string $username, string $password): string
     return 'Authorization: Basic ' . base64_encode(rawurlencode($username) . ':' . rawurlencode($password));
 }
 
+function base32DecodeValue(string $value): string
+{
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    $clean = strtoupper(preg_replace('/[^A-Z2-7]+/', '', $value) ?? '');
+    $bits = '';
+    for ($index = 0; $index < strlen($clean); $index++) {
+        $position = strpos($alphabet, $clean[$index]);
+        assertTrue($position !== false, 'base32 secret must contain valid characters');
+        $bits .= str_pad(decbin($position), 5, '0', STR_PAD_LEFT);
+    }
+
+    $decoded = '';
+    foreach (str_split($bits, 8) as $chunk) {
+        if (strlen($chunk) === 8) {
+            $decoded .= chr(bindec($chunk));
+        }
+    }
+
+    return $decoded;
+}
+
+function totpCode(string $secret, ?int $counter = null): string
+{
+    $secretBytes = base32DecodeValue($secret);
+    $counter = $counter ?? (int)floor(time() / 30);
+    $binaryCounter = pack('N*', 0, $counter);
+    $hash = hash_hmac('sha1', $binaryCounter, $secretBytes, true);
+    $offset = ord(substr($hash, -1)) & 0x0f;
+    $value = unpack('N', substr($hash, $offset, 4))[1] & 0x7fffffff;
+
+    return str_pad((string)($value % 1000000), 6, '0', STR_PAD_LEFT);
+}
+
 function jwtPart(string $jwt, int $index): array
 {
     $parts = explode('.', $jwt);
@@ -452,6 +485,36 @@ try {
         'headers' => ['Authorization: Bearer ' . $plainLogin['json']['access_token'], 'Accept: application/json'],
     ]);
     assertTrue($rbac['status'] === 403, 'plain user must not list users');
+
+    $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
+    assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
+    assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
+    assertTrue(!empty($mfaEnroll['json']['otpauth_url']), 'MFA enroll must return Go-compatible otpauth_url');
+    assertTrue(!empty($mfaEnroll['json']['otpauth_uri']), 'MFA enroll must keep PHP UI otpauth_uri');
+
+    $mfaCounter = (int)floor(time() / 30);
+    $mfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
+        'code' => totpCode($mfaEnroll['json']['secret'], $mfaCounter),
+    ], $adminToken);
+    assertTrue($mfaActivate['status'] === 200, 'Go-compatible MFA activate must return 200');
+    assertTrue(($mfaActivate['json']['status'] ?? '') === 'mfa_enabled', 'MFA activate must return mfa_enabled status');
+    assertTrue(count($mfaActivate['json']['recovery_codes'] ?? []) === 8, 'MFA activate must return Go-compatible recovery code count');
+
+    $mfaLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $adminUsername,
+        'password' => $password,
+    ]);
+    assertTrue($mfaLogin['status'] === 200, 'MFA password step must return 200');
+    assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
+    assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return Go-compatible mfa_token');
+    assertTrue(($mfaLogin['json']['challenge_token'] ?? '') === $mfaLogin['json']['mfa_token'], 'MFA password step must keep challenge_token alias');
+
+    $mfaVerify = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
+        'mfa_token' => $mfaLogin['json']['mfa_token'],
+        'code' => totpCode($mfaEnroll['json']['secret'], $mfaCounter + 1),
+    ]);
+    assertTrue($mfaVerify['status'] === 200, 'MFA verify with mfa_token must return 200');
+    assertTrue(!empty($mfaVerify['json']['access_token']), 'MFA verify must issue access token');
 
     $unsupported = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'password',

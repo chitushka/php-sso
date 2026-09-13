@@ -77,6 +77,8 @@ return [
                 'POST api/v1/auth/email/request' => 'auth/request-email-verification',
                 'POST api/v1/auth/email/verify' => 'auth/verify-email',
                 'POST api/v1/auth/mfa/verify' => 'auth/verify-mfa',
+                'POST api/v1/auth/mfa/enroll' => 'auth/mfa-setup',
+                'POST api/v1/auth/mfa/activate' => 'auth/mfa-enable',
                 'POST api/v1/auth/mfa/setup' => 'auth/mfa-setup',
                 'POST api/v1/auth/mfa/enable' => 'auth/mfa-enable',
                 'POST api/v1/auth/mfa/disable' => 'auth/mfa-disable',

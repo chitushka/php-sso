@@ -67,7 +67,7 @@ docker compose run --rm app php yii help
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
-- MFA TOTP setup/enable/disable, MFA challenge при login и одноразовые recovery codes.
+- MFA TOTP setup/enable/disable с Go-compatible `enroll`/`activate` алиасами, MFA challenge при login и одноразовые recovery codes.
 - `POST /api/v1/auth/password/forgot`, `/reset`, `/change` для password reset/change.
 - `PUT /api/v1/auth/profile` для self-service обновления first/last name и attributes.
 - `POST /api/v1/auth/email/request`, `/verify` для email verification.
@@ -95,6 +95,7 @@ docker compose run --rm app php yii help
 - 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
 - 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
 - 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
+- 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.

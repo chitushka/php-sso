@@ -54,8 +54,9 @@ class AuthService
 
     public function verifyMfaLogin(array $body, Request $request): array
     {
+        $mfaToken = (string)($body['mfa_token'] ?? $body['challenge_token'] ?? '');
         $user = (new MfaService())->verifyLoginChallenge(
-            (string)($body['challenge_token'] ?? ''),
+            $mfaToken,
             (string)($body['code'] ?? '')
         );
         if (!$user) {

@@ -168,6 +168,10 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
+        if ($user->mfa_enabled) {
+            return $this->fail(409, 'mfa already enabled');
+        }
+
         return (new MfaService())->setup($user);
     }
 

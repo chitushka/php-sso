@@ -14,11 +14,28 @@ class MfaService
     private const TOTP_DIGITS = 6;
     private const TOTP_WINDOW = 1;
     private const CHALLENGE_TTL = 300;
-    private const RECOVERY_CODES_COUNT = 10;
+    private const RECOVERY_CODES_COUNT = 8;
 
     public function setup(User $user): array
     {
+        $secret = $this->createEnrollmentSecret($user);
+
+        return $this->enrollmentPayload($user, $secret);
+    }
+
+    public function createEnrollmentSecret(User $user): string
+    {
         $secret = $this->base32Encode(random_bytes(20));
+        $user->mfa_secret = (new CryptoService())->encrypt($secret);
+        $user->mfa_enabled = false;
+        $user->mfa_last_used_counter = 0;
+        $user->save(false, ['mfa_secret', 'mfa_enabled', 'mfa_last_used_counter']);
+
+        return $secret;
+    }
+
+    private function enrollmentPayload(User $user, string $secret): array
+    {
         $issuer = parse_url((string)Yii::$app->params['issuer'], PHP_URL_HOST) ?: 'SSO';
         $label = rawurlencode($issuer . ':' . $user->username);
         $query = http_build_query([
@@ -32,14 +49,27 @@ class MfaService
         return [
             'secret' => $secret,
             'otpauth_uri' => 'otpauth://totp/' . $label . '?' . $query,
+            'otpauth_url' => 'otpauth://totp/' . $label . '?' . $query,
         ];
     }
 
     public function enable(User $user, string $secret, string $code): array
     {
+        if ($user->mfa_enabled) {
+            return ['status' => 409, 'data' => ['error' => 'mfa already enabled']];
+        }
+
+        if ($secret === '') {
+            $secret = (new CryptoService())->decrypt((string)$user->mfa_secret);
+        }
+
+        if ($secret === '') {
+            return ['status' => 409, 'data' => ['error' => 'enroll first']];
+        }
+
         $counter = null;
         if (!$this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
-            return ['status' => 400, 'data' => ['error' => 'invalid mfa code']];
+            return ['status' => 400, 'data' => ['error' => 'invalid code']];
         }
 
         $user->mfa_secret = (new CryptoService())->encrypt($secret);
@@ -50,13 +80,17 @@ class MfaService
         $codes = $this->replaceRecoveryCodes($user);
         AuditService::record($user->id, 'mfa_enabled', 'user', $user->id);
 
-        return ['status' => 200, 'data' => ['status' => 'enabled', 'recovery_codes' => $codes]];
+        return ['status' => 200, 'data' => ['status' => 'mfa_enabled', 'recovery_codes' => $codes]];
     }
 
     public function disable(User $user, string $code): array
     {
+        if (!$user->mfa_enabled) {
+            return ['status' => 409, 'data' => ['error' => 'mfa is not enabled']];
+        }
+
         if (!$this->verifyUserCode($user, $code)) {
-            return ['status' => 400, 'data' => ['error' => 'invalid mfa code']];
+            return ['status' => 400, 'data' => ['error' => 'invalid code']];
         }
 
         $user->mfa_enabled = false;
@@ -100,6 +134,7 @@ class MfaService
 
         return [
             'mfa_required' => true,
+            'mfa_token' => $token,
             'challenge_token' => $token,
             'expires_in' => self::CHALLENGE_TTL,
         ];
