@@ -493,6 +493,22 @@ try {
     ]);
     assertTrue($rbac['status'] === 403, 'plain user must not list users');
 
+    $missingUserFields = jsonRequest('POST', $baseUrl . '/api/v1/users', [
+        'username' => '',
+        'email' => '',
+        'password' => $password,
+    ], $adminToken);
+    assertTrue($missingUserFields['status'] === 400, 'create user without username/email must return 400');
+    assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match Go error');
+
+    $duplicateUser = jsonRequest('POST', $baseUrl . '/api/v1/users', [
+        'username' => $plainLogin['json']['user']['username'],
+        'email' => 'duplicate-' . $suffix . '@example.test',
+        'password' => $password,
+    ], $adminToken);
+    assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
+    assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');

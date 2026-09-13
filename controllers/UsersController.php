@@ -44,6 +44,14 @@ class UsersController extends ApiController
         }
 
         $body = $this->body();
+        if (trim((string)($body['username'] ?? '')) === '' || trim((string)($body['email'] ?? '')) === '') {
+            return $this->fail(400, 'username and email are required');
+        }
+
+        if (User::find()->where(['username' => trim((string)$body['username'])])->exists()) {
+            return $this->fail(409, 'user already exists');
+        }
+
         $password = (string)($body['password'] ?? '');
         $passwordError = PasswordPolicy::validate($password);
         if ($passwordError !== null) {
@@ -56,6 +64,10 @@ class UsersController extends ApiController
         $user->source = User::SOURCE_LOCAL;
 
         if (!$user->save()) {
+            if ($user->hasErrors('username')) {
+                return $this->fail(409, 'user already exists');
+            }
+
             return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);
         }
 
