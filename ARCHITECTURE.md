@@ -29,7 +29,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `BootstrapController` — первичная инициализация администратора.
 - `AuthController` + `AuthService` — локальный вход, cookie-сессии, Bearer JWT, отзыв сессий.
 - `UsersController` — административный CRUD пользователей и soft delete; создание возвращает Go-compatible 400 для пустых username/email и 409 для конфликта username.
-- `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям.
+- `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям; create role/group возвращает Go-compatible 400 для пустых code/name и 409 для конфликта code.
 - `GroupsController` — группы, роли групп и членство пользователей в группах.
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.

@@ -63,7 +63,7 @@ docker compose run --rm app php yii help
 - Просмотр и отзыв пользовательских сессий.
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - RBAC-проверка admin API с прямыми ролями и ролями через группы.
-- Admin API для users, roles, permissions, groups и audit, включая Go-compatible ошибки создания пользователя.
+- Admin API для users, roles, permissions, groups и audit, включая Go-compatible ошибки создания users/roles/groups.
 - Admin API для LDAP providers, test bind и LDAP group mappings.
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
@@ -99,6 +99,7 @@ docker compose run --rm app php yii help
 - 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
 - 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
 - 2026-09-13: Users API выровнен с Go-контрактом для создания пользователей: пустые username/email возвращают 400 `username and email are required`, конфликт username возвращает 409 `user already exists`.
+- 2026-09-13: RBAC API выровнен с Go-контрактом для создания ролей и групп: пустые code/name возвращают 400 с точным сообщением, конфликт code возвращает 409 `role already exists` или `group already exists`.
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.

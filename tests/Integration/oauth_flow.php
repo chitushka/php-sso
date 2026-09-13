@@ -16,6 +16,7 @@ $userUsername = 'itest-user-' . $suffix;
 $password = 'IntegrationPass123!';
 $createdUserIds = [];
 $createdClientIds = [];
+$createdGroupIds = [];
 
 function failTest(string $message): void
 {
@@ -509,6 +510,34 @@ try {
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
 
+    $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
+        'code' => '',
+        'name' => '',
+    ], $adminToken);
+    assertTrue($missingRoleFields['status'] === 400, 'create role without code/name must return 400');
+    assertTrue(($missingRoleFields['json']['error'] ?? '') === 'role code and name are required', 'create role without code/name must match Go error');
+
+    $duplicateRole = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
+        'code' => 'admin',
+        'name' => 'Duplicate admin',
+    ], $adminToken);
+    assertTrue($duplicateRole['status'] === 409, 'duplicate role code must return 409');
+    assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match Go error');
+
+    $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
+        'code' => 'itest-group-' . $suffix,
+        'name' => 'Integration group ' . $suffix,
+    ], $adminToken);
+    assertTrue($group['status'] === 201, 'create group must return 201');
+    $createdGroupIds[] = $group['json']['id'];
+
+    $duplicateGroup = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
+        'code' => $group['json']['code'],
+        'name' => 'Duplicate group',
+    ], $adminToken);
+    assertTrue($duplicateGroup['status'] === 409, 'duplicate group code must return 409');
+    assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match Go error');
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
@@ -653,6 +682,9 @@ try {
 } finally {
     foreach ($createdClientIds as $clientId) {
         $db->createCommand('DELETE FROM oauth_clients WHERE id = :id', [':id' => $clientId])->execute();
+    }
+    foreach ($createdGroupIds as $groupId) {
+        $db->createCommand('DELETE FROM groups WHERE id = :id', [':id' => $groupId])->execute();
     }
     foreach ($createdUserIds as $userId) {
         $db->createCommand('DELETE FROM users WHERE id = :id', [':id' => $userId])->execute();

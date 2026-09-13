@@ -7,6 +7,7 @@ use app\models\Permission;
 use app\models\Role;
 use app\models\User;
 use Yii;
+use yii\db\IntegrityException;
 
 class RbacService
 {
@@ -48,7 +49,23 @@ class RbacService
         $role->name = trim((string)($body['name'] ?? ''));
         $role->description = (string)($body['description'] ?? '');
 
-        if ($role->code === '' || $role->name === '' || !$role->save()) {
+        if ($role->code === '' || $role->name === '') {
+            return ['status' => 400, 'data' => ['error' => 'role code and name are required']];
+        }
+
+        if (Role::find()->where(['code' => $role->code])->exists()) {
+            return ['status' => 409, 'data' => ['error' => 'role already exists']];
+        }
+
+        try {
+            if (!$role->save()) {
+                return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
+            }
+        } catch (IntegrityException $exception) {
+            return ['status' => 409, 'data' => ['error' => 'role already exists']];
+        }
+
+        if ($role->hasErrors()) {
             return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
         }
 
@@ -153,7 +170,23 @@ class RbacService
         $group->name = trim((string)($body['name'] ?? ''));
         $group->description = (string)($body['description'] ?? '');
 
-        if ($group->code === '' || $group->name === '' || !$group->save()) {
+        if ($group->code === '' || $group->name === '') {
+            return ['status' => 400, 'data' => ['error' => 'group code and name are required']];
+        }
+
+        if (Group::find()->where(['code' => $group->code])->exists()) {
+            return ['status' => 409, 'data' => ['error' => 'group already exists']];
+        }
+
+        try {
+            if (!$group->save()) {
+                return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
+            }
+        } catch (IntegrityException $exception) {
+            return ['status' => 409, 'data' => ['error' => 'group already exists']];
+        }
+
+        if ($group->hasErrors()) {
             return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
         }
 
