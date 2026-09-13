@@ -17,4 +17,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["sh", "-lc", "php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t public public/router.php"]
+CMD ["sh", "-lc", "php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t web web/router.php"]

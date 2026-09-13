@@ -18,7 +18,7 @@
 HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 ```
 
-Контроллеры находятся в `controllers/`, бизнес-логика в `services/`, модели таблиц в `models/`, миграции в `migrations/`, UI в `views/admin/` и `public/css/`.
+Контроллеры находятся в `controllers/`, бизнес-логика в `services/`, модели таблиц в `models/`, миграции в `migrations/`, публичная входная точка в `web/`, UI в `views/admin/` и `web/css/`.
 
 Для `OAuthController` задан явный `controllerMap`: Yii2 иначе преобразует имя класса в controller id `o-auth`, а внешний контракт Go-сервиса использует стабильный маршрут `oauth/*`.
 

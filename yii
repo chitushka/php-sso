@@ -1,5 +1,12 @@
 #!/usr/bin/env php
 <?php
+/**
+ * Yii console bootstrap file.
+ *
+ * @link https://www.yiiframework.com/
+ * @copyright Copyright (c) 2008 Yii Software LLC
+ * @license https://www.yiiframework.com/license/
+ */
 
 defined('YII_DEBUG') or define('YII_DEBUG', getenv('SSO_ENV') !== 'prod');
 defined('YII_ENV') or define('YII_ENV', getenv('SSO_ENV') ?: 'local');
@@ -8,5 +15,7 @@ require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/vendor/yiisoft/yii2/Yii.php';
 
 $config = require __DIR__ . '/config/console.php';
+
 $application = new yii\console\Application($config);
-exit($application->run());
+$exitCode = $application->run();
+exit($exitCode);

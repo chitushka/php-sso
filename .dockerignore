@@ -3,6 +3,8 @@
 .idea
 .vscode
 runtime/*
-!runtime/.gitkeep
+!runtime/.gitignore
+web/assets/*
+!web/assets/.gitignore
 vendor
 postgres_data

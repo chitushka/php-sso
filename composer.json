@@ -1,7 +1,9 @@
 {
   "name": "local/sso-php",
   "description": "Single-tenant SSO service ported from the Go implementation to PHP 7.4 and Yii2.",
+  "license": "BSD-3-Clause",
   "type": "project",
+  "minimum-stability": "stable",
   "require": {
     "php": ">=7.4 <8.0",
     "yiisoft/yii2": "^2.0"
@@ -17,10 +19,33 @@
       "app\\": ""
     }
   },
+  "extra": {
+    "yii\\composer\\Installer::postCreateProject": {
+      "setPermission": [
+        {
+          "runtime": "0777",
+          "web/assets": "0777",
+          "yii": "0755"
+        }
+      ]
+    },
+    "yii\\composer\\Installer::postInstall": {
+      "generateCookieValidationKey": [
+        "config/web.php"
+      ]
+    }
+  },
   "scripts": {
+    "post-install-cmd": [
+      "yii\\composer\\Installer::postInstall"
+    ],
+    "post-create-project-cmd": [
+      "yii\\composer\\Installer::postCreateProject",
+      "yii\\composer\\Installer::postInstall"
+    ],
     "lint": "find . -path ./vendor -prune -o -name '*.php' -print -exec php -l {} \\;",
     "migrate": "php yii migrate --interactive=0",
-    "serve": "php -S 0.0.0.0:8080 -t public public/router.php"
+    "serve": "php -S 0.0.0.0:8080 -t web web/router.php"
   },
   "config": {
     "allow-plugins": {

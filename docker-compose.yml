@@ -29,7 +29,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -lc "composer install --no-interaction --prefer-dist && php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t public public/router.php"
+    command: sh -lc "composer install --no-interaction --prefer-dist && php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t web web/router.php"
 
 volumes:
   postgres_data:
