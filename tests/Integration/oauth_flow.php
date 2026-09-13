@@ -227,6 +227,13 @@ try {
     assertTrue(in_array('authorization_code', $configuration['json']['grant_types_supported'] ?? [], true), 'OIDC discovery must support authorization_code');
     assertTrue(in_array('RS256', $configuration['json']['id_token_signing_alg_values_supported'] ?? [], true), 'OIDC discovery must support RS256');
 
+    $metrics = httpRequest('GET', $baseUrl . '/metrics', [
+        'headers' => ['Accept: text/plain'],
+    ]);
+    assertTrue($metrics['status'] === 200, 'metrics endpoint must return 200');
+    assertTrue(strpos((string)$metrics['body'], '# TYPE sso_http_requests_total counter') !== false, 'metrics endpoint must expose request counter');
+    assertTrue(strpos((string)$metrics['body'], 'sso_http_requests_processed_total') !== false, 'metrics endpoint must expose processed counter');
+
     $jwks = httpRequest('GET', $baseUrl . '/.well-known/jwks.json', [
         'headers' => ['Accept: application/json'],
     ]);

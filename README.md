@@ -57,6 +57,7 @@ docker compose run --rm app php yii help
 - Yii2/Docker/PostgreSQL каркас.
 - Стартовая PostgreSQL-схема из Go-миграций `000001-000010`.
 - `GET /health/live`, `GET /health/ready`, `GET /health/version`.
+- `GET /metrics` в Prometheus text format с dependency-free HTTP counters через Yii cache.
 - `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
 - Просмотр и отзыв пользовательских сессий.
@@ -96,6 +97,7 @@ docker compose run --rm app php yii help
 - 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
 - 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
 - 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
+- 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.

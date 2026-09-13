@@ -7,6 +7,12 @@ return [
     'basePath' => dirname(__DIR__),
     'language' => 'ru-RU',
     'bootstrap' => ['log'],
+    'on beforeRequest' => static function (): void {
+        (new app\services\MetricsService())->begin();
+    },
+    'on afterRequest' => static function (): void {
+        (new app\services\MetricsService())->end(Yii::$app->request, Yii::$app->response);
+    },
     'controllerMap' => [
         'oauth' => [
             'class' => app\controllers\OAuthController::class,
@@ -66,6 +72,7 @@ return [
                 'GET health/live' => 'health/live',
                 'GET health/ready' => 'health/ready',
                 'GET health/version' => 'health/version',
+                'GET metrics' => 'metrics/index',
                 'GET api/v1/bootstrap/status' => 'bootstrap/status',
                 'POST api/v1/bootstrap' => 'bootstrap/create',
                 'GET api/v1/broker/providers' => 'broker/public-providers',
