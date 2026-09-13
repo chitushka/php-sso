@@ -157,7 +157,11 @@ class BrokerService
             return ['status' => 400, 'data' => ['error' => 'code and client_id are required']];
         }
         if (!$provider->authorize_url || !$provider->token_url || !$provider->userinfo_url) {
-            return ['status' => 400, 'data' => ['error' => 'authorize_url, token_url and userinfo_url are required']];
+            return ['status' => 400, 'data' => ['error' => 'authorize_url, token_url and userinfo_url are required for type oidc']];
+        }
+
+        if ($provider->isNewRecord && IdentityProvider::find()->where(['code' => $provider->code])->exists()) {
+            return ['status' => 409, 'data' => ['error' => 'provider already exists']];
         }
 
         if (!$keepEmptySecret || !empty($body['client_secret'])) {

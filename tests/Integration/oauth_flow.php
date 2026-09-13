@@ -17,6 +17,7 @@ $password = 'IntegrationPass123!';
 $createdUserIds = [];
 $createdClientIds = [];
 $createdGroupIds = [];
+$createdProviderIds = [];
 
 function failTest(string $message): void
 {
@@ -538,6 +539,70 @@ try {
     assertTrue($duplicateGroup['status'] === 409, 'duplicate group code must return 409');
     assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match Go error');
 
+    $badAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=not-a-uuid', [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($badAuditActor['status'] === 400, 'audit with invalid actor must return 400');
+    assertTrue(($badAuditActor['json']['error'] ?? '') === 'invalid actor id', 'audit invalid actor must match Go error');
+
+    $badAuditFrom = httpRequest('GET', $baseUrl . '/api/v1/audit?from=not-a-date', [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($badAuditFrom['status'] === 400, 'audit with invalid from must return 400');
+    assertTrue(($badAuditFrom['json']['error'] ?? '') === 'invalid from, expected RFC3339', 'audit invalid from must match Go error');
+
+    $badAuditTo = httpRequest('GET', $baseUrl . '/api/v1/audit?to=not-a-date', [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($badAuditTo['status'] === 400, 'audit with invalid to must return 400');
+    assertTrue(($badAuditTo['json']['error'] ?? '') === 'invalid to, expected RFC3339', 'audit invalid to must match Go error');
+
+    $missingIdentityFields = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => '',
+        'client_id' => '',
+    ], $adminToken);
+    assertTrue($missingIdentityFields['status'] === 400, 'identity provider without code/client_id must return 400');
+    assertTrue(($missingIdentityFields['json']['error'] ?? '') === 'code and client_id are required', 'identity provider missing fields must match Go error');
+
+    $missingIdentityUrls = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => 'itest-oidc-missing-' . $suffix,
+        'name' => 'Missing OIDC URLs',
+        'type' => 'oidc',
+        'client_id' => 'itest-idp-client-' . $suffix,
+        'client_secret' => 'secret',
+    ], $adminToken);
+    assertTrue($missingIdentityUrls['status'] === 400, 'OIDC provider without URLs must return 400');
+    assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match Go error');
+
+    $identityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => 'itest-idp-' . $suffix,
+        'name' => 'Integration identity provider ' . $suffix,
+        'type' => 'oidc',
+        'client_id' => 'itest-idp-client-' . $suffix,
+        'client_secret' => 'secret',
+        'authorize_url' => 'https://idp.example.test/authorize',
+        'token_url' => 'https://idp.example.test/token',
+        'userinfo_url' => 'https://idp.example.test/userinfo',
+        'scopes' => 'openid profile email',
+        'enabled' => true,
+    ], $adminToken);
+    assertTrue($identityProvider['status'] === 201, 'create identity provider must return 201');
+    $createdProviderIds[] = $identityProvider['json']['id'];
+    assertTrue(!array_key_exists('client_secret', $identityProvider['json']), 'identity provider response must not expose client_secret');
+
+    $duplicateIdentityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => $identityProvider['json']['code'],
+        'name' => 'Duplicate identity provider',
+        'type' => 'oidc',
+        'client_id' => 'duplicate-idp-client-' . $suffix,
+        'client_secret' => 'secret',
+        'authorize_url' => 'https://idp.example.test/authorize',
+        'token_url' => 'https://idp.example.test/token',
+        'userinfo_url' => 'https://idp.example.test/userinfo',
+    ], $adminToken);
+    assertTrue($duplicateIdentityProvider['status'] === 409, 'duplicate identity provider code must return 409');
+    assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match Go error');
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
@@ -685,6 +750,9 @@ try {
     }
     foreach ($createdGroupIds as $groupId) {
         $db->createCommand('DELETE FROM groups WHERE id = :id', [':id' => $groupId])->execute();
+    }
+    foreach ($createdProviderIds as $providerId) {
+        $db->createCommand('DELETE FROM identity_providers WHERE id = :id', [':id' => $providerId])->execute();
     }
     foreach ($createdUserIds as $userId) {
         $db->createCommand('DELETE FROM users WHERE id = :id', [':id' => $userId])->execute();

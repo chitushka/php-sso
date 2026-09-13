@@ -35,10 +35,10 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
 - `MfaService` — TOTP setup/enable/disable, Go-compatible `enroll`/`activate` aliases, одноразовые recovery codes и MFA challenge для login.
 - `AccountService` + `MailService` — password forgot/reset/change, email verification и доставка reset/verification ссылок через SMTP или лог в dev-режиме.
-- `BrokerController` + `BrokerService` — identity brokering для Google/GitHub/generic OIDC, admin CRUD identity providers, signed state, callback, linking/JIT provisioning federated users.
+- `BrokerController` + `BrokerService` — identity brokering для Google/GitHub/generic OIDC, admin CRUD identity providers с Go-compatible ошибками создания, signed state, callback, linking/JIT provisioning federated users.
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
-- `AuditController` — чтение журнала аудита с фильтрами.
+- `AuditController` — чтение журнала аудита с Go-compatible валидацией фильтров `actor`, `from`, `to`.
 - `AuditService` — запись важных событий.
 - `CryptoService` — AES-256-GCM шифрование секретов без Composer-зависимостей.
 - `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
