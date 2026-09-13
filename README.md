@@ -10,6 +10,8 @@ docker compose build
 docker compose up
 ```
 
+Локальные PHP и Composer для разработки не требуются: проект запускается и проверяется в Docker-контейнере `app`.
+
 Приложение будет доступно на `http://localhost:8080`.
 PostgreSQL публикуется на `localhost:5433`, внутри Docker используется `postgres:5432`.
 
@@ -23,6 +25,14 @@ make lint     # проверить PHP-синтаксис
 make cleanup  # удалить истёкшие auth/OAuth артефакты
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
+```
+
+Если `make` недоступен, используйте прямые Docker-команды:
+
+```bash
+docker compose run --rm app php yii migrate --interactive=0
+docker compose run --rm app composer lint
+docker compose run --rm app php yii help
 ```
 
 ## Конфигурация
@@ -84,6 +94,7 @@ make integration-client # прогнать внешний OAuth/OIDC RP client f
 
 - 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
 - 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
+- 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
 - 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
 - 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
 - 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.

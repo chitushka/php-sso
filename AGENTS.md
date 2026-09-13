@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is a PHP 7.4 Yii2 port of the Go SSO service in `D:\workspace\GolandProjects\sso`. Keep controllers in `controllers/`, business logic in `services/`, ActiveRecord models in `models/`, Yii config in `config/`, migrations in `migrations/`, web entry points in `public/`, and Vue-backed admin views in `views/admin/`.
+This repository is a PHP 7.4 Yii2 port of the Go SSO service in `D:\workspace\GolandProjects\sso`. Keep controllers in `controllers/`, business logic in `services/`, ActiveRecord models in `models/`, Yii config in `config/`, migrations in `migrations/`, web entry points in `web/`, and Vue-backed admin views in `views/admin/`.
 
 Current layout:
 
@@ -11,7 +11,7 @@ controllers/
 services/
 models/
 migrations/
-public/
+web/
 config/
 tests/
 vendor/
@@ -20,13 +20,13 @@ vendor/
 ## Build, Test, and Development Commands
 
 ```bash
-composer install
-php yii migrate --interactive=0
-composer lint
+docker compose build
 docker compose up
+docker compose run --rm app php yii migrate --interactive=0
+docker compose run --rm app composer lint
 ```
 
-`composer install` installs Yii2. `php yii migrate --interactive=0` applies the PostgreSQL schema. `composer lint` checks PHP syntax. `docker compose up` starts the app and PostgreSQL.
+Use Docker for all project checks and development runs. The host machine is not expected to have local PHP or Composer installed. `docker compose build` builds the PHP/Yii2 image, `docker compose up` starts the app and PostgreSQL, `docker compose run --rm app php yii migrate --interactive=0` applies the PostgreSQL schema, and `docker compose run --rm app composer lint` checks PHP syntax inside the container.
 
 ## Coding Style & Naming Conventions
 
