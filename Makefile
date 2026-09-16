@@ -1,4 +1,4 @@
-.PHONY: build up down migrate lint cleanup integration integration-client
+.PHONY: build up down migrate lint cleanup unit integration integration-client
 
 build:
 	docker compose build
@@ -14,6 +14,9 @@ migrate:
 
 lint:
 	docker compose run --rm app composer lint
+
+unit:
+	docker compose run --rm --no-deps app php tests/Unit/security_logic.php
 
 cleanup:
 	docker compose run --rm app php yii cleanup/run

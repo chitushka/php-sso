@@ -95,6 +95,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/oauth_client.php` — dependency-free внешний RP client flow, запускаемый через `make integration-client`. Сценарий читает OIDC Discovery, формирует authorize URL, проверяет callback redirect/state, обменивает code через `client_secret_basic`, валидирует базовые `id_token` claims, вызывает UserInfo, refresh token и RP-initiated logout. Для тестового сервера цель задаёт `SSO_ISSUER=http://127.0.0.1:8081`, чтобы discovery endpoint-ы указывали на локальный app.
 
+`tests/Unit/security_logic.php` — dependency-free unit security smoke, запускаемый через `make unit` без PostgreSQL. Он проверяет границы `PasswordPolicy` 12/128 символов и trusted-proxy IP resolution в `TrustedRequest`, включая игнорирование spoofed `X-Forwarded-For` от недоверенного peer, выбор rightmost untrusted IP, IPv6 CIDR и нормализацию IPv4 peer address с портом.
+
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.
