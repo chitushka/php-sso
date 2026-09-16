@@ -107,6 +107,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/AccountServiceTest.php` покрывает account security flows поверх PostgreSQL: password reset через одноразовый hashed token, отзыв sessions/refresh tokens и ранее выданного Bearer JWT, запрет повторного использования reset token, email verification для `pending` аккаунта и validation/normalization scalar profile attributes.
 
+`tests/Integration/MfaServiceTest.php`, `tests/Integration/RbacServiceTest.php` и `tests/Integration/AdminProviderServiceTest.php` закрывают оставшиеся service-level проверки без внешней сети: MFA enroll/enable/login challenge/recovery code/disable, RBAC direct/group-inherited permissions и idempotent assignments, identity provider CRUD с encrypted secret preservation, public broker start URL, LDAP provider CRUD с encrypted bind password preservation и LDAP group mappings. Реальный LDAP bind и внешний OIDC provider callback требуют сетевого тестового провайдера и остаются в smoke/manual зоне.
+
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.
