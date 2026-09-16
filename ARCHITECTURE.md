@@ -111,6 +111,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 Маршруты broker login/callback используют path-параметр `<providerCode>`, а не `<code>`, чтобы он не конфликтовал с OAuth callback query-параметром `code`. Это важно для Yii2 URL manager: иначе provider code может затереть внешний authorization code в `Yii::$app->request->get('code')`.
 
+`tests/Integration/ldap_bind_flow.php` — optional smoke для реального LDAP test fixture. Цель `make integration-ldap` применяет миграции и запускает скрипт; без `SSO_TEST_LDAP_HOST` он безопасно пропускается. При заданных `SSO_TEST_LDAP_HOST`, `SSO_TEST_LDAP_BIND_DN`, `SSO_TEST_LDAP_BIND_PASSWORD`, `SSO_TEST_LDAP_BASE_DN`, `SSO_TEST_LDAP_LOGIN`, `SSO_TEST_LDAP_PASSWORD` он создаёт временный LDAP provider, проверяет service bind, search + user bind, auto-provisioning пользователя, optional mapping через `SSO_TEST_LDAP_GROUP_DN` и audit `ldap_login_success`.
+
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.

@@ -28,6 +28,7 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
 make integration-broker # прогнать broker callback flow с локальным mock OIDC provider
+make integration-ldap # прогнать LDAP bind/search flow, если заданы SSO_TEST_LDAP_*
 ```
 
 Если `make` недоступен, используйте прямые Docker-команды:
@@ -90,12 +91,13 @@ docker compose run --rm app php yii help
 - PHPUnit unit tests для password policy и trusted-proxy IP resolution.
 - PHPUnit integration tests против PostgreSQL для OAuth client service, Authorization Code + PKCE token exchange, refresh rotation/reuse/revoke, OIDC ID token/JWKS/UserInfo/RP logout, auth login/session/JWT/logout, account reset/email/profile security flows, MFA, RBAC, identity provider и LDAP admin flows, PostgreSQL array-полей и audit side effects.
 - Local mock OIDC broker smoke `make integration-broker` для внешнего sign-in callback без реального внешнего провайдера.
+- Optional LDAP bind/search smoke `make integration-ldap` для реального LDAP test fixture через `SSO_TEST_LDAP_*`.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: дальнейшая сверка endpoint-контрактов с Go-сервисом и внешняя проверка реального LDAP bind/search.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: дальнейшая сверка endpoint-контрактов с Go-сервисом и запуск `make integration-ldap` против реального LDAP test fixture при наличии секретов.
 
 ## Важные изменения
 
@@ -111,6 +113,7 @@ docker compose run --rm app php yii help
 - 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой `AccountService`: password reset token consumption, отзыв sessions/refresh/JWT, email verification pending accounts и profile attributes validation.
 - 2026-09-16: PostgreSQL PHPUnit-набор расширен проверками `MfaService`, `RbacService`, identity providers и LDAP providers/group mappings; оставшиеся сетевые LDAP/OIDC callback сценарии остаются в smoke/manual проверках.
 - 2026-09-16: добавлен `make integration-broker` с локальным mock OIDC provider; исправлен broker callback route, чтобы path-параметр provider не конфликтовал с OAuth query `code`.
+- 2026-09-16: добавлен optional `make integration-ldap`, который проверяет LDAP service bind, search + user bind, provisioning, group mapping и audit при заданных `SSO_TEST_LDAP_*`.
 - 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
 - 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
 - 2026-09-13: Users API выровнен с Go-контрактом для создания пользователей: пустые username/email возвращают 400 `username and email are required`, конфликт username возвращает 409 `user already exists`.
