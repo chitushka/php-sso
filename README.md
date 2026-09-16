@@ -87,13 +87,13 @@ docker compose run --rm app php yii help
 - OIDC UserInfo scope filtering: `profile` раскрывает profile claims, `email` раскрывает email.
 - RP-initiated logout проверяет `id_token_hint`, registered `post_logout_redirect_uri` и отзывает refresh tokens пользователя.
 - PHPUnit unit tests для password policy и trusted-proxy IP resolution.
-- PHPUnit integration tests против PostgreSQL для OAuth client service, PostgreSQL array-полей и audit side effects.
+- PHPUnit integration tests против PostgreSQL для OAuth client service, auth login/session/JWT/logout, PostgreSQL array-полей и audit side effects.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: расширение PHPUnit-покрытия auth/OAuth flows с PostgreSQL fixture-ами и дальнейшая сверка endpoint-контрактов с Go-сервисом.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: расширение PHPUnit-покрытия OAuth token flows с PostgreSQL fixture-ами и дальнейшая сверка endpoint-контрактов с Go-сервисом.
 
 ## Важные изменения
 
@@ -102,6 +102,7 @@ docker compose run --rm app php yii help
 - 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
 - 2026-09-16: добавлена PHPUnit-инфраструктура `make unit` для unit-проверок password policy и trusted-proxy IP resolution.
 - 2026-09-16: добавлен `make phpunit-integration` с PostgreSQL fixture-проверками `OAuthService` для OAuth clients, array-полей и audit side effects.
+- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой `AuthService` для local login, brute-force reset, session lookup, Bearer JWT `currentUser` и logout revoke.
 - 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
 - 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
 - 2026-09-13: Users API выровнен с Go-контрактом для создания пользователей: пустые username/email возвращают 400 `username and email are required`, конфликт username возвращает 409 `user already exists`.
