@@ -22,7 +22,8 @@ make build    # собрать Docker-образ
 make up       # запустить app + PostgreSQL
 make migrate  # применить Yii2-миграции
 make lint     # проверить PHP-синтаксис
-make unit     # прогнать dependency-free unit security smoke
+make unit     # прогнать PHPUnit unit tests
+make phpunit-integration # прогнать PHPUnit integration tests против PostgreSQL
 make cleanup  # удалить истёкшие auth/OAuth артефакты
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
@@ -85,20 +86,22 @@ docker compose run --rm app php yii help
 - OIDC Discovery, JWKS, UserInfo и RS256 ID Token с проверкой issuer/audience/nonce claims в smoke flow.
 - OIDC UserInfo scope filtering: `profile` раскрывает profile claims, `email` раскрывает email.
 - RP-initiated logout проверяет `id_token_hint`, registered `post_logout_redirect_uri` и отзывает refresh tokens пользователя.
-- Dependency-free unit security smoke `tests/Unit/security_logic.php` для password policy и trusted-proxy IP resolution.
+- PHPUnit unit tests для password policy и trusted-proxy IP resolution.
+- PHPUnit integration tests против PostgreSQL для OAuth client service, PostgreSQL array-полей и audit side effects.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: полноценный PHPUnit-набор и дальнейшая сверка endpoint-контрактов с Go-сервисом.
+Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: расширение PHPUnit-покрытия auth/OAuth flows с PostgreSQL fixture-ами и дальнейшая сверка endpoint-контрактов с Go-сервисом.
 
 ## Важные изменения
 
 - 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
 - 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
 - 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
-- 2026-09-16: добавлен dependency-free unit security smoke `make unit` для password policy и trusted-proxy IP resolution.
+- 2026-09-16: добавлена PHPUnit-инфраструктура `make unit` для unit-проверок password policy и trusted-proxy IP resolution.
+- 2026-09-16: добавлен `make phpunit-integration` с PostgreSQL fixture-проверками `OAuthService` для OAuth clients, array-полей и audit side effects.
 - 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
 - 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
 - 2026-09-13: Users API выровнен с Go-контрактом для создания пользователей: пустые username/email возвращают 400 `username and email are required`, конфликт username возвращает 409 `user already exists`.

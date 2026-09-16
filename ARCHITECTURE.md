@@ -95,7 +95,9 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/oauth_client.php` — dependency-free внешний RP client flow, запускаемый через `make integration-client`. Сценарий читает OIDC Discovery, формирует authorize URL, проверяет callback redirect/state, обменивает code через `client_secret_basic`, валидирует базовые `id_token` claims, вызывает UserInfo, refresh token и RP-initiated logout. Для тестового сервера цель задаёт `SSO_ISSUER=http://127.0.0.1:8081`, чтобы discovery endpoint-ы указывали на локальный app.
 
-`tests/Unit/security_logic.php` — dependency-free unit security smoke, запускаемый через `make unit` без PostgreSQL. Он проверяет границы `PasswordPolicy` 12/128 символов и trusted-proxy IP resolution в `TrustedRequest`, включая игнорирование spoofed `X-Forwarded-For` от недоверенного peer, выбор rightmost untrusted IP, IPv6 CIDR и нормализацию IPv4 peer address с портом.
+`phpunit.xml.dist` и `tests/bootstrap.php` задают PHPUnit-набор для unit-проверок без PostgreSQL. `tests/Unit/PasswordPolicyTest.php` проверяет границы `PasswordPolicy` 12/128 символов, а `tests/Unit/TrustedRequestTest.php` покрывает trusted-proxy IP resolution в `TrustedRequest`: игнорирование spoofed `X-Forwarded-For` от недоверенного peer, выбор rightmost untrusted IP, IPv6 CIDR и нормализацию IPv4 peer address с портом. Цель `make unit` запускает `vendor/bin/phpunit` внутри Docker-контейнера `app`.
+
+`tests/Integration/OAuthClientServiceTest.php` — первый PHPUnit integration test против PostgreSQL. Цель `make phpunit-integration` применяет Yii2-миграции и запускает suite `Integration`; тест создаёт уникальные OAuth clients через `OAuthService`, проверяет confidential/public поведение, PostgreSQL `TEXT[]` поля через `OAuthClient::parsePgArray()` и audit side effects, затем удаляет свои fixture-записи.
 
 ## UI
 
