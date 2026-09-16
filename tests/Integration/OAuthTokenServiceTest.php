@@ -71,6 +71,104 @@ class OAuthTokenServiceTest extends TestCase
 
     public function testAuthorizationCodeTokenRequiresPkceAndRejectsCodeReuse(): void
     {
+        $flow = $this->issueAuthorizationCodeToken();
+        $clientId = $flow['client_id'];
+        $clientSecret = $flow['client_secret'];
+        $code = $flow['code'];
+        $verifier = $flow['verifier'];
+        $token = $flow['token'];
+        $service = new OAuthService();
+
+        $this->assertTrue($token['ok']);
+        $this->assertSame('Bearer', $token['data']['token_type']);
+        $this->assertSame('profile', $token['data']['scope']);
+        $this->assertNotEmpty($token['data']['access_token']);
+        $this->assertNotEmpty($token['data']['refresh_token']);
+        $this->assertSame($this->userId, (new AuthService())->currentUser($this->bearerRequest($token['data']['access_token']))->id);
+        $this->assertSame(1, $this->usedAuthorizationCodeCount($clientId));
+        $this->assertSame(1, $this->refreshTokenCount($clientId));
+
+        $reuse = $service->token($this->postRequest([
+            'grant_type' => 'authorization_code',
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'code' => $code,
+            'redirect_uri' => 'https://rp.example.test/callback',
+            'code_verifier' => $verifier,
+        ]));
+
+        $this->assertFalse($reuse['ok']);
+        $this->assertSame(400, $reuse['status']);
+        $this->assertSame('invalid_grant', $reuse['error']);
+    }
+
+    public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $service = new OAuthService();
+
+        $refresh = $service->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ]));
+
+        $this->assertTrue($refresh['ok']);
+        $this->assertNotSame($flow['token']['data']['refresh_token'], $refresh['data']['refresh_token']);
+        $this->assertSame(2, $this->refreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->rotatedRefreshTokenCount($flow['client_id']));
+
+        $reuse = $service->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ]));
+
+        $this->assertFalse($reuse['ok']);
+        $this->assertSame('invalid_grant', $reuse['error']);
+        $this->assertSame(2, $this->revokedRefreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->auditCount('refresh_token_reuse_detected', $flow['client_id']));
+
+        $descendant = $service->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $refresh['data']['refresh_token'],
+        ]));
+
+        $this->assertFalse($descendant['ok']);
+        $this->assertSame('invalid_grant', $descendant['error']);
+    }
+
+    public function testRevokeRefreshTokenPreventsFurtherRefresh(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $service = new OAuthService();
+
+        $revoke = $service->revoke($this->postRequest([
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'token' => $flow['token']['data']['refresh_token'],
+        ]));
+
+        $this->assertTrue($revoke['ok']);
+        $this->assertSame(1, $this->revokedRefreshTokenCount($flow['client_id']));
+
+        $refresh = $service->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ]));
+
+        $this->assertFalse($refresh['ok']);
+        $this->assertSame('invalid_grant', $refresh['error']);
+    }
+
+    private function issueAuthorizationCodeToken(): array
+    {
         $service = new OAuthService();
         $clientId = 'phpunit_oauth_client_' . bin2hex(random_bytes(4));
         $this->clientIds[] = $clientId;
@@ -85,10 +183,8 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame(201, $created['status']);
         $this->clientDbIds[] = (string)$created['data']['id'];
 
-        $sessionToken = $this->loginSessionToken();
         $verifier = 'verifier-' . bin2hex(random_bytes(24));
         $challenge = JwtService::base64url(hash('sha256', $verifier, true));
-
         $authorize = $service->authorize($this->getRequest([
             'response_type' => 'code',
             'client_id' => $clientId,
@@ -97,7 +193,7 @@ class OAuthTokenServiceTest extends TestCase
             'state' => 'state-123',
             'code_challenge' => $challenge,
             'code_challenge_method' => 'S256',
-        ], ['sso_session' => $sessionToken]));
+        ], ['sso_session' => $this->loginSessionToken()]));
 
         $this->assertTrue($authorize['ok']);
         $redirect = parse_url($authorize['redirect']);
@@ -114,27 +210,13 @@ class OAuthTokenServiceTest extends TestCase
             'code_verifier' => $verifier,
         ]));
 
-        $this->assertTrue($token['ok']);
-        $this->assertSame('Bearer', $token['data']['token_type']);
-        $this->assertSame('profile', $token['data']['scope']);
-        $this->assertNotEmpty($token['data']['access_token']);
-        $this->assertNotEmpty($token['data']['refresh_token']);
-        $this->assertSame($this->userId, (new AuthService())->currentUser($this->bearerRequest($token['data']['access_token']))->id);
-        $this->assertSame(1, $this->usedAuthorizationCodeCount($clientId));
-        $this->assertSame(1, $this->refreshTokenCount($clientId));
-
-        $reuse = $service->token($this->postRequest([
-            'grant_type' => 'authorization_code',
+        return [
             'client_id' => $clientId,
             'client_secret' => $created['data']['client_secret'],
             'code' => $query['code'],
-            'redirect_uri' => 'https://rp.example.test/callback',
-            'code_verifier' => $verifier,
-        ]));
-
-        $this->assertFalse($reuse['ok']);
-        $this->assertSame(400, $reuse['status']);
-        $this->assertSame('invalid_grant', $reuse['error']);
+            'verifier' => $verifier,
+            'token' => $token,
+        ];
     }
 
     private function loginSessionToken(): string
@@ -193,6 +275,30 @@ class OAuthTokenServiceTest extends TestCase
         return (int)Yii::$app->db->createCommand(
             'SELECT COUNT(*) FROM refresh_tokens WHERE client_id = :client_id AND user_id = :user_id',
             [':client_id' => $clientId, ':user_id' => $this->userId]
+        )->queryScalar();
+    }
+
+    private function rotatedRefreshTokenCount(string $clientId): int
+    {
+        return (int)Yii::$app->db->createCommand(
+            'SELECT COUNT(*) FROM refresh_tokens WHERE client_id = :client_id AND user_id = :user_id AND rotated_at IS NOT NULL',
+            [':client_id' => $clientId, ':user_id' => $this->userId]
+        )->queryScalar();
+    }
+
+    private function revokedRefreshTokenCount(string $clientId): int
+    {
+        return (int)Yii::$app->db->createCommand(
+            'SELECT COUNT(*) FROM refresh_tokens WHERE client_id = :client_id AND user_id = :user_id AND revoked_at IS NOT NULL',
+            [':client_id' => $clientId, ':user_id' => $this->userId]
+        )->queryScalar();
+    }
+
+    private function auditCount(string $action, string $targetId): int
+    {
+        return (int)Yii::$app->db->createCommand(
+            'SELECT COUNT(*) FROM audit_logs WHERE action = :action AND target_id = :target_id',
+            [':action' => $action, ':target_id' => $targetId]
         )->queryScalar();
     }
 }

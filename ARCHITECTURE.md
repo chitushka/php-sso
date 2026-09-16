@@ -101,7 +101,7 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/AuthServiceTest.php` покрывает local auth service поверх PostgreSQL: создаёт локального пользователя, проверяет failed-login счётчик и его сброс после успешного входа, выдачу SSO session cookie, Bearer JWT lookup через `currentUser()`, audit `login_success` и отзыв session через logout.
 
-`tests/Integration/OAuthTokenServiceTest.php` покрывает service-level Authorization Code + PKCE flow без HTTP-сервера: создаёт пользователя и confidential client, получает SSO session через `AuthService`, вызывает `OAuthService::authorize()`, обменивает code на access/refresh tokens через `OAuthService::token()`, проверяет Bearer JWT lookup, сохранение used authorization code и запрет повторного обмена того же code.
+`tests/Integration/OAuthTokenServiceTest.php` покрывает service-level OAuth token flows без HTTP-сервера: создаёт пользователя и confidential client, получает SSO session через `AuthService`, вызывает `OAuthService::authorize()`, обменивает code на access/refresh tokens через `OAuthService::token()`, проверяет Bearer JWT lookup, сохранение used authorization code, запрет повторного обмена того же code, refresh token rotation, reuse detection с отзывом всей family и revoke refresh token.
 
 ## UI
 
