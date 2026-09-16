@@ -107,7 +107,9 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/AccountServiceTest.php` покрывает account security flows поверх PostgreSQL: password reset через одноразовый hashed token, отзыв sessions/refresh tokens и ранее выданного Bearer JWT, запрет повторного использования reset token, email verification для `pending` аккаунта и validation/normalization scalar profile attributes.
 
-`tests/Integration/MfaServiceTest.php`, `tests/Integration/RbacServiceTest.php` и `tests/Integration/AdminProviderServiceTest.php` закрывают оставшиеся service-level проверки без внешней сети: MFA enroll/enable/login challenge/recovery code/disable, RBAC direct/group-inherited permissions и idempotent assignments, identity provider CRUD с encrypted secret preservation, public broker start URL, LDAP provider CRUD с encrypted bind password preservation и LDAP group mappings. Реальный LDAP bind и внешний OIDC provider callback требуют сетевого тестового провайдера и остаются в smoke/manual зоне.
+`tests/Integration/MfaServiceTest.php`, `tests/Integration/RbacServiceTest.php` и `tests/Integration/AdminProviderServiceTest.php` закрывают оставшиеся service-level проверки без внешней сети: MFA enroll/enable/login challenge/recovery code/disable, RBAC direct/group-inherited permissions и idempotent assignments, identity provider CRUD с encrypted secret preservation, public broker start URL, LDAP provider CRUD с encrypted bind password preservation и LDAP group mappings. `make integration-broker` дополнительно поднимает локальный mock OIDC provider из `tests/Fixtures/oidc_provider` и проверяет полный broker login/callback flow через HTTP без внешней сети.
+
+Маршруты broker login/callback используют path-параметр `<providerCode>`, а не `<code>`, чтобы он не конфликтовал с OAuth callback query-параметром `code`. Это важно для Yii2 URL manager: иначе provider code может затереть внешний authorization code в `Yii::$app->request->get('code')`.
 
 ## UI
 

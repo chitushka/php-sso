@@ -13,10 +13,10 @@ class BrokerController extends ApiController
         return (new BrokerService())->publicProviders();
     }
 
-    public function actionLogin(string $code): Response
+    public function actionLogin(string $providerCode): Response
     {
         $continue = (string)Yii::$app->request->get('continue', '/');
-        $redirect = (new BrokerService())->start($code, $continue);
+        $redirect = (new BrokerService())->start($providerCode, $continue);
         if (!$redirect) {
             Yii::$app->response->statusCode = 404;
             Yii::$app->response->format = Response::FORMAT_JSON;
@@ -27,14 +27,14 @@ class BrokerController extends ApiController
         return Yii::$app->response->redirect($redirect, 302);
     }
 
-    public function actionCallback(string $code): Response
+    public function actionCallback(string $providerCode): Response
     {
         if ((string)Yii::$app->request->get('error', '') !== '') {
             return Yii::$app->response->redirect('/?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
         }
 
         $result = (new BrokerService())->callback(
-            $code,
+            $providerCode,
             (string)Yii::$app->request->get('state', ''),
             (string)Yii::$app->request->get('code', '')
         );
