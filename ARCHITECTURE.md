@@ -101,6 +101,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/AuthServiceTest.php` покрывает local auth service поверх PostgreSQL: создаёт локального пользователя, проверяет failed-login счётчик и его сброс после успешного входа, выдачу SSO session cookie, Bearer JWT lookup через `currentUser()`, audit `login_success` и отзыв session через logout.
 
+`tests/Integration/OAuthTokenServiceTest.php` покрывает service-level Authorization Code + PKCE flow без HTTP-сервера: создаёт пользователя и confidential client, получает SSO session через `AuthService`, вызывает `OAuthService::authorize()`, обменивает code на access/refresh tokens через `OAuthService::token()`, проверяет Bearer JWT lookup, сохранение used authorization code и запрет повторного обмена того же code.
+
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.
