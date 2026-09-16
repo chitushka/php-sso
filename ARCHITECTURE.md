@@ -103,6 +103,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `tests/Integration/OAuthTokenServiceTest.php` покрывает service-level OAuth token flows без HTTP-сервера: создаёт пользователя и confidential client, получает SSO session через `AuthService`, вызывает `OAuthService::authorize()`, обменивает code на access/refresh tokens через `OAuthService::token()`, проверяет Bearer JWT lookup, сохранение used authorization code, запрет повторного обмена того же code, refresh token rotation, reuse detection с отзывом всей family и revoke refresh token.
 
+`tests/Integration/OidcServiceTest.php` покрывает OIDC service/controller flows поверх PostgreSQL и web `Request`: RS256 ID token hint issue/verify, JWKS, UserInfo scope filtering для `profile`/`email`/first-party токенов, а также RP-initiated logout через `OAuthService::logout()` с registered `post_logout_redirect_uri`, state passthrough, отзывом refresh tokens и audit `logout`.
+
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.
