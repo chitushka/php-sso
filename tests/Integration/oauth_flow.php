@@ -260,6 +260,36 @@ try {
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
     $createdClientIds[] = $client['json']['id'];
 
+    foreach ([
+        ['GET', '/api/v1/oauth/clients/not-a-uuid'],
+        ['PUT', '/api/v1/oauth/clients/not-a-uuid'],
+        ['DELETE', '/api/v1/oauth/clients/not-a-uuid'],
+        ['POST', '/api/v1/oauth/clients/not-a-uuid/rotate-secret'],
+    ] as $invalidClientRequest) {
+        [$method, $path] = $invalidClientRequest;
+        $invalidClientId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidClientId['status'] === 400, $method . ' OAuth client with invalid id must return 400');
+        assertTrue(($invalidClientId['json']['error'] ?? '') === 'invalid id', $method . ' OAuth client must match Go error');
+    }
+
+    $missingClient = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/oauth/clients/00000000-0000-0000-0000-000000000000',
+        [],
+        $adminToken
+    );
+    assertTrue($missingClient['status'] === 404, 'missing OAuth client must return 404');
+    assertTrue(($missingClient['json']['error'] ?? '') === 'client not found', 'missing OAuth client must match Go error');
+
+    $missingConfidentialClient = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/oauth/clients/00000000-0000-0000-0000-000000000000/rotate-secret',
+        [],
+        $adminToken
+    );
+    assertTrue($missingConfidentialClient['status'] === 404, 'missing confidential OAuth client must return 404');
+    assertTrue(($missingConfidentialClient['json']['error'] ?? '') === 'confidential client not found', 'missing confidential OAuth client must match Go error');
+
     $configuration = httpRequest('GET', $baseUrl . '/.well-known/openid-configuration', [
         'headers' => ['Accept: application/json'],
     ]);

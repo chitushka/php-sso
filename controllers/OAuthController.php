@@ -37,6 +37,10 @@ class OAuthController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         $client = (new OAuthService())->getClient($id);
         if (!$client) {
             return $this->fail(404, 'client not found');
@@ -52,6 +56,10 @@ class OAuthController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         $result = (new OAuthService())->updateClient($id, $this->body());
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -64,6 +72,10 @@ class OAuthController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         return (new OAuthService())->deleteClient($id)
             ? ['status' => 'deleted']
             : $this->fail(404, 'client not found');
@@ -74,6 +86,10 @@ class OAuthController extends ApiController
         $auth = $this->requirePermission('oauth_clients', 'update');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         $result = (new OAuthService())->rotateSecret($id);
