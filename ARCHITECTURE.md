@@ -39,6 +39,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent; административные client CRUD/rotate-secret маршруты валидируют path UUID до обращения к PostgreSQL. Create возвращает Go-обёртку `{client, client_secret}`, использует zero values (`enabled=false`, пустые массивы) для пропущенных полей; update полностью заменяет поля `UpdateClientInput` и не меняет тип клиента.
 - `AuditController` — фильтрация аудита по action, actor и RFC3339-диапазону. Actor проходит строгую UUID-проверку, дробные секунды RFC3339 нормализуются до точности PostgreSQL, а `limit`/`offset` повторяют `strconv.Atoi` и границы Go-handler.
 - `HealthController` — публичные live/ready/version probes. Readiness выполняет `SELECT 1` и при ошибке PostgreSQL возвращает Go-compatible 503 `database unavailable`, не раскрывая детали исключения.
+- `BootstrapController` + `BootstrapService` — одноразовое создание первого локального администратора. Сервис повторяет порядок Go-валидации, оставляет email неподтверждённым, назначает роль `admin` и пишет `bootstrap_completed`; PostgreSQL integration-тест выполняется в транзакции с полным rollback существующих данных.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с Go-compatible валидацией фильтров `actor`, `from`, `to`.
 - `AuditService` — запись важных событий.

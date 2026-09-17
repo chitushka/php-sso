@@ -22,7 +22,7 @@ Health-check контракт завершён: live/version сохраняют 
 - Сохранить политику паролей 12-128 символов.
 - Добавить аудит ключевых действий.
 
-Статус: выполнено. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
+Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC
 

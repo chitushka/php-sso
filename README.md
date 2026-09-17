@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: bootstrap первого администратора выровнен с Go: обязательные identity-поля проверяются до пароля, исходные значения сохраняются без trim, `email_verified=false`, аудит использует `bootstrap_completed`; PostgreSQL-сценарий покрыт откатываемой транзакцией.
 - 2026-09-17: health readiness выровнен с Go: недоступная PostgreSQL возвращает 503 `database unavailable`; live/ready/version покрыты HTTP smoke flow и unit-тестом отказа БД.
 - 2026-09-17: Audit API выровнен с Go по строгой проверке actor UUID, поддержке дробных секунд в RFC3339-фильтрах и pagination semantics: невалидный или превышающий 200 `limit` сбрасывается к 50.
 - 2026-09-17: OAuth client create/update semantics выровнены с Go: create возвращает `{client, client_secret}`, пропущенные enabled/array-поля получают zero values, update выполняет полную замену разрешённых полей и сохраняет `type`; UI явно создаёт включённых клиентов.

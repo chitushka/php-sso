@@ -203,6 +203,18 @@ try {
         [':user_id' => $adminId]
     )->execute();
 
+    $bootstrapStatus = httpRequest('GET', $baseUrl . '/api/v1/bootstrap/status');
+    assertTrue($bootstrapStatus['status'] === 200, 'bootstrap status must return 200');
+    assertTrue(($bootstrapStatus['json']['initialized'] ?? false) === true, 'bootstrap status must report initialized system');
+
+    $repeatedBootstrap = jsonRequest('POST', $baseUrl . '/api/v1/bootstrap', [
+        'username' => 'second-bootstrap-admin',
+        'email' => 'second-bootstrap@example.test',
+        'password' => $password,
+    ]);
+    assertTrue($repeatedBootstrap['status'] === 409, 'repeated bootstrap must return 409');
+    assertTrue(($repeatedBootstrap['json']['error'] ?? '') === 'system already initialized', 'repeated bootstrap must match Go error');
+
     $plainUserId = createUser($db, $userUsername, $password);
     $createdUserIds[] = $plainUserId;
 
