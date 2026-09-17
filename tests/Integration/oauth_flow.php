@@ -614,6 +614,35 @@ try {
     assertTrue($invalidPermissionBody['status'] === 400, 'invalid permission body id must return 400');
     assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match Go error');
 
+    foreach ([
+        ['GET', '/api/v1/users/not-a-uuid/roles'],
+        ['POST', '/api/v1/users/not-a-uuid/roles'],
+        ['DELETE', '/api/v1/users/not-a-uuid/roles/not-a-uuid'],
+    ] as $invalidUserRoleRequest) {
+        [$method, $path] = $invalidUserRoleRequest;
+        $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidUserId['status'] === 400, $method . ' user-role path with invalid user id must return 400');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-role path must match Go error');
+    }
+
+    $invalidUserRolePath = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000/roles/not-a-uuid',
+        [],
+        $adminToken
+    );
+    assertTrue($invalidUserRolePath['status'] === 400, 'invalid user-role role id must return 400');
+    assertTrue(($invalidUserRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid user-role role id must match Go error');
+
+    $invalidUserRoleBody = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000/roles',
+        ['role_id' => 'not-a-uuid'],
+        $adminToken
+    );
+    assertTrue($invalidUserRoleBody['status'] === 400, 'invalid user-role body id must return 400');
+    assertTrue(($invalidUserRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-role body id must match Go error');
+
     $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => 'itest-group-' . $suffix,
         'name' => 'Integration group ' . $suffix,

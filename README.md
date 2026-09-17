@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: User-role list/assign/remove path/body UUID выровнены с Go; API возвращает `invalid user id`, `invalid role id` и `invalid json body` до обращения к PostgreSQL.
 - 2026-09-17: Groups CRUD, group-role и user-group path/body UUID выровнены с Go; составные маршруты возвращают точные `invalid group id`, `invalid user id`, `invalid role id` и `invalid json body`.
 - 2026-09-17: Roles CRUD и permission assignment path/body UUID выровнены с Go: API возвращает точные `invalid role id`, `invalid permission id` и `invalid json body` вместо SPA fallback или PostgreSQL-ошибки.
 - 2026-09-17: Users GET/PUT/DELETE path UUID и pagination limit выровнены с Go: невалидный ID возвращает 400 JSON вместо SPA fallback, отсутствующий пользователь — 404, максимальный limit равен 100.

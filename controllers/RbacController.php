@@ -123,7 +123,15 @@ class RbacController extends ApiController
     public function actionListUserRoles(string $userID): array
     {
         $auth = $this->requirePermission('roles', 'read');
-        return is_array($auth) ? $auth : $this->service()->listUserRoles($userID);
+        if (is_array($auth)) {
+            return $auth;
+        }
+
+        if (!$this->isUuid($userID)) {
+            return $this->fail(400, 'invalid user id');
+        }
+
+        return $this->service()->listUserRoles($userID);
     }
 
     public function actionAssignUserRole(string $userID): array
@@ -133,7 +141,16 @@ class RbacController extends ApiController
             return $auth;
         }
 
-        $this->service()->assignRoleToUser($userID, (string)($this->body()['role_id'] ?? ''));
+        if (!$this->isUuid($userID)) {
+            return $this->fail(400, 'invalid user id');
+        }
+
+        $roleId = (string)($this->body()['role_id'] ?? '');
+        if ($roleId !== '' && !$this->isUuid($roleId)) {
+            return $this->fail(400, 'invalid json body');
+        }
+
+        $this->service()->assignRoleToUser($userID, $roleId);
         return ['status' => 'assigned'];
     }
 
@@ -142,6 +159,13 @@ class RbacController extends ApiController
         $auth = $this->requirePermission('roles', 'assign');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($userID)) {
+            return $this->fail(400, 'invalid user id');
+        }
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
         }
 
         $this->service()->removeRoleFromUser($userID, $roleID);
