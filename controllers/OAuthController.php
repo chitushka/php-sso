@@ -5,6 +5,7 @@ namespace app\controllers;
 use app\services\AuthService;
 use app\services\OAuthService;
 use Yii;
+use yii\web\BadRequestHttpException;
 
 class OAuthController extends ApiController
 {
@@ -167,7 +168,13 @@ class OAuthController extends ApiController
 
     public function actionGrantConsent(): array
     {
-        $result = (new OAuthService())->grantConsent(Yii::$app->request, $this->body());
+        try {
+            $body = $this->body(['client_id', 'scope']);
+        } catch (BadRequestHttpException $exception) {
+            return $this->oauthError(400, 'invalid_request', 'invalid json body');
+        }
+
+        $result = (new OAuthService())->grantConsent(Yii::$app->request, $body);
         if (!$result['ok']) {
             return $this->oauthError($result['status'], $result['error'], $result['description']);
         }

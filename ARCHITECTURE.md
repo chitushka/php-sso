@@ -89,6 +89,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 Для public OAuth clients `OAuthService::authorize()` требует `code_challenge_method=S256` и непустой `code_challenge`; отсутствие PKCE возвращает RFC-style `invalid_request` с описанием `PKCE S256 required`.
 
+`POST /oauth2/consent` сохраняет отдельный OAuth error envelope: ошибки malformed/non-object JSON и неизвестные поля возвращаются как `400 {"error":"invalid_request","error_description":"invalid json body"}`, а не как общий API error. Разрешены только поля `client_id` и `scope`, как в анонимной Go request-структуре.
+
 `OidcController::actionUserinfo()` фильтрует claims по scope OAuth access token: `profile` раскрывает `preferred_username` и `source`, `email` раскрывает `email`. Локальные first-party Bearer tokens без `scope` сохраняют полный исторический ответ.
 
 `OAuthService::logout()` реализует RP-initiated logout: валидирует RS256 `id_token_hint` по stored OIDC signing key, issuer и возрасту hint; отзывает текущую `sso_session` cookie-сессию и refresh tokens пользователя; `post_logout_redirect_uri` разрешён только если он зарегистрирован у клиента из `id_token_hint`.

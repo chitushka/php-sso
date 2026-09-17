@@ -594,6 +594,30 @@ try {
     assertTrue(($consentInfo['json']['client_id'] ?? '') === $consentClient['json']['client_id'], 'consent info must include client_id');
     assertTrue(in_array('openid', $consentInfo['json']['scopes'] ?? [], true), 'consent info must include requested openid scope');
 
+    $malformedConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '{"client_id":',
+        'cookies' => $sessionCookie,
+    ]);
+    assertOAuthError($malformedConsent, 400, 'invalid_request', 'malformed consent JSON');
+    assertTrue(($malformedConsent['json']['error_description'] ?? '') === 'invalid json body', 'malformed consent JSON must match Go description');
+
+    $arrayConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '[]',
+        'cookies' => $sessionCookie,
+    ]);
+    assertOAuthError($arrayConsent, 400, 'invalid_request', 'non-object consent JSON');
+    assertTrue(($arrayConsent['json']['error_description'] ?? '') === 'invalid json body', 'non-object consent JSON must match Go description');
+
+    $unknownConsentField = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'openid profile',
+        'unexpected' => true,
+    ], null, $sessionCookie);
+    assertOAuthError($unknownConsentField, 400, 'invalid_request', 'consent JSON with unknown field');
+    assertTrue(($unknownConsentField['json']['error_description'] ?? '') === 'invalid json body', 'unknown consent field must match Go description');
+
     $grantConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
         'client_id' => $consentClient['json']['client_id'],
         'scope' => 'openid profile',
