@@ -15,9 +15,9 @@ class JwtService
         $this->issuer = Yii::$app->params['issuer'];
     }
 
-    public function issue(string $subject, array $claims = [], ?int $ttl = null): string
+    public function issue(string $subject, array $claims = [], ?int $ttl = null, ?int $issuedAt = null): string
     {
-        $now = time();
+        $now = $issuedAt ?? time();
         $ttl = $ttl ?? Yii::$app->params['accessTokenTtl'];
         $payload = array_merge($claims, [
             'iss' => $this->issuer,

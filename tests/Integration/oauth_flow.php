@@ -660,6 +660,12 @@ try {
     assertTrue(($mfaActivate['json']['status'] ?? '') === 'mfa_enabled', 'MFA activate must return mfa_enabled status');
     assertTrue(count($mfaActivate['json']['recovery_codes'] ?? []) === 8, 'MFA activate must return Go-compatible recovery code count');
 
+    $repeatedMfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
+        'code' => 'not-a-code',
+    ], $adminToken);
+    assertTrue($repeatedMfaActivate['status'] === 409, 'repeated MFA activate must return 409');
+    assertTrue(($repeatedMfaActivate['json']['error'] ?? '') === 'enroll first', 'repeated MFA activate must match Go error');
+
     $mfaLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
         'password' => $password,
@@ -799,6 +805,27 @@ try {
     assertTrue($logout['status'] >= 300 && $logout['status'] < 400, 'registered logout redirect must redirect');
     assertTrue(strpos($logout['location'], 'http://localhost/logout-cb') === 0, 'logout must redirect to registered uri');
     assertTrue(strpos($logout['location'], 'state=logout-state-' . $suffix) !== false, 'logout redirect must preserve state');
+
+    $invalidMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
+        'code' => 'not-a-code',
+    ], $mfaVerify['json']['access_token']);
+    assertTrue($invalidMfaDisable['status'] === 400, 'invalid MFA disable code must return 400');
+    assertTrue(($invalidMfaDisable['json']['error'] ?? '') === 'invalid code', 'invalid MFA disable code must match Go error');
+
+    $mfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
+        'code' => $mfaActivate['json']['recovery_codes'][0],
+    ], $mfaVerify['json']['access_token']);
+    assertTrue($mfaDisable['status'] === 200, 'MFA disable must return 200');
+    assertTrue(($mfaDisable['json']['status'] ?? '') === 'mfa_disabled', 'MFA disable must return Go-compatible status');
+
+    $tokenAfterMfaDisable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
+    assertTrue($tokenAfterMfaDisable['status'] === 200, 'MFA disable must keep the current Bearer token valid like Go');
+
+    $repeatedMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
+        'code' => 'not-a-code',
+    ], $mfaVerify['json']['access_token']);
+    assertTrue($repeatedMfaDisable['status'] === 400, 'repeated MFA disable must return 400');
+    assertTrue(($repeatedMfaDisable['json']['error'] ?? '') === 'mfa is not in the required state', 'repeated MFA disable must match Go error');
 
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {

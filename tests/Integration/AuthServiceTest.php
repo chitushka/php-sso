@@ -192,6 +192,33 @@ class AuthServiceTest extends TestCase
         $this->assertSame(0, $this->loginAttemptCount());
     }
 
+    public function testRevokeAllRejectsOldJwtAndAllowsImmediateRelogin(): void
+    {
+        $service = new AuthService();
+        $request = $this->request();
+        $firstLogin = $service->login([
+            'username' => $this->username,
+            'password' => 'correct-password-123',
+        ], $request);
+
+        $service->revokeAllSessions(User::findOne(['id' => $this->userId]));
+        $oldTokenRequest = $this->request();
+        $oldTokenRequest->headers->set('Authorization', 'Bearer ' . $firstLogin['data']['access_token']);
+        $this->assertNull($service->currentUser($oldTokenRequest));
+
+        $secondLogin = $service->login([
+            'username' => $this->username,
+            'password' => 'correct-password-123',
+        ], $this->request());
+        $newTokenRequest = $this->request();
+        $newTokenRequest->headers->set('Authorization', 'Bearer ' . $secondLogin['data']['access_token']);
+        $this->assertSame($this->userId, $service->currentUser($newTokenRequest)->id);
+
+        $claims = $service->currentClaims($newTokenRequest);
+        $cutoff = strtotime((string)User::findOne(['id' => $this->userId])->tokens_invalid_before);
+        $this->assertGreaterThan($cutoff, $claims['iat']);
+    }
+
     private function request(): Request
     {
         $_SERVER['REMOTE_ADDR'] = $this->ip;

@@ -56,7 +56,7 @@ class MfaService
     public function enable(User $user, string $secret, string $code): array
     {
         if ($user->mfa_enabled) {
-            return ['status' => 409, 'data' => ['error' => 'mfa already enabled']];
+            return ['status' => 409, 'data' => ['error' => 'enroll first']];
         }
 
         if ($secret === '') {
@@ -86,7 +86,7 @@ class MfaService
     public function disable(User $user, string $code): array
     {
         if (!$user->mfa_enabled) {
-            return ['status' => 409, 'data' => ['error' => 'mfa is not enabled']];
+            return ['status' => 400, 'data' => ['error' => 'mfa is not in the required state']];
         }
 
         if (!$this->verifyUserCode($user, $code)) {
@@ -96,12 +96,11 @@ class MfaService
         $user->mfa_enabled = false;
         $user->mfa_secret = '';
         $user->mfa_last_used_counter = 0;
-        $user->tokens_invalid_before = new Expression('now()');
-        $user->save(false, ['mfa_enabled', 'mfa_secret', 'mfa_last_used_counter', 'tokens_invalid_before']);
+        $user->save(false, ['mfa_enabled', 'mfa_secret', 'mfa_last_used_counter']);
         MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
         AuditService::record($user->id, 'mfa_disabled', 'user', $user->id);
 
-        return ['status' => 200, 'data' => ['status' => 'disabled']];
+        return ['status' => 200, 'data' => ['status' => 'mfa_disabled']];
     }
 
     public function regenerateRecoveryCodes(User $user, string $code): array

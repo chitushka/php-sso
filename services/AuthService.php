@@ -93,10 +93,15 @@ class AuthService
         $user->save(false, ['last_login_at']);
         AuditService::record($user->id, 'login_success', 'user', $user->id);
 
+        $issuedAt = time();
+        if ($user->tokens_invalid_before) {
+            $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
+        }
+
         $jwt = (new JwtService())->issue($user->id, [
             'username' => $user->username,
             'source' => $user->source,
-        ]);
+        ], null, $issuedAt);
 
         return [
             'ok' => true,

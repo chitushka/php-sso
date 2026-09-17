@@ -67,6 +67,14 @@ class MfaServiceTest extends TestCase
         $this->assertSame(8, $this->activeRecoveryCodeCount());
         $this->assertSame(1, $this->auditCount('mfa_enabled'));
 
+        $alreadyEnabled = $service->enable(
+            User::findOne(['id' => $this->userId]),
+            $setup['secret'],
+            $this->totpCode($setup['secret'], (int)floor(time() / 30) + 1)
+        );
+        $this->assertSame(409, $alreadyEnabled['status']);
+        $this->assertSame('enroll first', $alreadyEnabled['data']['error']);
+
         $challenge = $service->createLoginChallenge(User::findOne(['id' => $this->userId]));
         $this->assertTrue($challenge['mfa_required']);
         $this->assertSame($challenge['mfa_token'], $challenge['challenge_token']);
@@ -79,12 +87,22 @@ class MfaServiceTest extends TestCase
         $this->assertSame(1, $this->auditCount('mfa_login_verified'));
         $this->assertNull($service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][1]));
 
+        $invalidDisable = $service->disable(User::findOne(['id' => $this->userId]), 'not-a-code');
+        $this->assertSame(400, $invalidDisable['status']);
+        $this->assertSame('invalid code', $invalidDisable['data']['error']);
+
         $disabled = $service->disable(User::findOne(['id' => $this->userId]), $enabled['data']['recovery_codes'][1]);
         $this->assertSame(200, $disabled['status']);
-        $this->assertSame('disabled', $disabled['data']['status']);
+        $this->assertSame('mfa_disabled', $disabled['data']['status']);
         $this->assertSame(0, $this->activeRecoveryCodeCount());
-        $this->assertFalse((bool)User::findOne(['id' => $this->userId])->mfa_enabled);
+        $disabledUser = User::findOne(['id' => $this->userId]);
+        $this->assertFalse((bool)$disabledUser->mfa_enabled);
+        $this->assertNull($disabledUser->tokens_invalid_before);
         $this->assertSame(1, $this->auditCount('mfa_disabled'));
+
+        $alreadyDisabled = $service->disable($disabledUser, 'not-a-code');
+        $this->assertSame(400, $alreadyDisabled['status']);
+        $this->assertSame('mfa is not in the required state', $alreadyDisabled['data']['error']);
     }
 
     private function totpCode(string $secret, ?int $counter = null): string
