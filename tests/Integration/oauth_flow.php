@@ -204,6 +204,49 @@ try {
     $adminToken = $login['json']['access_token'];
     $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
 
+    $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $adminUsername,
+        'password' => $password,
+    ]);
+    assertTrue($secondLogin['status'] === 200, 'second admin login must return 200');
+
+    $sessions = jsonRequest('GET', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
+    assertTrue($sessions['status'] === 200, 'session list must return 200');
+    assertTrue(count($sessions['json'] ?? []) === 2, 'session list must include both active sessions');
+    assertTrue(($sessions['json'][0]['user_id'] ?? '') === $adminId, 'session list must include Go-compatible user_id');
+    assertTrue(!array_key_exists('token_hash', $sessions['json'][0]), 'session list must not expose token hash');
+
+    $invalidSession = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions/not-a-uuid', [], $adminToken);
+    assertTrue($invalidSession['status'] === 400, 'invalid session id must return 400');
+    assertTrue(($invalidSession['json']['error'] ?? '') === 'invalid session id', 'invalid session id must match Go error');
+
+    $revokedSession = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/auth/sessions/' . rawurlencode($sessions['json'][0]['id']),
+        [],
+        $adminToken
+    );
+    assertTrue($revokedSession['status'] === 200, 'owned session revoke must return 200');
+    assertTrue(($revokedSession['json']['status'] ?? '') === 'revoked', 'owned session revoke must return revoked status');
+
+    $remainingSessions = jsonRequest('GET', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
+    assertTrue(count($remainingSessions['json'] ?? []) === 1, 'revoked session must disappear from active session list');
+
+    $revokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
+    assertTrue($revokeAll['status'] === 200, 'revoke all sessions must return 200');
+    assertTrue(($revokeAll['json']['status'] ?? '') === 'all_revoked', 'revoke all sessions must return all_revoked status');
+
+    $revokedToken = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
+    assertTrue($revokedToken['status'] === 401, 'revoke all sessions must invalidate existing bearer token');
+
+    $login = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $adminUsername,
+        'password' => $password,
+    ]);
+    assertTrue($login['status'] === 200, 'admin relogin after revoke all must return 200');
+    $adminToken = $login['json']['access_token'];
+    $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
+
     $client = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'name' => 'Integration test client ' . $suffix,
         'client_id' => 'itest-client-' . $suffix,

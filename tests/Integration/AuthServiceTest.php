@@ -93,6 +93,51 @@ class AuthServiceTest extends TestCase
         $this->assertSame(0, $this->activeSessionCount());
     }
 
+    public function testSessionManagementListsOnlyActiveSessionsAndRevokesOwnedSessions(): void
+    {
+        $service = new AuthService();
+        $request = $this->request();
+        $login = $service->login([
+            'username' => $this->username,
+            'password' => 'correct-password-123',
+        ], $request);
+
+        $activeSessionId = (string)Yii::$app->db->createCommand(
+            'SELECT id FROM sessions WHERE user_id = :user_id AND revoked_at IS NULL',
+            [':user_id' => $this->userId]
+        )->queryScalar();
+        $expiredSessionId = (string)Yii::$app->db->createCommand(
+            "INSERT INTO sessions(user_id, token_hash, ip, user_agent, expires_at)
+             VALUES (:user_id, :token_hash, :ip, 'expired test session', now() - interval '1 minute')
+             RETURNING id",
+            [
+                ':user_id' => $this->userId,
+                ':token_hash' => hash('sha256', 'expired-' . $this->username),
+                ':ip' => $this->ip,
+            ]
+        )->queryScalar();
+        Yii::$app->db->createCommand(
+            "INSERT INTO sessions(user_id, token_hash, ip, user_agent, expires_at, revoked_at)
+             VALUES (:user_id, :token_hash, :ip, 'revoked test session', now() + interval '1 hour', now())",
+            [
+                ':user_id' => $this->userId,
+                ':token_hash' => hash('sha256', 'revoked-' . $this->username),
+                ':ip' => $this->ip,
+            ]
+        )->execute();
+
+        $sessions = $service->listSessions($this->userId);
+        $this->assertCount(1, $sessions);
+        $this->assertSame($activeSessionId, $sessions[0]['id']);
+        $this->assertSame($this->userId, $sessions[0]['user_id']);
+        $this->assertArrayNotHasKey('token_hash', $sessions[0]);
+
+        $this->assertTrue($service->revokeSession($this->userId, $expiredSessionId));
+        $this->assertTrue($service->revokeSession($this->userId, $activeSessionId));
+        $this->assertSame([], $service->listSessions($this->userId));
+        $this->assertNull($service->userBySession($login['cookie']->value));
+    }
+
     private function request(): Request
     {
         $_SERVER['REMOTE_ADDR'] = $this->ip;

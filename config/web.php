@@ -94,7 +94,7 @@ return [
                 'GET api/v1/auth/me' => 'auth/me',
                 'GET api/v1/auth/sessions' => 'auth/sessions',
                 'DELETE api/v1/auth/sessions' => 'auth/revoke-all-sessions',
-                'DELETE api/v1/auth/sessions/<id:[0-9a-fA-F-]+>' => 'auth/revoke-session',
+                'DELETE api/v1/auth/sessions/<id:[^/]+>' => 'auth/revoke-session',
                 'GET api/v1/users/<userID:[0-9a-fA-F-]+>/roles' => 'rbac/list-user-roles',
                 'POST api/v1/users/<userID:[0-9a-fA-F-]+>/roles' => 'rbac/assign-user-role',
                 'DELETE api/v1/users/<userID:[0-9a-fA-F-]+>/roles/<roleID:[0-9a-fA-F-]+>' => 'rbac/remove-user-role',

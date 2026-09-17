@@ -174,8 +174,9 @@ class AuthService
     public function listSessions(string $userId): array
     {
         return Session::find()
-            ->select(['id', 'ip', 'user_agent', 'expires_at', 'revoked_at', 'created_at'])
-            ->where(['user_id' => $userId])
+            ->select(['id', 'user_id', 'ip', 'user_agent', 'expires_at', 'revoked_at', 'created_at'])
+            ->where(['user_id' => $userId, 'revoked_at' => null])
+            ->andWhere(['>', 'expires_at', new Expression('now()')])
             ->orderBy(['created_at' => SORT_DESC])
             ->asArray()
             ->all();
