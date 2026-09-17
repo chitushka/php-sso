@@ -290,6 +290,16 @@ try {
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
     $createdClientIds[] = $client['json']['id'];
 
+    $unknownOAuthClientField = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
+        'name' => 'Unknown field client ' . $suffix,
+        'client_id' => 'unknown-field-client-' . $suffix,
+        'type' => 'confidential',
+        'redirect_uris' => ['http://localhost/unknown-field-cb'],
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownOAuthClientField['status'] === 400, 'OAuth client JSON with unknown field must return 400');
+    assertTrue(($unknownOAuthClientField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client field must match Go error');
+
     foreach ([
         ['GET', '/api/v1/oauth/clients/not-a-uuid'],
         ['PUT', '/api/v1/oauth/clients/not-a-uuid'],
@@ -310,6 +320,15 @@ try {
     );
     assertTrue($missingClient['status'] === 404, 'missing OAuth client must return 404');
     assertTrue(($missingClient['json']['error'] ?? '') === 'client not found', 'missing OAuth client must match Go error');
+
+    $unknownOAuthUpdateField = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/oauth/clients/00000000-0000-0000-0000-000000000000',
+        ['type' => 'public'],
+        $adminToken
+    );
+    assertTrue($unknownOAuthUpdateField['status'] === 400, 'OAuth client update with Go-unknown type field must return 400');
+    assertTrue(($unknownOAuthUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client update field must match Go error');
 
     $missingConfidentialClient = jsonRequest(
         'POST',
@@ -861,6 +880,14 @@ try {
     assertTrue($missingIdentityUrls['status'] === 400, 'OIDC provider without URLs must return 400');
     assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match Go error');
 
+    $unknownIdentityProviderField = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => 'unknown-idp-' . $suffix,
+        'client_id' => 'unknown-idp-client-' . $suffix,
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownIdentityProviderField['status'] === 400, 'identity provider JSON with unknown field must return 400');
+    assertTrue(($unknownIdentityProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider field must match Go error');
+
     foreach (['PUT', 'DELETE'] as $method) {
         $invalidIdentityProviderId = jsonRequest(
             $method,
@@ -916,6 +943,43 @@ try {
     ], $adminToken);
     assertTrue($duplicateIdentityProvider['status'] === 409, 'duplicate identity provider code must return 409');
     assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match Go error');
+
+    $unknownIdentityUpdateField = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/identity-providers/00000000-0000-0000-0000-000000000000',
+        ['unexpected' => true],
+        $adminToken
+    );
+    assertTrue($unknownIdentityUpdateField['status'] === 400, 'identity provider update with unknown field must return 400');
+    assertTrue(($unknownIdentityUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider update field must match Go error');
+
+    $unknownLdapProviderField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+        'name' => 'Unknown LDAP field',
+        'host' => 'ldap.example.test',
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownLdapProviderField['status'] === 400, 'LDAP provider JSON with unknown field must return 400');
+    assertTrue(($unknownLdapProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP provider field must match Go error');
+
+    $unknownLdapTestField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers/test', [
+        'host' => 'ldap.example.test',
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownLdapTestField['status'] === 400, 'LDAP test JSON with unknown field must return 400');
+    assertTrue(($unknownLdapTestField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP test field must match Go error');
+
+    $unknownLdapMappingField = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000/group-mappings',
+        [
+            'ldap_group' => 'cn=unknown,dc=example,dc=test',
+            'group_id' => '00000000-0000-0000-0000-000000000000',
+            'unexpected' => true,
+        ],
+        $adminToken
+    );
+    assertTrue($unknownLdapMappingField['status'] === 400, 'LDAP mapping JSON with unknown field must return 400');
+    assertTrue(($unknownLdapMappingField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP mapping field must match Go error');
 
     foreach ([
         ['PUT', '/api/v1/ldap/providers/not-a-uuid'],

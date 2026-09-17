@@ -8,6 +8,22 @@ use yii\web\Response;
 
 class BrokerController extends ApiController
 {
+    private const PROVIDER_FIELDS = [
+        'id',
+        'code',
+        'name',
+        'type',
+        'client_id',
+        'client_secret',
+        'authorize_url',
+        'token_url',
+        'userinfo_url',
+        'scopes',
+        'enabled',
+        'created_at',
+        'updated_at',
+    ];
+
     public function actionPublicProviders(): array
     {
         return (new BrokerService())->publicProviders();
@@ -64,7 +80,7 @@ class BrokerController extends ApiController
             return $user;
         }
 
-        $result = (new BrokerService())->createProvider($this->body());
+        $result = (new BrokerService())->createProvider($this->body(self::PROVIDER_FIELDS));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -80,7 +96,7 @@ class BrokerController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
-        $result = (new BrokerService())->updateProvider($id, $this->body());
+        $result = (new BrokerService())->updateProvider($id, $this->body(self::PROVIDER_FIELDS));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

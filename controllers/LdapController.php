@@ -7,6 +7,34 @@ use Yii;
 
 class LdapController extends ApiController
 {
+    private const PROVIDER_FIELDS = [
+        'id',
+        'name',
+        'host',
+        'port',
+        'use_tls',
+        'start_tls',
+        'bind_dn',
+        'bind_password',
+        'base_dn',
+        'user_filter',
+        'username_attribute',
+        'email_attribute',
+        'display_name_attribute',
+        'group_attribute',
+        'enabled',
+        'created_at',
+        'updated_at',
+    ];
+
+    private const GROUP_MAPPING_FIELDS = [
+        'id',
+        'provider_id',
+        'ldap_group',
+        'group_id',
+        'created_at',
+    ];
+
     private function service(): LdapService
     {
         return new LdapService();
@@ -25,7 +53,7 @@ class LdapController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createProvider($this->body(), $auth->id);
+        $result = $this->service()->createProvider($this->body(self::PROVIDER_FIELDS), $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -41,7 +69,7 @@ class LdapController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
-        $result = $this->service()->updateProvider($id, $this->body(), $auth->id);
+        $result = $this->service()->updateProvider($id, $this->body(self::PROVIDER_FIELDS), $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -67,7 +95,7 @@ class LdapController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->test($this->body());
+        $result = $this->service()->test($this->body(self::PROVIDER_FIELDS));
         if (!$result['ok']) {
             return $this->fail(400, $result['error']);
         }
@@ -100,7 +128,7 @@ class LdapController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
-        $result = $this->service()->createGroupMapping($id, $this->body(), $auth->id);
+        $result = $this->service()->createGroupMapping($id, $this->body(self::GROUP_MAPPING_FIELDS), $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

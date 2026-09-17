@@ -8,6 +8,28 @@ use Yii;
 
 class OAuthController extends ApiController
 {
+    private const CREATE_CLIENT_FIELDS = [
+        'client_id',
+        'name',
+        'type',
+        'redirect_uris',
+        'allowed_scopes',
+        'post_logout_redirect_uris',
+        'backchannel_logout_uri',
+        'skip_consent',
+        'enabled',
+    ];
+
+    private const UPDATE_CLIENT_FIELDS = [
+        'name',
+        'redirect_uris',
+        'allowed_scopes',
+        'post_logout_redirect_uris',
+        'backchannel_logout_uri',
+        'skip_consent',
+        'enabled',
+    ];
+
     public function actionListClients(): array
     {
         $auth = $this->requirePermission('oauth_clients', 'read');
@@ -25,7 +47,7 @@ class OAuthController extends ApiController
             return $auth;
         }
 
-        $result = (new OAuthService())->createClient($this->body());
+        $result = (new OAuthService())->createClient($this->body(self::CREATE_CLIENT_FIELDS));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -60,7 +82,7 @@ class OAuthController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
-        $result = (new OAuthService())->updateClient($id, $this->body());
+        $result = (new OAuthService())->updateClient($id, $this->body(self::UPDATE_CLIENT_FIELDS));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
