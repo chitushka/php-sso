@@ -140,7 +140,9 @@ class AuthService
             return null;
         }
 
-        if ($user->tokens_invalid_before && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)) {
+        if (empty($claims['client_id'])
+            && $user->tokens_invalid_before
+            && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)) {
             return null;
         }
 

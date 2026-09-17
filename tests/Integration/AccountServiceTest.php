@@ -6,6 +6,7 @@ use app\models\OneTimeToken;
 use app\models\User;
 use app\services\AccountService;
 use app\services\AuthService;
+use app\services\JwtService;
 use PHPUnit\Framework\TestCase;
 use Yii;
 use yii\console\Application;
@@ -64,6 +65,10 @@ class AccountServiceTest extends TestCase
         ], $this->request());
         $this->assertTrue($login['ok']);
         $this->assertSame(1, $this->activeSessionCount());
+        $externalAccessToken = (new JwtService())->issue($this->userId, [
+            'client_id' => 'external-account-test-client',
+            'scope' => 'openid profile',
+        ]);
 
         Yii::$app->db->createCommand(
             "INSERT INTO refresh_tokens(token_hash,family_id,user_id,client_id,scope,expires_at)
@@ -85,6 +90,10 @@ class AccountServiceTest extends TestCase
         $this->assertSame(0, $this->activeSessionCount());
         $this->assertSame(0, $this->activeRefreshTokenCount());
         $this->assertNull($auth->currentUser($this->bearerRequest($login['data']['access_token'])));
+        $this->assertSame(
+            $this->userId,
+            $auth->currentUser($this->bearerRequest($externalAccessToken))->id
+        );
 
         $updated = User::findOne(['id' => $this->userId]);
         $this->assertTrue(password_verify('new-password-123', (string)$updated->password_hash));
@@ -93,6 +102,11 @@ class AccountServiceTest extends TestCase
         $reuse = (new AccountService())->resetPassword($rawToken, 'another-password-123');
         $this->assertSame(400, $reuse['status']);
         $this->assertSame('invalid or expired token', $reuse['data']['error']);
+
+        Yii::$app->db->createCommand()->update('users', [
+            'status' => User::STATUS_BLOCKED,
+        ], ['id' => $this->userId])->execute();
+        $this->assertNull($auth->currentUser($this->bearerRequest($externalAccessToken)));
     }
 
     public function testVerifyEmailConsumesTokenAndActivatesPendingUser(): void

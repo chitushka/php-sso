@@ -827,6 +827,16 @@ try {
     assertTrue($repeatedMfaDisable['status'] === 400, 'repeated MFA disable must return 400');
     assertTrue(($repeatedMfaDisable['json']['error'] ?? '') === 'mfa is not in the required state', 'repeated MFA disable must match Go error');
 
+    $finalRevokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $mfaVerify['json']['access_token']);
+    assertTrue($finalRevokeAll['status'] === 200, 'final revoke all must return 200');
+
+    $firstPartyAfterRevokeAll = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
+    assertTrue($firstPartyAfterRevokeAll['status'] === 401, 'revoke all must invalidate first-party token');
+
+    $externalTokenAfterRevokeAll = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', [], $token['json']['access_token']);
+    assertTrue($externalTokenAfterRevokeAll['status'] === 200, 'revoke all must preserve external OAuth access token');
+    assertTrue(($externalTokenAfterRevokeAll['json']['sub'] ?? '') === $adminId, 'preserved external token must still resolve its user');
+
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {
     foreach ($createdClientIds as $clientId) {
