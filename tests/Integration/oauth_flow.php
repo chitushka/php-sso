@@ -628,6 +628,66 @@ try {
     assertTrue($duplicateGroup['status'] === 409, 'duplicate group code must return 409');
     assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match Go error');
 
+    foreach ([
+        ['PUT', '/api/v1/groups/not-a-uuid'],
+        ['DELETE', '/api/v1/groups/not-a-uuid'],
+        ['GET', '/api/v1/groups/not-a-uuid/roles'],
+        ['POST', '/api/v1/groups/not-a-uuid/roles'],
+        ['DELETE', '/api/v1/groups/not-a-uuid/roles/not-a-uuid'],
+    ] as $invalidGroupRequest) {
+        [$method, $path] = $invalidGroupRequest;
+        $invalidGroupId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidGroupId['status'] === 400, $method . ' group path with invalid id must return 400');
+        assertTrue(($invalidGroupId['json']['error'] ?? '') === 'invalid group id', $method . ' group path must match Go error');
+    }
+
+    $invalidGroupRolePath = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/groups/00000000-0000-0000-0000-000000000000/roles/not-a-uuid',
+        [],
+        $adminToken
+    );
+    assertTrue($invalidGroupRolePath['status'] === 400, 'invalid group role path id must return 400');
+    assertTrue(($invalidGroupRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid group role path id must match Go error');
+
+    $invalidGroupRoleBody = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/groups/00000000-0000-0000-0000-000000000000/roles',
+        ['role_id' => 'not-a-uuid'],
+        $adminToken
+    );
+    assertTrue($invalidGroupRoleBody['status'] === 400, 'invalid group role body id must return 400');
+    assertTrue(($invalidGroupRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid group role body id must match Go error');
+
+    foreach ([
+        ['GET', '/api/v1/users/not-a-uuid/groups'],
+        ['POST', '/api/v1/users/not-a-uuid/groups'],
+        ['DELETE', '/api/v1/users/not-a-uuid/groups/not-a-uuid'],
+    ] as $invalidUserGroupRequest) {
+        [$method, $path] = $invalidUserGroupRequest;
+        $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidUserId['status'] === 400, $method . ' user-group path with invalid user id must return 400');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-group path must match Go error');
+    }
+
+    $invalidUserGroupPath = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000/groups/not-a-uuid',
+        [],
+        $adminToken
+    );
+    assertTrue($invalidUserGroupPath['status'] === 400, 'invalid user-group group id must return 400');
+    assertTrue(($invalidUserGroupPath['json']['error'] ?? '') === 'invalid group id', 'invalid user-group group id must match Go error');
+
+    $invalidUserGroupBody = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000/groups',
+        ['group_id' => 'not-a-uuid'],
+        $adminToken
+    );
+    assertTrue($invalidUserGroupBody['status'] === 400, 'invalid user-group body id must return 400');
+    assertTrue(($invalidUserGroupBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-group body id must match Go error');
+
     $badAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=not-a-uuid', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
