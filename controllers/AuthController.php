@@ -70,7 +70,7 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        if (!preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $id)) {
+        if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid session id');
         }
 

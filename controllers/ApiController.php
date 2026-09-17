@@ -46,6 +46,14 @@ class ApiController extends Controller
         return array_merge(['error' => $message], $extra);
     }
 
+    protected function isUuid(string $value): bool
+    {
+        return (bool)preg_match(
+            '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/',
+            $value
+        );
+    }
+
     protected function requirePermission(string $resource, string $action)
     {
         $user = (new AuthService())->currentUser(Yii::$app->request);

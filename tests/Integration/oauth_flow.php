@@ -554,6 +554,21 @@ try {
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
 
+    foreach (['GET', 'PUT', 'DELETE'] as $method) {
+        $invalidUserId = jsonRequest($method, $baseUrl . '/api/v1/users/not-a-uuid', [], $adminToken);
+        assertTrue($invalidUserId['status'] === 400, $method . ' user with invalid id must return 400');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid id', $method . ' user with invalid id must match Go error');
+    }
+
+    $missingUser = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000',
+        [],
+        $adminToken
+    );
+    assertTrue($missingUser['status'] === 404, 'missing user must return 404');
+    assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match Go error');
+
     $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => '',
         'name' => '',

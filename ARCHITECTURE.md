@@ -28,7 +28,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 
 - `BootstrapController` — первичная инициализация администратора.
 - `AuthController` + `AuthService` — локальный вход, cookie-сессии, Bearer JWT, отзыв сессий.
-- `UsersController` — административный CRUD пользователей и soft delete; создание возвращает Go-compatible 400 для пустых username/email и 409 для конфликта username.
+- `UsersController` — административный CRUD пользователей и soft delete; создание возвращает Go-compatible 400 для пустых username/email и 409 для конфликта username, path UUID валидируются до PostgreSQL-запроса, pagination использует Go-границу limit 100.
 - `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям; create role/group возвращает Go-compatible 400 для пустых code/name и 409 для конфликта code.
 - `GroupsController` — группы, роли групп и членство пользователей в группах.
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
@@ -69,6 +69,8 @@ JWT содержит время с точностью до секунды, а Po
 
 `ApiController` применяет общий лимит тела запроса и вызывает `RateLimitService` для `auth/login`, `bootstrap/create`, `oauth/token`, `oauth/revoke`, `oauth/introspect`.
 
+`ApiController::isUuid()` централизует синтаксическую проверку UUID path-параметров. URL rules пропускают произвольный непустой сегмент в соответствующий controller, чтобы невалидный UUID возвращал JSON-ошибку API, а не попадал в Vue SPA fallback.
+
 `ApiController::requirePermission()` загружает пользователя по Bearer JWT и проверяет право через `RbacService`. `RbacService` учитывает как прямые роли из `user_roles`, так и роли, унаследованные через `user_groups -> group_roles`.
 
 LDAP bind password сохраняется в `ldap_providers.bind_password` в формате `v1:<base64>` через `CryptoService`. Ответы API не возвращают секрет. При update пустой `bind_password` сохраняет уже записанный секрет.
@@ -95,7 +97,7 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `GET /metrics` отдаёт Go-compatible Prometheus text exposition с `sso_http_requests_total`, `sso_http_inflight`, `sso_http_request_duration_seconds_sum` и `sso_http_requests_processed_total`. В PHP-порте counters хранятся через Yii2 cache, поэтому для нескольких app-инстансов рекомендуется `SSO_CACHE_DRIVER=db`.
 
-`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет OIDC Discovery/JWKS, login, session list/revoke/revoke-all, сохранение внешнего OAuth access token после revoke-all и invalid session UUID, OAuth2 Authorization Code + PKCE, `client_secret_post` и `client_secret_basic`, одноразовость authorization code, RS256 `id_token` claims, UserInfo scope filtering, introspection active/inactive token, revocation refresh token, client_credentials token contract, consent-required/grant flow, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts для authorize/token/revoke/introspect, затем удаляет созданные записи. Цель `make integration` поднимает встроенный PHP server с высоким test-local rate limit, чтобы расширенный smoke flow проверял endpoint-контракты без ложных 429.
+`tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет OIDC Discovery/JWKS, login, Users GET/PUT/DELETE invalid UUID и missing user contracts, session list/revoke/revoke-all, сохранение внешнего OAuth access token после revoke-all и invalid session UUID, OAuth2 Authorization Code + PKCE, `client_secret_post` и `client_secret_basic`, одноразовость authorization code, RS256 `id_token` claims, UserInfo scope filtering, introspection active/inactive token, revocation refresh token, client_credentials token contract, consent-required/grant flow, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts для authorize/token/revoke/introspect, затем удаляет созданные записи. Цель `make integration` поднимает встроенный PHP server с высоким test-local rate limit, чтобы расширенный smoke flow проверял endpoint-контракты без ложных 429.
 
 `tests/Integration/oauth_client.php` — dependency-free внешний RP client flow, запускаемый через `make integration-client`. Сценарий читает OIDC Discovery, формирует authorize URL, проверяет callback redirect/state, обменивает code через `client_secret_basic`, валидирует базовые `id_token` claims, вызывает UserInfo, refresh token и RP-initiated logout. Для тестового сервера цель задаёт `SSO_ISSUER=http://127.0.0.1:8081`, чтобы discovery endpoint-ы указывали на локальный app.
 

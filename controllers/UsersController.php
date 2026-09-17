@@ -17,7 +17,10 @@ class UsersController extends ApiController
             return $auth;
         }
 
-        $limit = min(max((int)Yii::$app->request->get('limit', 50), 1), 200);
+        $limit = (int)Yii::$app->request->get('limit', 50);
+        if ($limit <= 0 || $limit > 100) {
+            $limit = 50;
+        }
         $offset = max((int)Yii::$app->request->get('offset', 0), 0);
 
         return array_map(static function (User $user) {
@@ -30,6 +33,10 @@ class UsersController extends ApiController
         $auth = $this->requirePermission('users', 'read');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         $user = User::findOne(['id' => $id]);
@@ -83,6 +90,10 @@ class UsersController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         $user = User::findOne(['id' => $id]);
         if (!$user) {
             return $this->fail(404, 'user not found');
@@ -113,6 +124,10 @@ class UsersController extends ApiController
         $auth = $this->requirePermission('users', 'delete');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         $user = User::findOne(['id' => $id]);
