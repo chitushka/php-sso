@@ -142,11 +142,49 @@ class MfaService
 
     public function verifyLoginChallenge(string $challengeToken, string $code): ?User
     {
-        if ($challengeToken === '' || $code === '') {
+        $user = $this->loginChallengeUser($challengeToken);
+        if (!$user || !$this->completeLoginChallenge($challengeToken, $user, $code)) {
             return null;
         }
 
-        $challenge = OneTimeToken::find()
+        return $user;
+    }
+
+    public function loginChallengeUser(string $challengeToken): ?User
+    {
+        $challenge = $this->activeLoginChallenge($challengeToken);
+        if (!$challenge) {
+            return null;
+        }
+
+        return User::findOne([
+            'id' => $challenge->user_id,
+            'status' => User::STATUS_ACTIVE,
+            'mfa_enabled' => true,
+        ]);
+    }
+
+    public function completeLoginChallenge(string $challengeToken, User $user, string $code): bool
+    {
+        $challenge = $this->activeLoginChallenge($challengeToken);
+        if (!$challenge || $challenge->user_id !== $user->id || !$this->verifyUserCode($user, $code)) {
+            return false;
+        }
+
+        $challenge->used_at = new Expression('now()');
+        $challenge->save(false, ['used_at']);
+        AuditService::record($user->id, 'mfa_login_verified', 'user', $user->id);
+
+        return true;
+    }
+
+    private function activeLoginChallenge(string $challengeToken): ?OneTimeToken
+    {
+        if ($challengeToken === '') {
+            return null;
+        }
+
+        return OneTimeToken::find()
             ->where([
                 'token_hash' => hash('sha256', $challengeToken),
                 'purpose' => OneTimeToken::PURPOSE_MFA_LOGIN,
@@ -154,20 +192,6 @@ class MfaService
             ])
             ->andWhere(['>', 'expires_at', new Expression('now()')])
             ->one();
-        if (!$challenge) {
-            return null;
-        }
-
-        $user = User::findOne(['id' => $challenge->user_id, 'status' => User::STATUS_ACTIVE]);
-        if (!$user || !$user->mfa_enabled || !$this->verifyUserCode($user, $code)) {
-            return null;
-        }
-
-        $challenge->used_at = new Expression('now()');
-        $challenge->save(false, ['used_at']);
-        AuditService::record($user->id, 'mfa_login_verified', 'user', $user->id);
-
-        return $user;
     }
 
     private function verifyUserCode(User $user, string $code): bool

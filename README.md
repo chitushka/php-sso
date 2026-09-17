@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: MFA login verification выровнен с Go-контрактом: invalid token и invalid code различаются, неверные коды участвуют в login/IP lockout, успешная MFA-проверка сбрасывает попытки; поведение закреплено PostgreSQL PHPUnit и HTTP smoke-тестами.
 - 2026-09-17: Session API выровнен с Go-сервисом: список показывает только активные неистёкшие сессии и включает `user_id`, невалидный session UUID возвращает 400, а list/revoke/revoke-all и инвалидизация Bearer JWT закреплены PHPUnit и HTTP smoke-проверками.
 - 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
 - 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.

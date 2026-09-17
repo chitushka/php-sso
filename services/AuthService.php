@@ -55,14 +55,26 @@ class AuthService
     public function verifyMfaLogin(array $body, Request $request): array
     {
         $mfaToken = (string)($body['mfa_token'] ?? $body['challenge_token'] ?? '');
-        $user = (new MfaService())->verifyLoginChallenge(
-            $mfaToken,
-            (string)($body['code'] ?? '')
-        );
+        $mfa = new MfaService();
+        $user = $mfa->loginChallengeUser($mfaToken);
         if (!$user) {
-            return ['ok' => false, 'status' => 401, 'error' => 'invalid mfa challenge or code'];
+            return ['ok' => false, 'status' => 401, 'error' => 'invalid mfa token'];
         }
 
+        $login = (string)$user->username;
+        $ip = (string)$request->userIP;
+        if ($this->isLocked($login, $ip)) {
+            AuditService::record($user->id, 'login_locked', 'user', $login);
+            return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
+        }
+
+        if (!$mfa->completeLoginChallenge($mfaToken, $user, (string)($body['code'] ?? ''))) {
+            $this->recordFailure($login, $ip);
+            AuditService::record($user->id, 'login_failed', 'user', $login);
+            return ['ok' => false, 'status' => 401, 'error' => 'invalid code'];
+        }
+
+        $this->resetFailures($login, $ip);
         return $this->issueLogin($user, $request);
     }
 

@@ -669,6 +669,20 @@ try {
     assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return Go-compatible mfa_token');
     assertTrue(($mfaLogin['json']['challenge_token'] ?? '') === $mfaLogin['json']['mfa_token'], 'MFA password step must keep challenge_token alias');
 
+    $invalidMfaToken = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
+        'mfa_token' => 'unknown-token',
+        'code' => 'not-a-code',
+    ]);
+    assertTrue($invalidMfaToken['status'] === 401, 'invalid MFA token must return 401');
+    assertTrue(($invalidMfaToken['json']['error'] ?? '') === 'invalid mfa token', 'invalid MFA token must match Go error');
+
+    $invalidMfaCode = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
+        'mfa_token' => $mfaLogin['json']['mfa_token'],
+        'code' => 'not-a-code',
+    ]);
+    assertTrue($invalidMfaCode['status'] === 401, 'invalid MFA code must return 401');
+    assertTrue(($invalidMfaCode['json']['error'] ?? '') === 'invalid code', 'invalid MFA code must match Go error');
+
     $mfaVerify = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],
         'code' => totpCode($mfaEnroll['json']['secret'], $mfaCounter + 1),

@@ -4,6 +4,7 @@ namespace tests\Integration;
 
 use app\models\User;
 use app\services\AuthService;
+use app\services\MfaService;
 use PHPUnit\Framework\TestCase;
 use Yii;
 use yii\console\Application;
@@ -138,6 +139,59 @@ class AuthServiceTest extends TestCase
         $this->assertNull($service->userBySession($login['cookie']->value));
     }
 
+    public function testMfaVerificationDistinguishesTokenCodeAndLockout(): void
+    {
+        $mfa = new MfaService();
+        $user = User::findOne(['id' => $this->userId]);
+        $setup = $mfa->setup($user);
+        $enabled = $mfa->enable(
+            User::findOne(['id' => $this->userId]),
+            $setup['secret'],
+            $this->totpCode($setup['secret'])
+        );
+        $recoveryCode = $enabled['data']['recovery_codes'][0];
+        $challenge = $mfa->createLoginChallenge(User::findOne(['id' => $this->userId]));
+
+        $service = new AuthService();
+        $request = $this->request();
+        $invalidToken = $service->verifyMfaLogin([
+            'mfa_token' => 'unknown-token',
+            'code' => $recoveryCode,
+        ], $request);
+        $this->assertSame(401, $invalidToken['status']);
+        $this->assertSame('invalid mfa token', $invalidToken['error']);
+        $this->assertSame(0, $this->loginAttemptCount());
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $invalidCode = $service->verifyMfaLogin([
+                'mfa_token' => $challenge['mfa_token'],
+                'code' => 'not-a-code',
+            ], $request);
+            $this->assertSame(401, $invalidCode['status']);
+            $this->assertSame('invalid code', $invalidCode['error']);
+        }
+        $this->assertSame(1, $this->loginAttemptCount());
+
+        $locked = $service->verifyMfaLogin([
+            'mfa_token' => $challenge['mfa_token'],
+            'code' => $recoveryCode,
+        ], $request);
+        $this->assertSame(429, $locked['status']);
+        $this->assertSame('too many failed attempts, try again later', $locked['error']);
+
+        Yii::$app->db->createCommand()->delete('login_attempts', [
+            'username' => $this->username,
+            'ip' => $this->ip,
+        ])->execute();
+        $verified = $service->verifyMfaLogin([
+            'mfa_token' => $challenge['mfa_token'],
+            'code' => $recoveryCode,
+        ], $request);
+        $this->assertTrue($verified['ok']);
+        $this->assertSame($this->userId, $verified['data']['user']['id']);
+        $this->assertSame(0, $this->loginAttemptCount());
+    }
+
     private function request(): Request
     {
         $_SERVER['REMOTE_ADDR'] = $this->ip;
@@ -149,6 +203,32 @@ class AuthServiceTest extends TestCase
         $request->headers->set('User-Agent', 'PHPUnit AuthServiceTest');
 
         return $request;
+    }
+
+    private function totpCode(string $secret): string
+    {
+        $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+        $bits = '';
+        foreach (str_split(strtoupper($secret)) as $char) {
+            $position = strpos($alphabet, $char);
+            if ($position !== false) {
+                $bits .= str_pad(decbin($position), 5, '0', STR_PAD_LEFT);
+            }
+        }
+
+        $secretBytes = '';
+        foreach (str_split($bits, 8) as $chunk) {
+            if (strlen($chunk) === 8) {
+                $secretBytes .= chr(bindec($chunk));
+            }
+        }
+
+        $counter = (int)floor(time() / 30);
+        $hash = hash_hmac('sha1', pack('N*', 0, $counter), $secretBytes, true);
+        $offset = ord(substr($hash, -1)) & 0x0f;
+        $value = unpack('N', substr($hash, $offset, 4))[1] & 0x7fffffff;
+
+        return str_pad((string)($value % 1000000), 6, '0', STR_PAD_LEFT);
     }
 
     private function loginAttemptCount(): int
