@@ -2,6 +2,7 @@
 
 namespace app\controllers;
 
+use Throwable;
 use Yii;
 
 class HealthController extends ApiController
@@ -13,7 +14,12 @@ class HealthController extends ApiController
 
     public function actionReady(): array
     {
-        Yii::$app->db->createCommand('SELECT 1')->queryScalar();
+        try {
+            Yii::$app->db->createCommand('SELECT 1')->queryScalar();
+        } catch (Throwable $exception) {
+            return $this->fail(503, 'database unavailable');
+        }
+
         return ['status' => 'ready'];
     }
 

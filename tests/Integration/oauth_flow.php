@@ -182,6 +182,18 @@ function createUser(\yii\db\Connection $db, string $username, string $password):
 }
 
 try {
+    $live = httpRequest('GET', $baseUrl . '/health/live');
+    assertTrue($live['status'] === 200, 'liveness endpoint must return 200');
+    assertTrue(($live['json']['status'] ?? '') === 'ok', 'liveness endpoint must return Go-compatible status');
+
+    $ready = httpRequest('GET', $baseUrl . '/health/ready');
+    assertTrue($ready['status'] === 200, 'readiness endpoint must return 200 while PostgreSQL is available');
+    assertTrue(($ready['json']['status'] ?? '') === 'ready', 'readiness endpoint must return Go-compatible status');
+
+    $version = httpRequest('GET', $baseUrl . '/health/version');
+    assertTrue($version['status'] === 200, 'version endpoint must return 200');
+    assertTrue(is_string($version['json']['version'] ?? null), 'version endpoint must return a version string');
+
     $adminId = createUser($db, $adminUsername, $password);
     $createdUserIds[] = $adminId;
     $db->createCommand(

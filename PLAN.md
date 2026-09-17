@@ -13,6 +13,8 @@
 
 Статус: выполнено.
 
+Health-check контракт завершён: live/version сохраняют публичные ответы Go, readiness проверяет PostgreSQL и возвращает 503 `database unavailable` при сбое; успешные probes покрыты HTTP smoke, отказ БД — unit-тестом.
+
 ## Этап 2. Базовая авторизация
 
 - Перенести bootstrap первого администратора.
