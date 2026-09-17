@@ -54,6 +54,7 @@ class OAuthClientServiceTest extends TestCase
             'allowed_scopes' => ['openid', 'profile'],
             'post_logout_redirect_uris' => ['https://rp.example.test/logout'],
             'skip_consent' => true,
+            'enabled' => true,
         ]);
 
         $this->assertSame(201, $result['status']);
@@ -90,6 +91,7 @@ class OAuthClientServiceTest extends TestCase
             'type' => OAuthClient::TYPE_PUBLIC,
             'redirect_uris' => ['https://rp.example.test/callback'],
             'allowed_scopes' => ['openid'],
+            'enabled' => true,
         ]);
         $this->assertSame(201, $created['status']);
         $this->assertArrayNotHasKey('client_secret', $created['data']);
@@ -108,5 +110,25 @@ class OAuthClientServiceTest extends TestCase
         $this->assertSame(['openid', 'email'], $updated['data']['allowed_scopes']);
         $this->assertSame(['https://rp.example.test/signed-out'], $updated['data']['post_logout_redirect_uris']);
         $this->assertTrue($updated['data']['skip_consent']);
+        $this->assertFalse($updated['data']['enabled']);
+        $this->assertSame(OAuthClient::TYPE_PUBLIC, $updated['data']['type']);
+    }
+
+    public function testCreateClientUsesGoZeroValueDefaults(): void
+    {
+        $clientId = $this->prefix . '_defaults';
+        $this->clientIds[] = $clientId;
+
+        $created = (new OAuthService())->createClient([
+            'client_id' => $clientId,
+            'name' => 'PHPUnit default client',
+        ]);
+
+        $this->assertSame(201, $created['status']);
+        $this->assertSame(OAuthClient::TYPE_CONFIDENTIAL, $created['data']['type']);
+        $this->assertFalse($created['data']['enabled']);
+        $this->assertSame([], $created['data']['redirect_uris']);
+        $this->assertSame([], $created['data']['allowed_scopes']);
+        $this->assertSame([], $created['data']['post_logout_redirect_uris']);
     }
 }

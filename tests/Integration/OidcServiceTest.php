@@ -138,6 +138,7 @@ class OidcServiceTest extends TestCase
             'redirect_uris' => ['https://rp.example.test/callback'],
             'allowed_scopes' => ['openid', 'profile'],
             'post_logout_redirect_uris' => ['https://rp.example.test/signed-out'],
+            'enabled' => true,
         ]);
         $this->assertSame(201, $created['status']);
         $this->clientDbIds[] = (string)$created['data']['id'];

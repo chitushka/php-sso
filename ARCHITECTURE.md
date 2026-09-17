@@ -36,7 +36,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `MfaService` — TOTP setup/enable/disable, Go-compatible `enroll`/`activate` aliases, одноразовые recovery codes и MFA challenge для login.
 - `AccountService` + `MailService` — password forgot/reset/change, email verification и доставка reset/verification ссылок через SMTP или лог в dev-режиме.
 - `BrokerController` + `BrokerService` — identity brokering для Google/GitHub/generic OIDC, admin CRUD identity providers с Go-compatible ошибками создания, signed state, callback, linking/JIT provisioning federated users.
-- `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent; административные client CRUD/rotate-secret маршруты валидируют path UUID до обращения к PostgreSQL.
+- `OAuthController` + `OAuthService` — OAuth-клиенты, authorization code, refresh, revoke, introspect, consent; административные client CRUD/rotate-secret маршруты валидируют path UUID до обращения к PostgreSQL. Create возвращает Go-обёртку `{client, client_secret}`, использует zero values (`enabled=false`, пустые массивы) для пропущенных полей; update полностью заменяет поля `UpdateClientInput` и не меняет тип клиента.
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с Go-compatible валидацией фильтров `actor`, `from`, `to`.
 - `AuditService` — запись важных событий.

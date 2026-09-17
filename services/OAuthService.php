@@ -28,15 +28,15 @@ class OAuthService
     public function createClient(array $body): array
     {
         $client = new OAuthClient();
-        $client->client_id = trim((string)($body['client_id'] ?? '')) ?: 'client_' . strtolower(bin2hex(random_bytes(6)));
-        $client->name = trim((string)($body['name'] ?? $client->client_id));
+        $client->client_id = (string)($body['client_id'] ?? '');
+        $client->name = (string)($body['name'] ?? '');
         $client->type = (string)($body['type'] ?? OAuthClient::TYPE_CONFIDENTIAL);
         $client->redirect_uris = OAuthClient::toPgArray((array)($body['redirect_uris'] ?? []));
-        $client->allowed_scopes = OAuthClient::toPgArray((array)($body['allowed_scopes'] ?? ['openid', 'profile', 'email']));
+        $client->allowed_scopes = OAuthClient::toPgArray((array)($body['allowed_scopes'] ?? []));
         $client->post_logout_redirect_uris = OAuthClient::toPgArray((array)($body['post_logout_redirect_uris'] ?? []));
         $client->backchannel_logout_uri = (string)($body['backchannel_logout_uri'] ?? '');
         $client->skip_consent = (bool)($body['skip_consent'] ?? false);
-        $client->enabled = true;
+        $client->enabled = (bool)($body['enabled'] ?? false);
 
         $plainSecret = null;
         if ($client->type === OAuthClient::TYPE_CONFIDENTIAL) {
@@ -64,17 +64,13 @@ class OAuthService
             return ['status' => 404, 'data' => ['error' => 'client not found']];
         }
 
-        foreach (['name', 'type', 'backchannel_logout_uri', 'enabled', 'skip_consent'] as $field) {
-            if (array_key_exists($field, $body)) {
-                $client->{$field} = $body[$field];
-            }
-        }
-
-        foreach (['redirect_uris', 'allowed_scopes', 'post_logout_redirect_uris'] as $field) {
-            if (array_key_exists($field, $body)) {
-                $client->{$field} = OAuthClient::toPgArray((array)$body[$field]);
-            }
-        }
+        $client->name = (string)($body['name'] ?? '');
+        $client->redirect_uris = OAuthClient::toPgArray((array)($body['redirect_uris'] ?? []));
+        $client->allowed_scopes = OAuthClient::toPgArray((array)($body['allowed_scopes'] ?? []));
+        $client->post_logout_redirect_uris = OAuthClient::toPgArray((array)($body['post_logout_redirect_uris'] ?? []));
+        $client->backchannel_logout_uri = (string)($body['backchannel_logout_uri'] ?? '');
+        $client->skip_consent = (bool)($body['skip_consent'] ?? false);
+        $client->enabled = (bool)($body['enabled'] ?? false);
 
         if (!$client->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];

@@ -285,9 +285,14 @@ try {
         'allowed_scopes' => ['openid', 'profile', 'email'],
         'post_logout_redirect_uris' => ['http://localhost/logout-cb'],
         'skip_consent' => true,
+        'enabled' => true,
     ], $adminToken);
     assertTrue($client['status'] === 201, 'create oauth client must return 201');
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
+    assertTrue(isset($client['json']['client']), 'create oauth client must return Go-compatible nested client');
+    $clientSecret = $client['json']['client_secret'];
+    $client['json'] = $client['json']['client'];
+    $client['json']['client_secret'] = $clientSecret;
     $createdClientIds[] = $client['json']['id'];
 
     $unknownOAuthClientField = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
@@ -570,8 +575,11 @@ try {
         'redirect_uris' => ['http://localhost/consent-cb'],
         'allowed_scopes' => ['openid', 'profile'],
         'skip_consent' => false,
+        'enabled' => true,
     ], $adminToken);
     assertTrue($consentClient['status'] === 201, 'create consent oauth client must return 201');
+    assertTrue(isset($consentClient['json']['client']), 'create consent client must return nested client');
+    $consentClient['json'] = $consentClient['json']['client'];
     $createdClientIds[] = $consentClient['json']['id'];
 
     $consentAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
@@ -1181,8 +1189,11 @@ try {
         'redirect_uris' => ['http://localhost/public-cb'],
         'allowed_scopes' => ['openid', 'profile'],
         'skip_consent' => true,
+        'enabled' => true,
     ], $adminToken);
     assertTrue($publicClient['status'] === 201, 'create public oauth client must return 201');
+    assertTrue(isset($publicClient['json']['client']), 'create public client must return nested client');
+    $publicClient['json'] = $publicClient['json']['client'];
     $createdClientIds[] = $publicClient['json']['id'];
 
     $missingPkceUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([

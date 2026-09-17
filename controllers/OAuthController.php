@@ -50,7 +50,19 @@ class OAuthController extends ApiController
 
         $result = (new OAuthService())->createClient($this->body(self::CREATE_CLIENT_FIELDS));
         Yii::$app->response->statusCode = $result['status'];
-        return $result['data'];
+        if ($result['status'] !== 201) {
+            return $result['data'];
+        }
+
+        $client = $result['data'];
+        $secret = $client['client_secret'] ?? null;
+        unset($client['client_secret']);
+
+        $data = ['client' => $client];
+        if ($secret !== null) {
+            $data['client_secret'] = $secret;
+        }
+        return $data;
     }
 
     public function actionGetClient(string $id): array

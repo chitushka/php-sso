@@ -821,7 +821,8 @@ const app = Vue.createApp({
         client_id: this.clientForm.client_id,
         type: this.clientForm.type,
         redirect_uris: this.clientForm.redirects.split('\n').map(v => v.trim()).filter(Boolean),
-        allowed_scopes: ['openid', 'profile', 'email']
+        allowed_scopes: ['openid', 'profile', 'email'],
+        enabled: true
       };
       const data = await this.api('/api/v1/oauth/clients', { method: 'POST', body: JSON.stringify(payload) });
       this.message = data.client_secret ? 'Client secret: ' + data.client_secret : 'Client created';

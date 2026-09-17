@@ -179,6 +179,7 @@ class OAuthTokenServiceTest extends TestCase
             'redirect_uris' => ['https://rp.example.test/callback'],
             'allowed_scopes' => ['profile'],
             'skip_consent' => true,
+            'enabled' => true,
         ]);
         $this->assertSame(201, $created['status']);
         $this->clientDbIds[] = (string)$created['data']['id'];

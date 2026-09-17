@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: OAuth client create/update semantics выровнены с Go: create возвращает `{client, client_secret}`, пропущенные enabled/array-поля получают zero values, update выполняет полную замену разрешённых полей и сохраняет `type`; UI явно создаёт включённых клиентов.
 - 2026-09-17: OAuth consent JSON-контракт выровнен с Go: разрешены только `client_id` и `scope`, а malformed/non-object/unknown-field body возвращает RFC-style 400 `invalid_request` с описанием `invalid json body`.
 - 2026-09-17: OAuth clients, Identity Providers и LDAP provider/test/group-mapping JSON payloads выровнены с Go `DisallowUnknownFields`; OAuth client update больше не принимает отсутствующее в Go поле `type`.
 - 2026-09-17: Users/Roles/Groups CRUD и assignment JSON payloads выровнены с Go `DisallowUnknownFields`; user update больше не принимает отсутствующие в Go поля `password` и `email_verified`, а лишние ключи возвращают 400 `invalid json body`.
