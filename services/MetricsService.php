@@ -2,13 +2,14 @@
 
 namespace app\services;
 
+use app\components\MetricRoute;
 use Yii;
 use yii\web\Request;
 use yii\web\Response;
 
 class MetricsService
 {
-    private const KEY_REQUESTS = 'metrics:http_requests';
+    private const KEY_REQUESTS = 'metrics:v2:http_requests';
     private const KEY_INFLIGHT = 'metrics:http_inflight';
     private const KEY_DURATION_SUM = 'metrics:http_duration_sum';
     private const KEY_TOTAL = 'metrics:http_total';
@@ -91,8 +92,10 @@ class MetricsService
 
     private function routeLabel(): string
     {
-        $route = (string)(Yii::$app->requestedRoute ?: Yii::$app->request->pathInfo);
-        return $route !== '' ? $route : '/';
+        return MetricRoute::label(
+            (string)Yii::$app->requestedRoute,
+            (string)Yii::$app->request->pathInfo
+        );
     }
 
     private function escapeLabel(string $value): string

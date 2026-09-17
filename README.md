@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: Prometheus route labels выровнены с chi-шаблонами Go (`/api/v1/oauth/clients/{id}` и другие); внутренние Yii route names и реальные UUID больше не попадают в метрики, а версионированный cache key отсекает ранее накопленные серии.
 - 2026-09-17: bootstrap первого администратора выровнен с Go: обязательные identity-поля проверяются до пароля, исходные значения сохраняются без trim, `email_verified=false`, аудит использует `bootstrap_completed`; PostgreSQL-сценарий покрыт откатываемой транзакцией.
 - 2026-09-17: health readiness выровнен с Go: недоступная PostgreSQL возвращает 503 `database unavailable`; live/ready/version покрыты HTTP smoke flow и unit-тестом отказа БД.
 - 2026-09-17: Audit API выровнен с Go по строгой проверке actor UUID, поддержке дробных секунд в RFC3339-фильтрах и pagination semantics: невалидный или превышающий 200 `limit` сбрасывается к 50.

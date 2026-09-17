@@ -387,6 +387,10 @@ try {
     assertTrue($metrics['status'] === 200, 'metrics endpoint must return 200');
     assertTrue(strpos((string)$metrics['body'], '# TYPE sso_http_requests_total counter') !== false, 'metrics endpoint must expose request counter');
     assertTrue(strpos((string)$metrics['body'], 'sso_http_requests_processed_total') !== false, 'metrics endpoint must expose processed counter');
+    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}"') !== false, 'metrics must expose Go-compatible dynamic route template');
+    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}/rotate-secret"') !== false, 'metrics must preserve nested Go route template');
+    assertTrue(strpos((string)$metrics['body'], 'route="oauth/get-client"') === false, 'metrics must not expose internal Yii route names');
+    assertTrue(strpos((string)$metrics['body'], '00000000-0000-0000-0000-000000000000') === false, 'metrics route labels must not contain resource UUIDs');
 
     $jwks = httpRequest('GET', $baseUrl . '/.well-known/jwks.json', [
         'headers' => ['Accept: application/json'],

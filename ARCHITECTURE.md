@@ -45,7 +45,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `AuditService` — запись важных событий.
 - `CryptoService` — AES-256-GCM шифрование секретов без Composer-зависимостей.
 - `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
-- `MetricsService` — dependency-free Prometheus text метрики HTTP-запросов на `/metrics`, сохранённые через Yii2 cache.
+- `MetricsService` + `MetricRoute` — dependency-free Prometheus text метрики HTTP-запросов на `/metrics`, сохранённые через Yii2 cache. Route labels преобразуются из внутренних Yii routes в публичные chi-совместимые шаблоны Go; path UUID не создают высокую кардинальность.
 - `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
 - `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
@@ -102,7 +102,7 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
 
-`GET /metrics` отдаёт Go-compatible Prometheus text exposition с `sso_http_requests_total`, `sso_http_inflight`, `sso_http_request_duration_seconds_sum` и `sso_http_requests_processed_total`. В PHP-порте counters хранятся через Yii2 cache, поэтому для нескольких app-инстансов рекомендуется `SSO_CACHE_DRIVER=db`.
+`GET /metrics` отдаёт Go-compatible Prometheus text exposition с `sso_http_requests_total`, `sso_http_inflight`, `sso_http_request_duration_seconds_sum` и `sso_http_requests_processed_total`. Labels `route` используют публичные chi-шаблоны (`{id}`, `{userID}`, `{roleID}` и другие), а SPA fallback получает `other`. В PHP-порте counters хранятся через Yii2 cache, поэтому для нескольких app-инстансов рекомендуется `SSO_CACHE_DRIVER=db`.
 
 `tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет OIDC Discovery/JWKS, login, malformed/non-object JSON contracts, Users GET/PUT/DELETE invalid UUID и missing user contracts, Roles CRUD/permissions/user-role invalid UUID contracts, Groups CRUD/group-role/user-group invalid UUID contracts, Identity Provider PUT/DELETE invalid UUID и missing provider contracts, LDAP provider/mapping invalid UUID и missing resource contracts, OAuth client GET/PUT/DELETE/rotate-secret invalid UUID и missing client contracts, session list/revoke/revoke-all, сохранение внешнего OAuth access token после revoke-all и invalid session UUID, OAuth2 Authorization Code + PKCE, `client_secret_post` и `client_secret_basic`, одноразовость authorization code, RS256 `id_token` claims, UserInfo scope filtering, introspection active/inactive token, revocation refresh token, client_credentials token contract, consent-required/grant flow, RP logout redirect validation, refresh rotation/reuse detection, RBAC enforcement и базовые OAuth error contracts для authorize/token/revoke/introspect, затем удаляет созданные записи. Цель `make integration` поднимает встроенный PHP server с высоким test-local rate limit, чтобы расширенный smoke flow проверял endpoint-контракты без ложных 429.
 
