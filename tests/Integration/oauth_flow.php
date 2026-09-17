@@ -606,6 +606,15 @@ try {
     assertTrue($missingUserFields['status'] === 400, 'create user without username/email must return 400');
     assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match Go error');
 
+    $unknownUserField = jsonRequest('POST', $baseUrl . '/api/v1/users', [
+        'username' => 'unknown-field-' . $suffix,
+        'email' => 'unknown-field-' . $suffix . '@example.test',
+        'password' => $password,
+        'email_verified' => true,
+    ], $adminToken);
+    assertTrue($unknownUserField['status'] === 400, 'create user JSON with unknown field must return 400');
+    assertTrue(($unknownUserField['json']['error'] ?? '') === 'invalid json body', 'unknown user field must match Go error');
+
     $duplicateUser = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => $plainLogin['json']['user']['username'],
         'email' => 'duplicate-' . $suffix . '@example.test',
@@ -629,12 +638,29 @@ try {
     assertTrue($missingUser['status'] === 404, 'missing user must return 404');
     assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match Go error');
 
+    $unknownUserUpdateField = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000',
+        ['password' => $password],
+        $adminToken
+    );
+    assertTrue($unknownUserUpdateField['status'] === 400, 'update user JSON with Go-unknown password field must return 400');
+    assertTrue(($unknownUserUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown user update field must match Go error');
+
     $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => '',
         'name' => '',
     ], $adminToken);
     assertTrue($missingRoleFields['status'] === 400, 'create role without code/name must return 400');
     assertTrue(($missingRoleFields['json']['error'] ?? '') === 'role code and name are required', 'create role without code/name must match Go error');
+
+    $unknownRoleField = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
+        'code' => 'unknown-role-' . $suffix,
+        'name' => 'Unknown role field',
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownRoleField['status'] === 400, 'create role JSON with unknown field must return 400');
+    assertTrue(($unknownRoleField['json']['error'] ?? '') === 'invalid json body', 'unknown role field must match Go error');
 
     $duplicateRole = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => 'admin',
@@ -675,6 +701,21 @@ try {
     assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match Go error');
 
     foreach ([
+        ['/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions', 'permission_id'],
+        ['/api/v1/users/00000000-0000-0000-0000-000000000000/roles', 'role_id'],
+        ['/api/v1/groups/00000000-0000-0000-0000-000000000000/roles', 'role_id'],
+        ['/api/v1/users/00000000-0000-0000-0000-000000000000/groups', 'group_id'],
+    ] as $unknownAssignmentRequest) {
+        [$path, $idField] = $unknownAssignmentRequest;
+        $unknownAssignmentField = jsonRequest('POST', $baseUrl . $path, [
+            $idField => '00000000-0000-0000-0000-000000000000',
+            'unexpected' => true,
+        ], $adminToken);
+        assertTrue($unknownAssignmentField['status'] === 400, $path . ' with unknown field must return 400');
+        assertTrue(($unknownAssignmentField['json']['error'] ?? '') === 'invalid json body', $path . ' unknown field must match Go error');
+    }
+
+    foreach ([
         ['GET', '/api/v1/users/not-a-uuid/roles'],
         ['POST', '/api/v1/users/not-a-uuid/roles'],
         ['DELETE', '/api/v1/users/not-a-uuid/roles/not-a-uuid'],
@@ -709,6 +750,14 @@ try {
     ], $adminToken);
     assertTrue($group['status'] === 201, 'create group must return 201');
     $createdGroupIds[] = $group['json']['id'];
+
+    $unknownGroupField = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
+        'code' => 'unknown-group-' . $suffix,
+        'name' => 'Unknown group field',
+        'unexpected' => true,
+    ], $adminToken);
+    assertTrue($unknownGroupField['status'] === 400, 'create group JSON with unknown field must return 400');
+    assertTrue(($unknownGroupField['json']['error'] ?? '') === 'invalid json body', 'unknown group field must match Go error');
 
     $duplicateGroup = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => $group['json']['code'],

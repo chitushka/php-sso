@@ -25,7 +25,7 @@ class RbacController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createRole($this->body());
+        $result = $this->service()->createRole($this->body(['code', 'name', 'description']));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -41,7 +41,7 @@ class RbacController extends ApiController
             return $this->fail(400, 'invalid role id');
         }
 
-        $result = $this->service()->updateRole($roleID, $this->body());
+        $result = $this->service()->updateRole($roleID, $this->body(['name', 'description']));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -93,7 +93,7 @@ class RbacController extends ApiController
             return $this->fail(400, 'invalid role id');
         }
 
-        $permissionId = (string)($this->body()['permission_id'] ?? '');
+        $permissionId = (string)($this->body(['permission_id'])['permission_id'] ?? '');
         if ($permissionId !== '' && !$this->isUuid($permissionId)) {
             return $this->fail(400, 'invalid json body');
         }
@@ -145,7 +145,7 @@ class RbacController extends ApiController
             return $this->fail(400, 'invalid user id');
         }
 
-        $roleId = (string)($this->body()['role_id'] ?? '');
+        $roleId = (string)($this->body(['role_id'])['role_id'] ?? '');
         if ($roleId !== '' && !$this->isUuid($roleId)) {
             return $this->fail(400, 'invalid json body');
         }

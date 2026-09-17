@@ -50,7 +50,15 @@ class UsersController extends ApiController
             return $auth;
         }
 
-        $body = $this->body();
+        $body = $this->body([
+            'username',
+            'email',
+            'password',
+            'status',
+            'first_name',
+            'last_name',
+            'attributes',
+        ]);
         if (trim((string)($body['username'] ?? '')) === '' || trim((string)($body['email'] ?? '')) === '') {
             return $this->fail(400, 'username and email are required');
         }
@@ -94,22 +102,20 @@ class UsersController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
+        $body = $this->body([
+            'username',
+            'email',
+            'status',
+            'first_name',
+            'last_name',
+            'attributes',
+        ]);
         $user = User::findOne(['id' => $id]);
         if (!$user) {
             return $this->fail(404, 'user not found');
         }
 
-        $body = $this->body();
         $this->fillUser($user, $body);
-
-        if (!empty($body['password'])) {
-            $passwordError = PasswordPolicy::validate((string)$body['password']);
-            if ($passwordError !== null) {
-                return $this->fail(400, $passwordError);
-            }
-            $user->password_hash = password_hash((string)$body['password'], PASSWORD_DEFAULT);
-            $user->tokens_invalid_before = new Expression('now()');
-        }
 
         if (!$user->save()) {
             return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);

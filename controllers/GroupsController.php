@@ -25,7 +25,7 @@ class GroupsController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createGroup($this->body());
+        $result = $this->service()->createGroup($this->body(['code', 'name', 'description']));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -41,7 +41,7 @@ class GroupsController extends ApiController
             return $this->fail(400, 'invalid group id');
         }
 
-        $result = $this->service()->updateGroup($groupID, $this->body());
+        $result = $this->service()->updateGroup($groupID, $this->body(['name', 'description']));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -85,7 +85,7 @@ class GroupsController extends ApiController
             return $this->fail(400, 'invalid group id');
         }
 
-        $roleId = (string)($this->body()['role_id'] ?? '');
+        $roleId = (string)($this->body(['role_id'])['role_id'] ?? '');
         if ($roleId !== '' && !$this->isUuid($roleId)) {
             return $this->fail(400, 'invalid json body');
         }
@@ -137,7 +137,7 @@ class GroupsController extends ApiController
             return $this->fail(400, 'invalid user id');
         }
 
-        $groupId = (string)($this->body()['group_id'] ?? '');
+        $groupId = (string)($this->body(['group_id'])['group_id'] ?? '');
         if ($groupId !== '' && !$this->isUuid($groupId)) {
             return $this->fail(400, 'invalid json body');
         }
