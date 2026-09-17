@@ -218,6 +218,22 @@ try {
     assertTrue($arrayResetBody['status'] === 400, 'non-object account JSON must return 400');
     assertTrue(($arrayResetBody['json']['error'] ?? '') === 'invalid json body', 'non-object account JSON must match Go error');
 
+    $unknownLoginField = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $adminUsername,
+        'password' => $password,
+        'unexpected' => true,
+    ]);
+    assertTrue($unknownLoginField['status'] === 400, 'login JSON with unknown field must return 400');
+    assertTrue(($unknownLoginField['json']['error'] ?? '') === 'invalid json body', 'unknown login field must match Go error');
+
+    $unknownResetField = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
+        'token' => 'unknown-token',
+        'password' => $password,
+        'unexpected' => true,
+    ]);
+    assertTrue($unknownResetField['status'] === 400, 'password reset JSON with unknown field must return 400');
+    assertTrue(($unknownResetField['json']['error'] ?? '') === 'invalid json body', 'unknown password reset field must match Go error');
+
     $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
         'password' => $password,
@@ -926,6 +942,14 @@ try {
     assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
     assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return Go-compatible mfa_token');
     assertTrue(($mfaLogin['json']['challenge_token'] ?? '') === $mfaLogin['json']['mfa_token'], 'MFA password step must keep challenge_token alias');
+
+    $unknownMfaField = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
+        'mfa_token' => $mfaLogin['json']['mfa_token'],
+        'code' => 'not-a-code',
+        'challenge_token' => $mfaLogin['json']['mfa_token'],
+    ]);
+    assertTrue($unknownMfaField['status'] === 400, 'MFA verify JSON with unknown field must return 400');
+    assertTrue(($unknownMfaField['json']['error'] ?? '') === 'invalid json body', 'unknown MFA verify field must match Go error');
 
     $invalidMfaToken = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => 'unknown-token',

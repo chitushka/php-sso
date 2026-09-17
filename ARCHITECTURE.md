@@ -71,7 +71,7 @@ JWT содержит время с точностью до секунды, а Po
 
 `ApiController::isUuid()` централизует синтаксическую проверку UUID path-параметров. URL rules Users, Sessions, Roles/Permissions, Groups, Identity Providers, LDAP Providers и административных OAuth clients пропускают произвольный непустой сегмент в соответствующий controller, чтобы невалидный UUID возвращал JSON-ошибку API, а не попадал в Vue SPA fallback. В permission/group/role assignment POST невалидный UUID из JSON соответствует Go decode error `invalid json body`; составные user-role, user-group и group-role маршруты валидируют идентификаторы слева направо, как исходные handlers. Identity provider PUT/DELETE возвращают `invalid id` до service/DB слоя и `provider not found` для отсутствующего UUID. LDAP provider PUT/DELETE/list/create mappings используют `invalid id`; DELETE mapping повторяет Go handler, валидируя только `mappingID` как `invalid mapping id` и не используя parent provider ID. OAuth client GET/PUT/DELETE/rotate-secret возвращают `invalid id` до service/DB слоя; rotate-secret отдельно сохраняет Go-ошибку `confidential client not found` для отсутствующего клиента.
 
-`app\components\JsonParser` нормализует ошибки malformed и non-object JSON до Go-compatible `400 {"error":"invalid json body"}`. Parser вызывается лениво через `Request::getBodyParams()`, поэтому path UUID продолжает валидироваться раньше body на тех маршрутах, где такой порядок задан исходным Go handler. JSON `null` сохраняет поведение Go decoder для struct и преобразуется в пустой набор параметров.
+`app\components\JsonParser` нормализует ошибки malformed и non-object JSON до Go-compatible `400 {"error":"invalid json body"}`. Parser вызывается лениво через `Request::getBodyParams()`, поэтому path UUID продолжает валидироваться раньше body на тех маршрутах, где такой порядок задан исходным Go handler. JSON `null` сохраняет поведение Go decoder для struct и преобразуется в пустой набор параметров. `ApiController::body()` дополнительно принимает allowlist полей: auth/account/bootstrap actions используют её как эквивалент Go `json.Decoder.DisallowUnknownFields()` и отклоняют лишние ключи той же ошибкой до бизнес-логики.
 
 `ApiController::requirePermission()` загружает пользователя по Bearer JWT и проверяет право через `RbacService`. `RbacService` учитывает как прямые роли из `user_roles`, так и роли, унаследованные через `user_groups -> group_roles`.
 
@@ -124,6 +124,8 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 ## UI
 
 Админский интерфейс обслуживается Yii2 маршрутом `AdminController::actionIndex()` и использует VueJS на одной странице. Текущий UI покрывает bootstrap, login с MFA challenge и external sign-in buttons, forgot/reset password, account profile/password/email verification, OAuth clients, identity providers, users, roles, permissions, groups, LDAP providers, audit и базовое управление MFA текущего аккаунта. Формы назначений работают поверх RBAC API: роли пользователям, группы пользователям, permissions ролям и роли группам. Следующие UI-страницы должны переноситься по модулям: production/admin maintenance и тестовые сценарии совместимости.
+
+Vue MFA flow использует канонический Go-контракт: читает и отправляет `mfa_token`, вызывает `/api/v1/auth/mfa/enroll` и `/activate`, а activate body содержит только `code`. Старые PHP route/response aliases пока сохранены для обратной совместимости, но UI от них больше не зависит.
 
 ## Документация
 

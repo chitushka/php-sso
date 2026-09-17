@@ -11,7 +11,7 @@ class AuthController extends ApiController
 {
     public function actionLogin(): array
     {
-        $result = (new AuthService())->login($this->body(), Yii::$app->request);
+        $result = (new AuthService())->login($this->body(['username', 'password']), Yii::$app->request);
 
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
@@ -25,7 +25,7 @@ class AuthController extends ApiController
 
     public function actionVerifyMfa(): array
     {
-        $result = (new AuthService())->verifyMfaLogin($this->body(), Yii::$app->request);
+        $result = (new AuthService())->verifyMfaLogin($this->body(['mfa_token', 'code']), Yii::$app->request);
 
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
@@ -95,7 +95,7 @@ class AuthController extends ApiController
 
     public function actionForgotPassword(): array
     {
-        $login = trim((string)($this->body()['login'] ?? ''));
+        $login = trim((string)($this->body(['login'])['login'] ?? ''));
         if ($login === '') {
             return $this->fail(400, 'login is required');
         }
@@ -106,7 +106,7 @@ class AuthController extends ApiController
 
     public function actionResetPassword(): array
     {
-        $body = $this->body();
+        $body = $this->body(['token', 'password']);
         $result = (new AccountService())->resetPassword(
             (string)($body['token'] ?? ''),
             (string)($body['password'] ?? '')
@@ -123,7 +123,7 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        $body = $this->body();
+        $body = $this->body(['old_password', 'new_password']);
         $result = (new AccountService())->changePassword(
             $user,
             (string)($body['old_password'] ?? ''),
@@ -141,7 +141,10 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        $result = (new AccountService())->updateProfile($user, $this->body());
+        $result = (new AccountService())->updateProfile(
+            $user,
+            $this->body(['first_name', 'last_name', 'attributes'])
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -160,7 +163,7 @@ class AuthController extends ApiController
 
     public function actionVerifyEmail(): array
     {
-        $result = (new AccountService())->verifyEmail((string)($this->body()['token'] ?? ''));
+        $result = (new AccountService())->verifyEmail((string)($this->body(['token'])['token'] ?? ''));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -186,10 +189,10 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        $body = $this->body();
+        $body = $this->body(['code']);
         $result = (new MfaService())->enable(
             $user,
-            (string)($body['secret'] ?? ''),
+            '',
             (string)($body['code'] ?? '')
         );
         Yii::$app->response->statusCode = $result['status'];
@@ -203,7 +206,7 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        $result = (new MfaService())->disable($user, (string)($this->body()['code'] ?? ''));
+        $result = (new MfaService())->disable($user, (string)($this->body(['code'])['code'] ?? ''));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -215,7 +218,7 @@ class AuthController extends ApiController
             return $this->fail(401, 'invalid token');
         }
 
-        $result = (new MfaService())->regenerateRecoveryCodes($user, (string)($this->body()['code'] ?? ''));
+        $result = (new MfaService())->regenerateRecoveryCodes($user, (string)($this->body(['code'])['code'] ?? ''));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

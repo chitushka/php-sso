@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: Auth/account/bootstrap JSON payloads выровнены с Go `DisallowUnknownFields`: неизвестные поля возвращают 400 `invalid json body`; Vue MFA flow переведён с `challenge_token`/`secret` на `mfa_token` и `/enroll`/`/activate`.
 - 2026-09-17: JSON body parsing выровнен с Go: malformed JSON и JSON-массивы/скаляры на object endpoints возвращают компактный 400 `invalid json body`, при этом сохраняется исходный порядок path UUID и body validation.
 - 2026-09-17: LDAP provider PUT/DELETE и group-mapping path UUID выровнены с Go: API возвращает `invalid id`/`invalid mapping id`, корректные отсутствующие UUID дают 404, а delete mapping сохраняет исходную семантику без проверки parent provider ID.
 - 2026-09-17: Identity Provider PUT/DELETE path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, корректный отсутствующий UUID — 404 `provider not found`.

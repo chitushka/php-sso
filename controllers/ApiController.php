@@ -6,6 +6,7 @@ use app\services\RateLimitService;
 use app\services\AuthService;
 use app\services\RbacService;
 use Yii;
+use yii\web\BadRequestHttpException;
 use yii\web\Controller;
 use yii\web\Response;
 
@@ -35,9 +36,14 @@ class ApiController extends Controller
         return parent::beforeAction($action);
     }
 
-    protected function body(): array
+    protected function body(array $allowedFields = []): array
     {
-        return Yii::$app->request->bodyParams ?: [];
+        $body = Yii::$app->request->bodyParams ?: [];
+        if ($allowedFields !== [] && array_diff(array_keys($body), $allowedFields) !== []) {
+            throw new BadRequestHttpException('invalid json body');
+        }
+
+        return $body;
     }
 
     protected function fail(int $status, string $message, array $extra = []): array

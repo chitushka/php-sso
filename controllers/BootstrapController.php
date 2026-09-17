@@ -23,7 +23,7 @@ class BootstrapController extends ApiController
             return $this->fail(409, 'system already initialized');
         }
 
-        $body = $this->body();
+        $body = $this->body(['username', 'email', 'password']);
         $password = (string)($body['password'] ?? '');
         $passwordError = PasswordPolicy::validate($password);
 

@@ -666,7 +666,7 @@ const app = Vue.createApp({
     async login() {
       const data = await this.api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(this.loginForm) });
       if (data.mfa_required) {
-        this.mfaChallenge = data.challenge_token;
+        this.mfaChallenge = data.mfa_token;
         this.message = 'MFA verification required';
         return;
       }
@@ -765,7 +765,7 @@ const app = Vue.createApp({
     async verifyMfaLogin() {
       const data = await this.api('/api/v1/auth/mfa/verify', {
         method: 'POST',
-        body: JSON.stringify({ challenge_token: this.mfaChallenge, code: this.mfaLoginForm.code })
+        body: JSON.stringify({ mfa_token: this.mfaChallenge, code: this.mfaLoginForm.code })
       });
       this.accessToken = data.access_token;
       localStorage.setItem('sso_access_token', this.accessToken);
@@ -783,13 +783,13 @@ const app = Vue.createApp({
       this.message = 'Signed out';
     },
     async setupMfa() {
-      this.mfaSetup = Object.assign({ code: '' }, await this.api('/api/v1/auth/mfa/setup', { method: 'POST' }));
+      this.mfaSetup = Object.assign({ code: '' }, await this.api('/api/v1/auth/mfa/enroll', { method: 'POST' }));
       this.mfaRecoveryCodes = [];
     },
     async enableMfa() {
-      const data = await this.api('/api/v1/auth/mfa/enable', {
+      const data = await this.api('/api/v1/auth/mfa/activate', {
         method: 'POST',
-        body: JSON.stringify({ secret: this.mfaSetup.secret, code: this.mfaSetup.code })
+        body: JSON.stringify({ code: this.mfaSetup.code })
       });
       this.mfaRecoveryCodes = data.recovery_codes || [];
       this.mfaSetup = { secret: '', otpauth_uri: '', code: '' };
