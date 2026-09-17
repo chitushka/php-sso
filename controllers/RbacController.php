@@ -37,6 +37,10 @@ class RbacController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
+        }
+
         $result = $this->service()->updateRole($roleID, $this->body());
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -47,6 +51,10 @@ class RbacController extends ApiController
         $auth = $this->requirePermission('roles', 'delete');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
         }
 
         $result = $this->service()->deleteRole($roleID);
@@ -63,7 +71,15 @@ class RbacController extends ApiController
     public function actionListRolePermissions(string $roleID): array
     {
         $auth = $this->requirePermission('permissions', 'read');
-        return is_array($auth) ? $auth : $this->service()->listRolePermissions($roleID);
+        if (is_array($auth)) {
+            return $auth;
+        }
+
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
+        }
+
+        return $this->service()->listRolePermissions($roleID);
     }
 
     public function actionAssignPermission(string $roleID): array
@@ -73,7 +89,16 @@ class RbacController extends ApiController
             return $auth;
         }
 
-        $this->service()->assignPermissionToRole($roleID, (string)($this->body()['permission_id'] ?? ''));
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
+        }
+
+        $permissionId = (string)($this->body()['permission_id'] ?? '');
+        if ($permissionId !== '' && !$this->isUuid($permissionId)) {
+            return $this->fail(400, 'invalid json body');
+        }
+
+        $this->service()->assignPermissionToRole($roleID, $permissionId);
         return ['status' => 'assigned'];
     }
 
@@ -82,6 +107,13 @@ class RbacController extends ApiController
         $auth = $this->requirePermission('permissions', 'assign');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($roleID)) {
+            return $this->fail(400, 'invalid role id');
+        }
+        if (!$this->isUuid($permissionID)) {
+            return $this->fail(400, 'invalid permission id');
         }
 
         $this->service()->removePermissionFromRole($roleID, $permissionID);

@@ -583,6 +583,37 @@ try {
     assertTrue($duplicateRole['status'] === 409, 'duplicate role code must return 409');
     assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match Go error');
 
+    foreach ([
+        ['PUT', '/api/v1/roles/not-a-uuid'],
+        ['DELETE', '/api/v1/roles/not-a-uuid'],
+        ['GET', '/api/v1/roles/not-a-uuid/permissions'],
+        ['POST', '/api/v1/roles/not-a-uuid/permissions'],
+        ['DELETE', '/api/v1/roles/not-a-uuid/permissions/not-a-uuid'],
+    ] as $invalidRoleRequest) {
+        [$method, $path] = $invalidRoleRequest;
+        $invalidRoleId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidRoleId['status'] === 400, $method . ' role path with invalid id must return 400');
+        assertTrue(($invalidRoleId['json']['error'] ?? '') === 'invalid role id', $method . ' role path must match Go error');
+    }
+
+    $invalidPermissionPath = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions/not-a-uuid',
+        [],
+        $adminToken
+    );
+    assertTrue($invalidPermissionPath['status'] === 400, 'invalid permission path id must return 400');
+    assertTrue(($invalidPermissionPath['json']['error'] ?? '') === 'invalid permission id', 'invalid permission path id must match Go error');
+
+    $invalidPermissionBody = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions',
+        ['permission_id' => 'not-a-uuid'],
+        $adminToken
+    );
+    assertTrue($invalidPermissionBody['status'] === 400, 'invalid permission body id must return 400');
+    assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match Go error');
+
     $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => 'itest-group-' . $suffix,
         'name' => 'Integration group ' . $suffix,
