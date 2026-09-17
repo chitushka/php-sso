@@ -76,6 +76,10 @@ class BrokerController extends ApiController
             return $user;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         $result = (new BrokerService())->updateProvider($id, $this->body());
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -86,6 +90,10 @@ class BrokerController extends ApiController
         $user = $this->requirePermission('identity_providers', 'delete');
         if (is_array($user)) {
             return $user;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         $result = (new BrokerService())->deleteProvider($id);

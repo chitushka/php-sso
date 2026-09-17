@@ -782,6 +782,28 @@ try {
     assertTrue($missingIdentityUrls['status'] === 400, 'OIDC provider without URLs must return 400');
     assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match Go error');
 
+    foreach (['PUT', 'DELETE'] as $method) {
+        $invalidIdentityProviderId = jsonRequest(
+            $method,
+            $baseUrl . '/api/v1/identity-providers/not-a-uuid',
+            [],
+            $adminToken
+        );
+        assertTrue($invalidIdentityProviderId['status'] === 400, $method . ' identity provider with invalid id must return 400');
+        assertTrue(($invalidIdentityProviderId['json']['error'] ?? '') === 'invalid id', $method . ' identity provider must match Go error');
+    }
+
+    foreach (['PUT', 'DELETE'] as $method) {
+        $missingIdentityProvider = jsonRequest(
+            $method,
+            $baseUrl . '/api/v1/identity-providers/00000000-0000-0000-0000-000000000000',
+            [],
+            $adminToken
+        );
+        assertTrue($missingIdentityProvider['status'] === 404, $method . ' missing identity provider must return 404');
+        assertTrue(($missingIdentityProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing identity provider must match Go error');
+    }
+
     $identityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => 'itest-idp-' . $suffix,
         'name' => 'Integration identity provider ' . $suffix,

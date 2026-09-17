@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: Identity Provider PUT/DELETE path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, корректный отсутствующий UUID — 404 `provider not found`.
 - 2026-09-17: OAuth client GET/PUT/DELETE/rotate-secret path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, отсутствующий клиент — 404 `client not found`, а rotate-secret сохраняет отдельную ошибку `confidential client not found`.
 - 2026-09-17: User-role list/assign/remove path/body UUID выровнены с Go; API возвращает `invalid user id`, `invalid role id` и `invalid json body` до обращения к PostgreSQL.
 - 2026-09-17: Groups CRUD, group-role и user-group path/body UUID выровнены с Go; составные маршруты возвращают точные `invalid group id`, `invalid user id`, `invalid role id` и `invalid json body`.
