@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-17: JSON body parsing выровнен с Go: malformed JSON и JSON-массивы/скаляры на object endpoints возвращают компактный 400 `invalid json body`, при этом сохраняется исходный порядок path UUID и body validation.
 - 2026-09-17: LDAP provider PUT/DELETE и group-mapping path UUID выровнены с Go: API возвращает `invalid id`/`invalid mapping id`, корректные отсутствующие UUID дают 404, а delete mapping сохраняет исходную семантику без проверки parent provider ID.
 - 2026-09-17: Identity Provider PUT/DELETE path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, корректный отсутствующий UUID — 404 `provider not found`.
 - 2026-09-17: OAuth client GET/PUT/DELETE/rotate-secret path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, отсутствующий клиент — 404 `client not found`, а rotate-secret сохраняет отдельную ошибку `confidential client not found`.

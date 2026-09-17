@@ -33,10 +33,18 @@ return [
             'class' => app\components\TrustedRequest::class,
             'cookieValidationKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
             'parsers' => [
-                'application/json' => yii\web\JsonParser::class,
+                'application/json' => app\components\JsonParser::class,
             ],
         ],
         'response' => [
+            'on beforeSend' => static function ($event): void {
+                $exception = Yii::$app->errorHandler->exception;
+                if ($exception instanceof yii\web\BadRequestHttpException
+                    && $exception->getMessage() === 'invalid json body') {
+                    $event->sender->format = yii\web\Response::FORMAT_JSON;
+                    $event->sender->data = ['error' => 'invalid json body'];
+                }
+            },
             'formatters' => [
                 yii\web\Response::FORMAT_JSON => yii\web\JsonResponseFormatter::class,
             ],

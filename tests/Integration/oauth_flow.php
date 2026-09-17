@@ -204,6 +204,20 @@ try {
     $adminToken = $login['json']['access_token'];
     $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
 
+    $malformedLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '{"username":',
+    ]);
+    assertTrue($malformedLogin['status'] === 400, 'malformed login JSON must return 400');
+    assertTrue(($malformedLogin['json']['error'] ?? '') === 'invalid json body', 'malformed login JSON must match Go error');
+
+    $arrayResetBody = httpRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '[]',
+    ]);
+    assertTrue($arrayResetBody['status'] === 400, 'non-object account JSON must return 400');
+    assertTrue(($arrayResetBody['json']['error'] ?? '') === 'invalid json body', 'non-object account JSON must match Go error');
+
     $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
         'password' => $password,
@@ -794,12 +808,17 @@ try {
     }
 
     foreach (['PUT', 'DELETE'] as $method) {
-        $missingIdentityProvider = jsonRequest(
-            $method,
-            $baseUrl . '/api/v1/identity-providers/00000000-0000-0000-0000-000000000000',
-            [],
-            $adminToken
-        );
+        $missingIdentityProvider = $method === 'PUT'
+            ? httpRequest($method, $baseUrl . '/api/v1/identity-providers/00000000-0000-0000-0000-000000000000', [
+                'headers' => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $adminToken],
+                'body' => '{}',
+            ])
+            : jsonRequest(
+                $method,
+                $baseUrl . '/api/v1/identity-providers/00000000-0000-0000-0000-000000000000',
+                [],
+                $adminToken
+            );
         assertTrue($missingIdentityProvider['status'] === 404, $method . ' missing identity provider must return 404');
         assertTrue(($missingIdentityProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing identity provider must match Go error');
     }
@@ -846,12 +865,17 @@ try {
     }
 
     foreach (['PUT', 'DELETE'] as $method) {
-        $missingLdapProvider = jsonRequest(
-            $method,
-            $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000',
-            [],
-            $adminToken
-        );
+        $missingLdapProvider = $method === 'PUT'
+            ? httpRequest($method, $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000', [
+                'headers' => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $adminToken],
+                'body' => '{}',
+            ])
+            : jsonRequest(
+                $method,
+                $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000',
+                [],
+                $adminToken
+            );
         assertTrue($missingLdapProvider['status'] === 404, $method . ' missing LDAP provider must return 404');
         assertTrue(($missingLdapProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing LDAP provider must match Go error');
     }
