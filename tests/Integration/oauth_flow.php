@@ -18,6 +18,7 @@ $createdUserIds = [];
 $createdClientIds = [];
 $createdGroupIds = [];
 $createdProviderIds = [];
+$createdAuditActions = [];
 
 function failTest(string $message): void
 {
@@ -883,6 +884,12 @@ try {
     assertTrue($badAuditActor['status'] === 400, 'audit with invalid actor must return 400');
     assertTrue(($badAuditActor['json']['error'] ?? '') === 'invalid actor id', 'audit invalid actor must match Go error');
 
+    $malformedAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=------------------------------------', [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($malformedAuditActor['status'] === 400, 'audit with malformed 36-character actor must return 400');
+    assertTrue(($malformedAuditActor['json']['error'] ?? '') === 'invalid actor id', 'malformed audit actor must match Go error');
+
     $badAuditFrom = httpRequest('GET', $baseUrl . '/api/v1/audit?from=not-a-date', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
@@ -894,6 +901,56 @@ try {
     ]);
     assertTrue($badAuditTo['status'] === 400, 'audit with invalid to must return 400');
     assertTrue(($badAuditTo['json']['error'] ?? '') === 'invalid to, expected RFC3339', 'audit invalid to must match Go error');
+
+    $fractionalAuditRange = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
+        'from' => '2000-01-01T00:00:00.123456789Z',
+        'to' => '2999-01-01T00:00:00.987654321+00:00',
+    ]), [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($fractionalAuditRange['status'] === 200, 'audit must accept Go-compatible fractional RFC3339 timestamps');
+
+    $auditLimitAction = 'integration_audit_limit_' . $suffix;
+    $createdAuditActions[] = $auditLimitAction;
+    $auditRows = [];
+    for ($index = 0; $index < 55; $index++) {
+        $auditRows[] = [$auditLimitAction, 'integration', (string)$index];
+    }
+    $db->createCommand()->batchInsert(
+        'audit_logs',
+        ['action', 'target_type', 'target_id'],
+        $auditRows
+    )->execute();
+
+    foreach (['201', '-1', '12invalid'] as $invalidAuditLimit) {
+        $auditDefaultLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
+            'action' => $auditLimitAction,
+            'limit' => $invalidAuditLimit,
+        ]), [
+            'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+        ]);
+        assertTrue($auditDefaultLimit['status'] === 200, 'audit with invalid limit must return 200');
+        assertTrue(count($auditDefaultLimit['json'] ?? []) === 50, 'invalid audit limit must use Go default of 50');
+    }
+
+    $auditMaxLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
+        'action' => $auditLimitAction,
+        'limit' => '200',
+    ]), [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($auditMaxLimit['status'] === 200, 'audit with maximum limit must return 200');
+    assertTrue(count($auditMaxLimit['json'] ?? []) === 55, 'audit limit 200 must not be reduced to the default');
+
+    $auditLeadingZeroLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
+        'action' => $auditLimitAction,
+        'limit' => '000200',
+        'offset' => '12invalid',
+    ]), [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($auditLeadingZeroLimit['status'] === 200, 'audit must accept a numeric limit with leading zeroes');
+    assertTrue(count($auditLeadingZeroLimit['json'] ?? []) === 55, 'invalid audit offset must use Go default of zero');
 
     $missingIdentityFields = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => '',
@@ -1263,6 +1320,9 @@ try {
 
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {
+    foreach ($createdAuditActions as $action) {
+        $db->createCommand()->delete('audit_logs', ['action' => $action])->execute();
+    }
     foreach ($createdClientIds as $clientId) {
         $db->createCommand('DELETE FROM oauth_clients WHERE id = :id', [':id' => $clientId])->execute();
     }

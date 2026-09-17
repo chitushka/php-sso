@@ -4,7 +4,6 @@ namespace app\controllers;
 
 use app\models\AuditLog;
 use DateTimeImmutable;
-use DateTimeInterface;
 use Yii;
 
 class AuditController extends ApiController
@@ -21,7 +20,7 @@ class AuditController extends ApiController
 
         if ($request->get('actor')) {
             $actor = (string)$request->get('actor');
-            if (!preg_match('/^[0-9a-fA-F-]{36}$/', $actor)) {
+            if (!$this->isUuid($actor)) {
                 return $this->fail(400, 'invalid actor id');
             }
             $query->andWhere(['actor_user_id' => $actor]);
@@ -44,15 +43,67 @@ class AuditController extends ApiController
             $query->andWhere(['<=', 'created_at', $to->format('Y-m-d H:i:sP')]);
         }
 
-        $limit = min(max((int)$request->get('limit', 50), 1), 200);
-        $offset = max((int)$request->get('offset', 0), 0);
+        $limit = $this->parseInteger((string)$request->get('limit', ''));
+        if ($limit <= 0 || $limit > 200) {
+            $limit = 50;
+        }
+
+        $offset = $this->parseInteger((string)$request->get('offset', ''));
+        if ($offset < 0) {
+            $offset = 0;
+        }
 
         return $query->limit($limit)->offset($offset)->asArray()->all();
     }
 
     private function parseRfc3339(string $value): ?DateTimeImmutable
     {
-        $parsed = DateTimeImmutable::createFromFormat(DateTimeInterface::RFC3339, $value);
-        return $parsed instanceof DateTimeImmutable ? $parsed : null;
+        if (!preg_match(
+            '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/D',
+            $value,
+            $matches
+        )) {
+            return null;
+        }
+
+        $fraction = $matches[2] ?? '';
+        $zone = $matches[3] === 'Z' ? '+00:00' : $matches[3];
+        $normalized = $matches[1] . $zone;
+        $format = '!Y-m-d\TH:i:sP';
+        if ($fraction !== '') {
+            $normalized = $matches[1] . '.' . substr(str_pad($fraction, 6, '0'), 0, 6) . $zone;
+            $format = '!Y-m-d\TH:i:s.uP';
+        }
+
+        $parsed = DateTimeImmutable::createFromFormat($format, $normalized);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$parsed || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+            return null;
+        }
+
+        return $parsed;
+    }
+
+    private function parseInteger(string $value): int
+    {
+        if (!preg_match('/^[+-]?\d+$/D', $value)) {
+            return 0;
+        }
+
+        $negative = isset($value[0]) && $value[0] === '-';
+        $digits = ltrim($value, '+-0');
+        if ($digits === '') {
+            return 0;
+        }
+
+        $maximum = (string)PHP_INT_MAX;
+        if (strlen($digits) > strlen($maximum)
+            || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)
+        ) {
+            return 0;
+        }
+
+        $parsed = (int)$digits;
+        return $negative ? -$parsed : $parsed;
     }
 }
