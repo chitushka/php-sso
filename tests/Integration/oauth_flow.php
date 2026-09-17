@@ -833,6 +833,47 @@ try {
     assertTrue($duplicateIdentityProvider['status'] === 409, 'duplicate identity provider code must return 409');
     assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match Go error');
 
+    foreach ([
+        ['PUT', '/api/v1/ldap/providers/not-a-uuid'],
+        ['DELETE', '/api/v1/ldap/providers/not-a-uuid'],
+        ['GET', '/api/v1/ldap/providers/not-a-uuid/group-mappings'],
+        ['POST', '/api/v1/ldap/providers/not-a-uuid/group-mappings'],
+    ] as $invalidLdapProviderRequest) {
+        [$method, $path] = $invalidLdapProviderRequest;
+        $invalidLdapProviderId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
+        assertTrue($invalidLdapProviderId['status'] === 400, $method . ' LDAP provider path with invalid id must return 400');
+        assertTrue(($invalidLdapProviderId['json']['error'] ?? '') === 'invalid id', $method . ' LDAP provider path must match Go error');
+    }
+
+    foreach (['PUT', 'DELETE'] as $method) {
+        $missingLdapProvider = jsonRequest(
+            $method,
+            $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000',
+            [],
+            $adminToken
+        );
+        assertTrue($missingLdapProvider['status'] === 404, $method . ' missing LDAP provider must return 404');
+        assertTrue(($missingLdapProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing LDAP provider must match Go error');
+    }
+
+    $invalidLdapMappingId = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/not-a-uuid/group-mappings/not-a-uuid',
+        [],
+        $adminToken
+    );
+    assertTrue($invalidLdapMappingId['status'] === 400, 'LDAP mapping delete with invalid mapping id must return 400');
+    assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid mapping id', 'LDAP mapping delete must match Go mapping id error');
+
+    $missingLdapMapping = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/not-a-uuid/group-mappings/00000000-0000-0000-0000-000000000000',
+        [],
+        $adminToken
+    );
+    assertTrue($missingLdapMapping['status'] === 404, 'LDAP mapping delete must ignore parent id like Go and return 404');
+    assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'mapping not found', 'missing LDAP mapping must match Go error');
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');

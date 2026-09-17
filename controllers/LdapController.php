@@ -37,6 +37,10 @@ class LdapController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
         $result = $this->service()->updateProvider($id, $this->body(), $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -47,6 +51,10 @@ class LdapController extends ApiController
         $auth = $this->requirePermission('ldap', 'delete');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         return $this->service()->deleteProvider($id, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'provider not found');
@@ -70,7 +78,15 @@ class LdapController extends ApiController
     public function actionListGroupMappings(string $id): array
     {
         $auth = $this->requirePermission('ldap', 'read');
-        return is_array($auth) ? $auth : $this->service()->listGroupMappings($id);
+        if (is_array($auth)) {
+            return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
+
+        return $this->service()->listGroupMappings($id);
     }
 
     public function actionCreateGroupMapping(string $id): array
@@ -78,6 +94,10 @@ class LdapController extends ApiController
         $auth = $this->requirePermission('ldap', 'update');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
         }
 
         $result = $this->service()->createGroupMapping($id, $this->body(), $auth->id);
@@ -90,6 +110,10 @@ class LdapController extends ApiController
         $auth = $this->requirePermission('ldap', 'update');
         if (is_array($auth)) {
             return $auth;
+        }
+
+        if (!$this->isUuid($mappingID)) {
+            return $this->fail(400, 'invalid mapping id');
         }
 
         return $this->service()->deleteGroupMapping($mappingID, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
