@@ -106,7 +106,7 @@ function formRequest(string $url, array $payload, array $headers = []): array
 
 function basicAuthHeader(string $username, string $password): string
 {
-    return 'Authorization: Basic ' . base64_encode(rawurlencode($username) . ':' . rawurlencode($password));
+    return 'Authorization: Basic ' . base64_encode(urlencode($username) . ':' . urlencode($password));
 }
 
 function jwtPart(string $jwt, int $index): array

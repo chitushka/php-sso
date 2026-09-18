@@ -180,6 +180,35 @@ class OAuthTokenServiceTest extends TestCase
         );
     }
 
+    public function testBasicClientCredentialsUseFormUrlEncoding(): void
+    {
+        $clientId = 'phpunit oauth+' . bin2hex(random_bytes(4));
+        $this->clientIds[] = $clientId;
+        $created = (new OAuthService())->createClient([
+            'client_id' => $clientId,
+            'name' => 'PHPUnit encoded Basic client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+            'allowed_scopes' => ['profile'],
+            'enabled' => true,
+        ]);
+        $this->clientDbIds[] = (string)$created['data']['id'];
+
+        $request = $this->postRequest([
+            'grant_type' => 'client_credentials',
+            'scope' => 'profile',
+        ]);
+        $request->headers->set(
+            'Authorization',
+            'Basic ' . base64_encode(
+                urlencode($clientId) . ':' . urlencode($created['data']['client_secret'])
+            )
+        );
+        $token = (new OAuthService())->token($request);
+
+        $this->assertTrue($token['ok']);
+        $this->assertSame($clientId, $this->jwtPayload($token['data']['access_token'])['client_id']);
+    }
+
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
     {
         $flow = $this->issueAuthorizationCodeToken();

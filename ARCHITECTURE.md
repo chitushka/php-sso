@@ -104,6 +104,8 @@ RS256 ID Token повторяет claim contract Go-сервиса: `auth_time` 
 
 OAuth authorize и RP-initiated logout собирают redirect URI через разбор query/fragment: `code` и `state` заменяют одноимённые зарегистрированные параметры, остальные query-параметры сохраняются, а fragment остаётся последней частью URI. Это повторяет `url.Query().Set()` Go-сервиса и не допускает попадания OAuth-параметров после `#`.
 
+OAuth token/revoke/introspection разбирают HTTP Basic credentials по RFC 6749 §2.3.1 как `application/x-www-form-urlencoded`: `+` становится пробелом, а `%2B` — литеральным плюсом. Корректный Basic header по-прежнему имеет приоритет над form credentials.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

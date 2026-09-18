@@ -609,8 +609,10 @@ class OAuthService
             $decoded = base64_decode(substr($authorization, 6), true);
             if ($decoded !== false && strpos($decoded, ':') !== false) {
                 [$basicId, $basicSecret] = explode(':', $decoded, 2);
-                $clientId = rawurldecode($basicId);
-                $clientSecret = rawurldecode($basicSecret);
+                // RFC 6749 §2.3.1 использует application/x-www-form-urlencoded,
+                // поэтому знак "+" декодируется как пробел, как url.QueryUnescape в Go.
+                $clientId = urldecode($basicId);
+                $clientSecret = urldecode($basicSecret);
             }
         }
 

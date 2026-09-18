@@ -47,6 +47,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-18: формирование OAuth redirect URI выровнено с Go: authorize и RP logout заменяют служебные `code`/`state` в query, сохраняют остальные параметры и всегда размещают query до URI fragment.
 
+Дополнение 2026-09-18: `client_secret_basic` выровнен с RFC 6749 и Go `url.QueryUnescape`: credentials декодируются как form-urlencoded, включая различение пробела (`+`) и литерального плюса (`%2B`).
+
 Статус: базовая реализация выполнена; refresh token rotation hardened против гонок и reuse: family сохраняется при rotation, а повторное/параллельное использование старого refresh token отзывает всю family. Public OAuth clients требуют PKCE S256. OIDC UserInfo фильтрует claims по scope, discovery содержит revocation/introspection metadata. RP-initiated logout валидирует `id_token_hint` и `post_logout_redirect_uri`, отзывает SSO-сессию и refresh tokens пользователя. Административные GET/PUT/DELETE/rotate-secret маршруты OAuth-клиентов валидируют path UUID до service/DB слоя и возвращают Go-compatible 400/404 ошибки; create возвращает `{client, client_secret}` и использует Go zero values для enabled/массивов, а update полностью заменяет поля `UpdateClientInput`, сохраняя неизменным `type`. Consent POST использует строгую схему `client_id`/`scope`, а malformed, non-object и unknown-field JSON возвращают RFC-style `invalid_request` с Go-compatible описанием. Добавлен HTTP smoke flow для Authorization Code + PKCE, OIDC id_token/UserInfo/logout, refresh rotation/reuse detection, RBAC enforcement и ключевых RFC 6749 error contracts. Нужна дальнейшая точечная сверка оставшихся endpoint-контрактов с Go-сервисом.
 
 ## Этап 4. Административные модули
