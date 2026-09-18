@@ -151,10 +151,15 @@ class OAuthService
 
         $query = ['code' => $code];
         if ($request->get('state') !== null) {
-            $query['state'] = $request->get('state');
+            $query['state'] = (string)$request->get('state');
         }
 
-        return ['ok' => true, 'redirect' => $redirectUri . (strpos($redirectUri, '?') === false ? '?' : '&') . http_build_query($query)];
+        $redirect = $this->withQueryParameters($redirectUri, $query);
+        if ($redirect === null) {
+            return $this->oauthFail(400, 'invalid_request', 'redirect_uri is invalid');
+        }
+
+        return ['ok' => true, 'redirect' => $redirect];
     }
 
     public function token(Request $request): array
@@ -379,7 +384,10 @@ class OAuthService
         }
 
         if ($state !== '') {
-            $redirect .= (strpos($redirect, '?') === false ? '?' : '&') . http_build_query(['state' => $state]);
+            $redirect = $this->withQueryParameters($redirect, ['state' => $state]);
+            if ($redirect === null) {
+                return $this->oauthFail(400, 'invalid_request', 'invalid post_logout_redirect_uri');
+            }
         }
 
         return ['ok' => true, 'redirect' => $redirect];
@@ -389,6 +397,44 @@ class OAuthService
     {
         $bodyValue = (string)$request->post($name, '');
         return $bodyValue !== '' ? $bodyValue : (string)$request->get($name, '');
+    }
+
+    private function withQueryParameters(string $uri, array $parameters): ?string
+    {
+        if (parse_url($uri) === false) {
+            return null;
+        }
+
+        $fragment = '';
+        $fragmentPosition = strpos($uri, '#');
+        if ($fragmentPosition !== false) {
+            $fragment = substr($uri, $fragmentPosition);
+            $uri = substr($uri, 0, $fragmentPosition);
+        }
+
+        $base = $uri;
+        $rawQuery = '';
+        $queryPosition = strpos($uri, '?');
+        if ($queryPosition !== false) {
+            $base = substr($uri, 0, $queryPosition);
+            $rawQuery = substr($uri, $queryPosition + 1);
+        }
+
+        $replaced = array_fill_keys(array_keys($parameters), true);
+        $parts = [];
+        foreach ($rawQuery === '' ? [] : explode('&', $rawQuery) as $part) {
+            $encodedKey = explode('=', $part, 2)[0];
+            $key = rawurldecode(str_replace('+', ' ', $encodedKey));
+            if (!isset($replaced[$key])) {
+                $parts[] = $part;
+            }
+        }
+
+        foreach ($parameters as $key => $value) {
+            $parts[] = http_build_query([(string)$key => (string)$value]);
+        }
+
+        return $base . '?' . implode('&', $parts) . $fragment;
     }
 
     private function authorizationCodeToken(Request $request, OAuthClient $client): array

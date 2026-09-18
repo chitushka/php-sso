@@ -188,6 +188,7 @@ class OidcServiceTest extends TestCase
     {
         $oauth = new OAuthService();
         $clientId = 'phpunit_oidc_client_' . bin2hex(random_bytes(4));
+        $logoutUri = 'https://rp.example.test/signed-out?tenant=one&state=old#done';
         $this->clientIds[] = $clientId;
         $created = $oauth->createClient([
             'client_id' => $clientId,
@@ -195,7 +196,7 @@ class OidcServiceTest extends TestCase
             'type' => OAuthClient::TYPE_CONFIDENTIAL,
             'redirect_uris' => ['https://rp.example.test/callback'],
             'allowed_scopes' => ['openid', 'profile'],
-            'post_logout_redirect_uris' => ['https://rp.example.test/signed-out'],
+            'post_logout_redirect_uris' => [$logoutUri],
             'enabled' => true,
         ]);
         $this->assertSame(201, $created['status']);
@@ -220,13 +221,17 @@ class OidcServiceTest extends TestCase
             ],
             [
                 'id_token_hint' => $idToken,
-                'post_logout_redirect_uri' => 'https://rp.example.test/signed-out',
+                'post_logout_redirect_uri' => $logoutUri,
                 'state' => 'logout-state',
             ]
         ));
 
         $this->assertTrue($logout['ok']);
-        $this->assertSame('https://rp.example.test/signed-out?state=logout-state', $logout['redirect']);
+        $redirect = parse_url($logout['redirect']);
+        parse_str($redirect['query'] ?? '', $query);
+        $this->assertSame('one', $query['tenant']);
+        $this->assertSame('logout-state', $query['state']);
+        $this->assertSame('done', $redirect['fragment']);
         $this->assertSame(1, $this->revokedRefreshTokenCount($clientId));
         $this->assertSame(1, $this->auditCount('logout'));
 

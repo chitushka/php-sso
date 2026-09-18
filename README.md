@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: authorize и logout redirects выровнены с Go для URI с существующими query/fragment: OAuth-параметры заменяются без дублей и размещаются до `#fragment`.
 - 2026-09-18: ID Token выровнен с Go по claims `auth_time` и `nonce`: время аутентификации переносится из authorization code/refresh token, а refresh ID Token содержит пустой `nonce`.
 - 2026-09-18: перенесена ротация OIDC signing keys: новый RS256-ключ создаётся после 30 дней, прежний остаётся в JWKS на 24-часовой grace-период, а advisory lock защищает от параллельной ротации.
 - 2026-09-18: добавлен OIDC Back-Channel Logout, ранее только заявленный в Discovery: RS256 logout token с `jti`/events отправляется на `backchannel_logout_uri`; основной integration flow поднимает mock RP и проверяет доставку, claims и подпись.

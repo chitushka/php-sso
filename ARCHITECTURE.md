@@ -102,6 +102,8 @@ Consent API повторяет Go lifecycle. `GET /oauth2/consent` сначал�
 
 RS256 ID Token повторяет claim contract Go-сервиса: `auth_time` фиксирует `created_at` обменённого authorization code, а при refresh — `created_at` использованного refresh token. Claim `nonce` сериализуется всегда; для refresh grant он имеет пустое строковое значение.
 
+OAuth authorize и RP-initiated logout собирают redirect URI через разбор query/fragment: `code` и `state` заменяют одноимённые зарегистрированные параметры, остальные query-параметры сохраняются, а fragment остаётся последней частью URI. Это повторяет `url.Query().Set()` Go-сервиса и не допускает попадания OAuth-параметров после `#`.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

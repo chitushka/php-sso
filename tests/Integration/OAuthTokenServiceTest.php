@@ -134,7 +134,7 @@ class OAuthTokenServiceTest extends TestCase
         $flow = $this->issueAuthorizationCodeToken(true, 'openid profile', 'nonce-from-authorize');
         $codeClaims = $this->jwtPayload($flow['token']['data']['id_token']);
         $codeCreatedAt = (int)Yii::$app->db->createCommand(
-            'SELECT EXTRACT(EPOCH FROM created_at)::bigint FROM oauth_authorization_codes WHERE client_id = :client_id',
+            'SELECT FLOOR(EXTRACT(EPOCH FROM created_at))::bigint FROM oauth_authorization_codes WHERE client_id = :client_id',
             [':client_id' => $flow['client_id']]
         )->queryScalar();
 
@@ -161,6 +161,23 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertTrue($refresh['ok']);
         $this->assertSame('', $refreshClaims['nonce']);
         $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
+    }
+
+    public function testAuthorizeRedirectReplacesOAuthParametersBeforeFragment(): void
+    {
+        $redirectUri = 'https://rp.example.test/callback?tenant=one&state=old&code=old#section';
+        $flow = $this->issueAuthorizationCodeToken(false, 'profile', '', $redirectUri);
+        $redirect = parse_url($flow['authorize_redirect']);
+        parse_str($redirect['query'] ?? '', $query);
+
+        $this->assertSame('one', $query['tenant']);
+        $this->assertSame('state-123', $query['state']);
+        $this->assertNotSame('old', $query['code']);
+        $this->assertSame('section', $redirect['fragment']);
+        $this->assertLessThan(
+            strpos($flow['authorize_redirect'], '#section'),
+            strpos($flow['authorize_redirect'], 'code=')
+        );
     }
 
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
@@ -272,7 +289,8 @@ class OAuthTokenServiceTest extends TestCase
     private function issueAuthorizationCodeToken(
         bool $exchange = true,
         string $scope = 'profile',
-        string $nonce = ''
+        string $nonce = '',
+        string $redirectUri = 'https://rp.example.test/callback'
     ): array
     {
         $service = new OAuthService();
@@ -282,7 +300,7 @@ class OAuthTokenServiceTest extends TestCase
             'client_id' => $clientId,
             'name' => 'PHPUnit OAuth token client',
             'type' => OAuthClient::TYPE_CONFIDENTIAL,
-            'redirect_uris' => ['https://rp.example.test/callback'],
+            'redirect_uris' => [$redirectUri],
             'allowed_scopes' => ['openid', 'profile'],
             'skip_consent' => true,
             'enabled' => true,
@@ -295,7 +313,7 @@ class OAuthTokenServiceTest extends TestCase
         $authorize = $service->authorize($this->getRequest([
             'response_type' => 'code',
             'client_id' => $clientId,
-            'redirect_uri' => 'https://rp.example.test/callback',
+            'redirect_uri' => $redirectUri,
             'scope' => $scope,
             'state' => 'state-123',
             'code_challenge' => $challenge,
@@ -315,7 +333,7 @@ class OAuthTokenServiceTest extends TestCase
                 'client_id' => $clientId,
                 'client_secret' => $created['data']['client_secret'],
                 'code' => $query['code'],
-                'redirect_uri' => 'https://rp.example.test/callback',
+                'redirect_uri' => $redirectUri,
                 'code_verifier' => $verifier,
             ]))
             : null;
@@ -326,6 +344,7 @@ class OAuthTokenServiceTest extends TestCase
             'code' => $query['code'],
             'verifier' => $verifier,
             'token' => $token,
+            'authorize_redirect' => $authorize['redirect'],
         ];
     }
 
