@@ -34,25 +34,38 @@ class JwtService
         }
 
         [$header, $payload, $signature] = $parts;
-        $headerData = json_decode(self::base64urlDecode($header), true);
+        $decodedHeader = self::decodeJwtSegment($header);
+        $decodedPayload = self::decodeJwtSegment($payload);
+        $decodedSignature = self::decodeJwtSegment($signature);
+        if ($decodedHeader === null || $decodedPayload === null || $decodedSignature === null) {
+            return null;
+        }
+
+        $headerData = json_decode($decodedHeader, true);
         if (!is_array($headerData) || ($headerData['alg'] ?? '') !== 'HS256') {
             return null;
         }
 
-        $expected = self::base64url(hash_hmac('sha256', $header . '.' . $payload, $this->secret, true));
+        $expected = hash_hmac('sha256', $header . '.' . $payload, $this->secret, true);
 
-        if (!hash_equals($expected, $signature)) {
+        if (!hash_equals($expected, $decodedSignature)) {
             return null;
         }
 
-        $data = json_decode(self::base64urlDecode($payload), true);
+        $data = json_decode($decodedPayload, true);
         if (!is_array($data)) {
             return null;
         }
 
+        $now = time();
         $expiresAt = $data['exp'] ?? null;
         if ((!is_int($expiresAt) && !is_float($expiresAt))
-            || $expiresAt <= time()) {
+            || $expiresAt <= $now) {
+            return null;
+        }
+
+        if (array_key_exists('nbf', $data)
+            && ((!is_int($data['nbf']) && !is_float($data['nbf'])) || $data['nbf'] > $now)) {
             return null;
         }
 
@@ -76,5 +89,24 @@ class JwtService
     public static function base64urlDecode(string $value): string
     {
         return base64_decode(strtr($value, '-_', '+/'));
+    }
+
+    private static function decodeJwtSegment(string $value): ?string
+    {
+        if ($value === '' || preg_match('/^[A-Za-z0-9_-]+$/D', $value) !== 1) {
+            return null;
+        }
+
+        $remainder = strlen($value) % 4;
+        if ($remainder === 1) {
+            return null;
+        }
+        if ($remainder > 0) {
+            $value .= str_repeat('=', 4 - $remainder);
+        }
+
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+
+        return $decoded === false ? null : $decoded;
     }
 }

@@ -145,7 +145,7 @@ class AuthServiceTest extends TestCase
         $this->assertNull($service->userBySession($login['cookie']->value));
     }
 
-    public function testJwtVerificationRejectsAlgorithmConfusionAndInvalidExpiry(): void
+    public function testJwtVerificationRejectsInvalidRegisteredClaimsAndEncoding(): void
     {
         $jwt = new JwtService();
         $valid = $jwt->issue($this->userId, ['username' => $this->username], 60);
@@ -161,6 +161,27 @@ class AuthServiceTest extends TestCase
             ['typ' => 'JWT', 'alg' => 'HS256'],
             ['sub' => $this->userId, 'iat' => time(), 'exp' => 'tomorrow']
         )));
+        $this->assertNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            ['sub' => $this->userId, 'iat' => time(), 'nbf' => time() + 60, 'exp' => time() + 120]
+        )));
+        $this->assertNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            ['sub' => $this->userId, 'iat' => time(), 'nbf' => 'now', 'exp' => time() + 120]
+        )));
+        $this->assertNotNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            ['sub' => $this->userId, 'iat' => time(), 'nbf' => time() - 1, 'exp' => time() + 120]
+        )));
+
+        $paddedHeader = $parts[0] . '=';
+        $paddedSignature = JwtService::base64url(hash_hmac(
+            'sha256',
+            $paddedHeader . '.' . $parts[1],
+            Yii::$app->params['jwtSecret'],
+            true
+        ));
+        $this->assertNull($jwt->verify($paddedHeader . '.' . $parts[1] . '.' . $paddedSignature));
     }
 
     public function testMfaVerificationDistinguishesTokenCodeAndLockout(): void

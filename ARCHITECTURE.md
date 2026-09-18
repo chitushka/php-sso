@@ -110,7 +110,7 @@ OAuth token/revoke/introspection разбирают HTTP Basic credentials по 
 
 HS256 access tokens повторяют Go `auth.Claims`: общие identity claims — `sub`, `username`, `email`, `source`, `iat`, `exp`; OAuth user token дополнительно несёт `client_id` и непустой `scope`, а service-account token — `source=client` и `purpose=client_credentials`. Claim `iss` отсутствует, поскольку Go issuer заполняет его только в RS256 OIDC ID/logout tokens.
 
-`JwtService::verify()` не выбирает алгоритм из недоверенного token header: verifier принимает только `alg=HS256`, всегда пересчитывает HMAC-SHA256 и требует числовой `exp`, находящийся строго в будущем. Это повторяет проверку signing method и NumericDate в Go JWT library и закрывает algorithm-confusion расхождение PHP-порта.
+`JwtService::verify()` не выбирает алгоритм из недоверенного token header: verifier принимает только `alg=HS256`, строго декодирует все три compact JWT-сегмента как unpadded base64url, сравнивает raw HMAC-SHA256 и требует числовой `exp`, находящийся строго в будущем. Необязательный `nbf` также должен быть числовым и не превышать текущее время. Это повторяет проверку signing method, encoding и NumericDate в Go JWT library и закрывает algorithm-confusion и преждевременное принятие токена в PHP-порте.
 
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 

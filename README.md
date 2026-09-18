@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: HS256 JWT verifier дополнен строгим unpadded base64url-разбором compact-сегментов и проверкой optional `nbf`; подписанные токены с padding/некорректным `nbf` или временем активации в будущем отклоняются.
 - 2026-09-18: HS256 JWT verifier приведён к Go security contract: строгий `alg=HS256`, числовой future `exp` и regression-тесты против algorithm confusion.
 - 2026-09-18: HS256 access token claims выровнены с Go: добавлены `email`/`source`, optional OAuth claims не сериализуются пустыми, лишний `iss` удалён; RS256 OIDC tokens сохраняют issuer.
 - 2026-09-18: ответ `client_credentials` выровнен с Go: непустой подтверждённый `scope` возвращается в token response, пустой scope не сериализуется.
