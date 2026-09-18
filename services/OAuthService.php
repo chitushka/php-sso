@@ -374,12 +374,15 @@ class OAuthService
 
     private function authorizationCodeToken(Request $request, OAuthClient $client): array
     {
-        $code = OAuthAuthorizationCode::find()
-            ->where(['code_hash' => hash('sha256', (string)$request->post('code')), 'used_at' => null])
-            ->andWhere(['>', 'expires_at', new Expression('now()')])
-            ->one();
+        $code = Yii::$app->db->createCommand(
+            'UPDATE oauth_authorization_codes
+             SET used_at = now()
+             WHERE code_hash = :code_hash AND used_at IS NULL AND expires_at > now()
+             RETURNING client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce',
+            [':code_hash' => hash('sha256', (string)$request->post('code'))]
+        )->queryOne();
 
-        if (!$code || $code->client_id !== $client->client_id || $code->redirect_uri !== $request->post('redirect_uri')) {
+        if (!$code || $code['client_id'] !== $client->client_id || $code['redirect_uri'] !== $request->post('redirect_uri')) {
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
@@ -387,10 +390,13 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        $code->used_at = new Expression('now()');
-        $code->save(false, ['used_at']);
-
-        return $this->tokenResponse($code->user_id, $client, $code->scope, $code->nonce, null);
+        return $this->tokenResponse(
+            (string)$code['user_id'],
+            $client,
+            (string)$code['scope'],
+            (string)$code['nonce'],
+            null
+        );
     }
 
     private function refreshToken(Request $request, OAuthClient $client): array
@@ -568,17 +574,16 @@ class OAuthService
         return empty(array_diff($requested, $granted));
     }
 
-    private function verifyPkce(OAuthAuthorizationCode $code, string $verifier): bool
+    private function verifyPkce(array $code, string $verifier): bool
     {
-        if (!$code->code_challenge) {
+        if (empty($code['code_challenge'])) {
             return true;
         }
 
-        if ($code->code_challenge_method === 'S256') {
-            return hash_equals($code->code_challenge, JwtService::base64url(hash('sha256', $verifier, true)));
-        }
-
-        return hash_equals($code->code_challenge, $verifier);
+        return hash_equals(
+            (string)$code['code_challenge'],
+            JwtService::base64url(hash('sha256', $verifier, true))
+        );
     }
 
     private function oauthFail(int $status, string $error, string $description): array

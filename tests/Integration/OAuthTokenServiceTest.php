@@ -102,6 +102,33 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame('invalid_grant', $reuse['error']);
     }
 
+    public function testFailedPkceExchangeConsumesAuthorizationCode(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(false);
+        $service = new OAuthService();
+        $request = [
+            'grant_type' => 'authorization_code',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'code' => $flow['code'],
+            'redirect_uri' => 'https://rp.example.test/callback',
+        ];
+
+        $invalid = $service->token($this->postRequest(array_merge($request, [
+            'code_verifier' => 'wrong-verifier',
+        ])));
+        $this->assertFalse($invalid['ok']);
+        $this->assertSame('invalid_grant', $invalid['error']);
+        $this->assertSame(1, $this->usedAuthorizationCodeCount($flow['client_id']));
+
+        $retry = $service->token($this->postRequest(array_merge($request, [
+            'code_verifier' => $flow['verifier'],
+        ])));
+        $this->assertFalse($retry['ok']);
+        $this->assertSame('invalid_grant', $retry['error']);
+        $this->assertSame(0, $this->refreshTokenCount($flow['client_id']));
+    }
+
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
     {
         $flow = $this->issueAuthorizationCodeToken();
@@ -208,7 +235,7 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertFalse($revoked['data']['active']);
     }
 
-    private function issueAuthorizationCodeToken(): array
+    private function issueAuthorizationCodeToken(bool $exchange = true): array
     {
         $service = new OAuthService();
         $clientId = 'phpunit_oauth_client_' . bin2hex(random_bytes(4));
@@ -243,14 +270,16 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertNotEmpty($query['code']);
         $this->assertSame('state-123', $query['state']);
 
-        $token = $service->token($this->postRequest([
-            'grant_type' => 'authorization_code',
-            'client_id' => $clientId,
-            'client_secret' => $created['data']['client_secret'],
-            'code' => $query['code'],
-            'redirect_uri' => 'https://rp.example.test/callback',
-            'code_verifier' => $verifier,
-        ]));
+        $token = $exchange
+            ? $service->token($this->postRequest([
+                'grant_type' => 'authorization_code',
+                'client_id' => $clientId,
+                'client_secret' => $created['data']['client_secret'],
+                'code' => $query['code'],
+                'redirect_uri' => 'https://rp.example.test/callback',
+                'code_verifier' => $verifier,
+            ]))
+            : null;
 
         return [
             'client_id' => $clientId,

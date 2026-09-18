@@ -525,6 +525,63 @@ try {
     assertTrue($codeReuse['status'] === 400, 'authorization code reuse must return 400');
     assertTrue(($codeReuse['json']['error'] ?? '') === 'invalid_grant', 'authorization code reuse must return invalid_grant');
 
+    $burnVerifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $burnChallenge = rtrim(strtr(base64_encode(hash('sha256', $burnVerifier, true)), '+/', '-_'), '=');
+    $burnAuthorize = httpRequest('GET', $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'profile',
+        'code_challenge' => $burnChallenge,
+        'code_challenge_method' => 'S256',
+    ]), ['cookies' => $sessionCookie]);
+    $burnLocationParts = parse_url($burnAuthorize['location']);
+    parse_str($burnLocationParts['query'] ?? '', $burnQuery);
+    assertTrue(!empty($burnQuery['code']), 'PKCE burn scenario must issue authorization code');
+
+    $wrongPkce = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $burnQuery['code'],
+        'redirect_uri' => 'http://localhost/cb',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'code_verifier' => 'wrong-verifier',
+    ]);
+    assertOAuthError($wrongPkce, 400, 'invalid_grant', 'authorization code with invalid PKCE verifier');
+
+    $correctAfterWrongPkce = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $burnQuery['code'],
+        'redirect_uri' => 'http://localhost/cb',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'code_verifier' => $burnVerifier,
+    ]);
+    assertOAuthError($correctAfterWrongPkce, 400, 'invalid_grant', 'authorization code consumed by failed PKCE exchange');
+
+    $plainVerifier = 'plain-verifier-' . $suffix;
+    $plainAuthorize = httpRequest('GET', $baseUrl . '/oauth2/authorize?' . http_build_query([
+        'response_type' => 'code',
+        'client_id' => $client['json']['client_id'],
+        'redirect_uri' => 'http://localhost/cb',
+        'scope' => 'profile',
+        'code_challenge' => $plainVerifier,
+        'code_challenge_method' => 'plain',
+    ]), ['cookies' => $sessionCookie]);
+    $plainLocationParts = parse_url($plainAuthorize['location']);
+    parse_str($plainLocationParts['query'] ?? '', $plainQuery);
+    assertTrue(!empty($plainQuery['code']), 'confidential client plain PKCE authorize must match Go behavior');
+
+    $plainExchange = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $plainQuery['code'],
+        'redirect_uri' => 'http://localhost/cb',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'code_verifier' => $plainVerifier,
+    ]);
+    assertOAuthError($plainExchange, 400, 'invalid_grant', 'plain PKCE exchange');
+
     $introspection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => $token['json']['access_token'],
         'client_id' => $client['json']['client_id'],
