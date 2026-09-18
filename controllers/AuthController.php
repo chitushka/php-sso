@@ -6,6 +6,7 @@ use app\services\AccountService;
 use app\services\AuthService;
 use app\services\MfaService;
 use Yii;
+use yii\web\BadRequestHttpException;
 
 class AuthController extends ApiController
 {
@@ -45,9 +46,9 @@ class AuthController extends ApiController
 
     public function actionMe(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         return $user->publicData();
@@ -55,9 +56,9 @@ class AuthController extends ApiController
 
     public function actionSessions(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         return (new AuthService())->listSessions($user->id);
@@ -65,9 +66,9 @@ class AuthController extends ApiController
 
     public function actionRevokeSession(string $id): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         if (!$this->isUuid($id)) {
@@ -83,9 +84,9 @@ class AuthController extends ApiController
 
     public function actionRevokeAllSessions(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         (new AuthService())->revokeAllSessions($user);
@@ -95,7 +96,11 @@ class AuthController extends ApiController
 
     public function actionForgotPassword(): array
     {
-        $login = trim((string)($this->body(['login'])['login'] ?? ''));
+        try {
+            $login = trim((string)($this->body(['login'])['login'] ?? ''));
+        } catch (BadRequestHttpException $exception) {
+            return $this->fail(400, 'login is required');
+        }
         if ($login === '') {
             return $this->fail(400, 'login is required');
         }
@@ -118,9 +123,9 @@ class AuthController extends ApiController
 
     public function actionChangePassword(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $body = $this->body(['old_password', 'new_password']);
@@ -136,9 +141,9 @@ class AuthController extends ApiController
 
     public function actionUpdateProfile(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $result = (new AccountService())->updateProfile(
@@ -151,9 +156,9 @@ class AuthController extends ApiController
 
     public function actionRequestEmailVerification(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $result = (new AccountService())->requestEmailVerification($user);
@@ -170,9 +175,9 @@ class AuthController extends ApiController
 
     public function actionMfaSetup(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         if ($user->mfa_enabled) {
@@ -184,9 +189,9 @@ class AuthController extends ApiController
 
     public function actionMfaEnable(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $body = $this->body(['code']);
@@ -201,9 +206,9 @@ class AuthController extends ApiController
 
     public function actionMfaDisable(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $result = (new MfaService())->disable($user, (string)($this->body(['code'])['code'] ?? ''));
@@ -213,9 +218,9 @@ class AuthController extends ApiController
 
     public function actionMfaRecoveryCodes(): array
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
         }
 
         $result = (new MfaService())->regenerateRecoveryCodes($user, (string)($this->body(['code'])['code'] ?? ''));

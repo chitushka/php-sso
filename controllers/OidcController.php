@@ -21,11 +21,12 @@ class OidcController extends ApiController
     public function actionUserinfo(): array
     {
         $auth = new AuthService();
-        $claims = $auth->currentClaims(Yii::$app->request);
-        $user = $auth->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $authentication = $auth->authenticate(Yii::$app->request);
+        if (!$authentication['user']) {
+            return $this->fail(401, $authentication['error']);
         }
+        $claims = $auth->currentClaims(Yii::$app->request);
+        $user = $authentication['user'];
 
         $scope = (string)($claims['scope'] ?? '');
         $full = $scope === '';

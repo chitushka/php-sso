@@ -130,23 +130,36 @@ class AuthService
 
     public function currentUser(Request $request): ?User
     {
-        $claims = $this->currentClaims($request);
-        if (!$claims || empty($claims['sub'])) {
-            return null;
+        return $this->authenticate($request)['user'];
+    }
+
+    public function authenticate(Request $request): array
+    {
+        $header = (string)$request->headers->get('Authorization', '');
+        if (stripos($header, 'Bearer ') !== 0) {
+            return ['user' => null, 'error' => 'missing bearer token'];
+        }
+
+        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        if (!$claims || empty($claims['sub']) || !empty($claims['purpose'])) {
+            return ['user' => null, 'error' => 'invalid token'];
         }
 
         $user = User::findOne(['id' => $claims['sub']]);
-        if (!$user || $user->status !== User::STATUS_ACTIVE) {
-            return null;
+        if (!$user) {
+            return ['user' => null, 'error' => 'invalid token'];
+        }
+        if ($user->status !== User::STATUS_ACTIVE) {
+            return ['user' => null, 'error' => 'account is not active'];
         }
 
         if (empty($claims['client_id'])
             && $user->tokens_invalid_before
             && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)) {
-            return null;
+            return ['user' => null, 'error' => 'token revoked'];
         }
 
-        return $user;
+        return ['user' => $user, 'error' => null];
     }
 
     public function currentClaims(Request $request): ?array

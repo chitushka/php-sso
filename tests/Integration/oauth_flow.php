@@ -229,12 +229,49 @@ try {
     $adminToken = $login['json']['access_token'];
     $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
 
+    $missingBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', []);
+    assertTrue($missingBearer['status'] === 401, 'protected endpoint without bearer token must return 401');
+    assertTrue(($missingBearer['json']['error'] ?? '') === 'missing bearer token', 'missing bearer token must match Go error');
+
+    $invalidBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], 'not-a-jwt');
+    assertTrue($invalidBearer['status'] === 401, 'protected endpoint with invalid bearer token must return 401');
+    assertTrue(($invalidBearer['json']['error'] ?? '') === 'invalid token', 'invalid bearer token must match Go error');
+
+    $missingAdminBearer = jsonRequest('GET', $baseUrl . '/api/v1/users', []);
+    assertTrue($missingAdminBearer['status'] === 401, 'admin endpoint without bearer token must return 401');
+    assertTrue(($missingAdminBearer['json']['error'] ?? '') === 'missing bearer token', 'admin bearer middleware must match Go error');
+
+    $missingUserinfoBearer = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', []);
+    assertTrue($missingUserinfoBearer['status'] === 401, 'userinfo without bearer token must return 401');
+    assertTrue(($missingUserinfoBearer['json']['error'] ?? '') === 'missing bearer token', 'userinfo bearer middleware must match Go error');
+
     $malformedLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '{"username":',
     ]);
     assertTrue($malformedLogin['status'] === 400, 'malformed login JSON must return 400');
     assertTrue(($malformedLogin['json']['error'] ?? '') === 'invalid json body', 'malformed login JSON must match Go error');
+
+    $malformedForgot = httpRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '{"login":',
+    ]);
+    assertTrue($malformedForgot['status'] === 400, 'malformed password forgot JSON must return 400');
+    assertTrue(($malformedForgot['json']['error'] ?? '') === 'login is required', 'malformed password forgot JSON must match Go error');
+
+    $arrayForgot = httpRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '[]',
+    ]);
+    assertTrue($arrayForgot['status'] === 400, 'non-object password forgot JSON must return 400');
+    assertTrue(($arrayForgot['json']['error'] ?? '') === 'login is required', 'non-object password forgot JSON must match Go error');
+
+    $unknownForgotField = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
+        'login' => $adminUsername,
+        'unexpected' => true,
+    ]);
+    assertTrue($unknownForgotField['status'] === 400, 'password forgot JSON with unknown field must return 400');
+    assertTrue(($unknownForgotField['json']['error'] ?? '') === 'login is required', 'password forgot decode failure must match Go error');
 
     $arrayResetBody = httpRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
@@ -293,6 +330,7 @@ try {
 
     $revokedToken = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
     assertTrue($revokedToken['status'] === 401, 'revoke all sessions must invalidate existing bearer token');
+    assertTrue(($revokedToken['json']['error'] ?? '') === 'token revoked', 'revoked first-party token must match Go error');
 
     $login = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -702,6 +740,11 @@ try {
     ], $adminToken);
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
+
+    $db->createCommand()->update('users', ['status' => 'blocked'], ['id' => $plainUserId])->execute();
+    $blockedAccount = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $plainLogin['json']['access_token']);
+    assertTrue($blockedAccount['status'] === 401, 'blocked account bearer token must return 401');
+    assertTrue(($blockedAccount['json']['error'] ?? '') === 'account is not active', 'blocked account must match Go error');
 
     foreach (['GET', 'PUT', 'DELETE'] as $method) {
         $invalidUserId = jsonRequest($method, $baseUrl . '/api/v1/users/not-a-uuid', [], $adminToken);

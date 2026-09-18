@@ -62,15 +62,26 @@ class ApiController extends Controller
 
     protected function requirePermission(string $resource, string $action)
     {
-        $user = (new AuthService())->currentUser(Yii::$app->request);
-        if (!$user) {
-            return $this->fail(401, 'invalid token');
+        $authentication = (new AuthService())->authenticate(Yii::$app->request);
+        if (!$authentication['user']) {
+            return $this->fail(401, $authentication['error']);
         }
+        $user = $authentication['user'];
 
         if (!(new RbacService())->userHasPermission($user, $resource, $action)) {
             return $this->fail(403, 'permission denied');
         }
 
         return $user;
+    }
+
+    protected function requireUser()
+    {
+        $authentication = (new AuthService())->authenticate(Yii::$app->request);
+        if (!$authentication['user']) {
+            return $this->fail(401, $authentication['error']);
+        }
+
+        return $authentication['user'];
     }
 }
