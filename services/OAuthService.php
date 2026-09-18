@@ -188,11 +188,18 @@ class OAuthService
             return ['ok' => false];
         }
 
-        RefreshToken::updateAll(['revoked_at' => new Expression('now()')], [
+        $token = RefreshToken::findOne([
             'token_hash' => hash('sha256', (string)$request->post('token')),
-            'client_id' => $client->client_id,
-            'revoked_at' => null,
         ]);
+        if (!$token || $token->client_id !== $client->client_id) {
+            return ['ok' => true];
+        }
+
+        RefreshToken::updateAll(
+            ['revoked_at' => new Expression('now()')],
+            ['family_id' => $token->family_id, 'revoked_at' => null]
+        );
+        AuditService::record(null, 'refresh_token_revoked', 'oauth_client', $client->client_id);
 
         return ['ok' => true];
     }
@@ -203,10 +210,46 @@ class OAuthService
             return ['ok' => false];
         }
 
-        $claims = (new JwtService())->verify((string)$request->post('token'));
+        $rawToken = (string)$request->post('token');
+        $refreshToken = RefreshToken::findOne(['token_hash' => hash('sha256', $rawToken)]);
+        if ($refreshToken) {
+            if ($refreshToken->revoked_at
+                || $refreshToken->rotated_at
+                || strtotime((string)$refreshToken->expires_at) <= time()) {
+                return ['ok' => true, 'data' => ['active' => false]];
+            }
+
+            return ['ok' => true, 'data' => [
+                'active' => true,
+                'token_type' => 'refresh_token',
+                'client_id' => $refreshToken->client_id,
+                'sub' => $refreshToken->user_id,
+                'scope' => $refreshToken->scope,
+                'exp' => strtotime((string)$refreshToken->expires_at),
+                'iat' => strtotime((string)$refreshToken->created_at),
+            ]];
+        }
+
+        $claims = (new JwtService())->verify($rawToken);
+        if (!$claims) {
+            return ['ok' => true, 'data' => ['active' => false]];
+        }
+
+        $data = [
+            'active' => true,
+            'token_type' => 'Bearer',
+            'client_id' => (string)($claims['client_id'] ?? ''),
+            'sub' => (string)($claims['sub'] ?? ''),
+            'username' => (string)($claims['username'] ?? ''),
+            'scope' => (string)($claims['scope'] ?? ''),
+        ];
+        if (isset($claims['exp'])) {
+            $data['exp'] = (int)$claims['exp'];
+        }
+
         return [
             'ok' => true,
-            'data' => $claims ? array_merge(['active' => true], $claims) : ['active' => false],
+            'data' => $data,
         ];
     }
 
@@ -410,6 +453,7 @@ class OAuthService
 
         $token = (new JwtService())->issue($client->id, [
             'client_id' => $client->client_id,
+            'username' => $client->client_id,
             'scope' => $scope,
             'purpose' => 'client_credentials',
         ]);
@@ -423,8 +467,10 @@ class OAuthService
 
     private function tokenResponse(string $userId, OAuthClient $client, string $scope, string $nonce, ?string $familyId): array
     {
+        $user = User::findOne(['id' => $userId]);
         $accessToken = (new JwtService())->issue($userId, [
             'client_id' => $client->client_id,
+            'username' => $user ? $user->username : '',
             'scope' => $scope,
         ]);
         $refreshToken = (new AuthService())->randomToken(32);
@@ -467,9 +513,14 @@ class OAuthService
         $clientId = (string)$request->post('client_id', '');
         $clientSecret = (string)$request->post('client_secret', '');
 
-        if (!empty($_SERVER['PHP_AUTH_USER'])) {
-            $clientId = rawurldecode((string)$_SERVER['PHP_AUTH_USER']);
-            $clientSecret = rawurldecode((string)($_SERVER['PHP_AUTH_PW'] ?? ''));
+        $authorization = (string)$request->headers->get('Authorization', '');
+        if (strlen($authorization) >= 6 && strcasecmp(substr($authorization, 0, 6), 'Basic ') === 0) {
+            $decoded = base64_decode(substr($authorization, 6), true);
+            if ($decoded !== false && strpos($decoded, ':') !== false) {
+                [$basicId, $basicSecret] = explode(':', $decoded, 2);
+                $clientId = rawurldecode($basicId);
+                $clientSecret = rawurldecode($basicSecret);
+            }
         }
 
         $client = OAuthClient::findOne(['client_id' => $clientId, 'enabled' => true]);

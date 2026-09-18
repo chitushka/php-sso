@@ -167,6 +167,47 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame('invalid_grant', $refresh['error']);
     }
 
+    public function testRefreshIntrospectionAndRevocationCoverEntireFamily(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $service = new OAuthService();
+        $credentials = [
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+        ];
+
+        $active = $service->introspect($this->postRequest(array_merge($credentials, [
+            'token' => $flow['token']['data']['refresh_token'],
+        ])));
+        $this->assertTrue($active['ok']);
+        $this->assertTrue($active['data']['active']);
+        $this->assertSame('refresh_token', $active['data']['token_type']);
+        $this->assertSame($this->userId, $active['data']['sub']);
+
+        $rotated = $service->token($this->postRequest(array_merge($credentials, [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ])));
+        $this->assertTrue($rotated['ok']);
+
+        $old = $service->introspect($this->postRequest(array_merge($credentials, [
+            'token' => $flow['token']['data']['refresh_token'],
+        ])));
+        $this->assertFalse($old['data']['active']);
+
+        $revoke = $service->revoke($this->postRequest(array_merge($credentials, [
+            'token' => $rotated['data']['refresh_token'],
+        ])));
+        $this->assertTrue($revoke['ok']);
+        $this->assertSame(2, $this->revokedRefreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->auditCount('refresh_token_revoked', $flow['client_id']));
+
+        $revoked = $service->introspect($this->postRequest(array_merge($credentials, [
+            'token' => $rotated['data']['refresh_token'],
+        ])));
+        $this->assertFalse($revoked['data']['active']);
+    }
+
     private function issueAuthorizationCodeToken(): array
     {
         $service = new OAuthService();

@@ -123,6 +123,17 @@ function basicAuthHeader(string $username, string $password): string
     return 'Authorization: Basic ' . base64_encode(rawurlencode($username) . ':' . rawurlencode($password));
 }
 
+function responseHeader(array $response, string $name): string
+{
+    foreach ($response['headers'] as $header) {
+        if (stripos($header, $name . ':') === 0) {
+            return trim(substr($header, strlen($name) + 1));
+        }
+    }
+
+    return '';
+}
+
 function base32DecodeValue(string $value): string
 {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -358,6 +369,7 @@ try {
     $client['json'] = $client['json']['client'];
     $client['json']['client_secret'] = $clientSecret;
     $createdClientIds[] = $client['json']['id'];
+    $createdAuditTargets[] = ['action' => 'refresh_token_revoked', 'target_id' => $client['json']['client_id']];
 
     $unknownOAuthClientField = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'name' => 'Unknown field client ' . $suffix,
@@ -520,8 +532,25 @@ try {
     ]);
     assertTrue($introspection['status'] === 200, 'introspection must return 200');
     assertTrue(($introspection['json']['active'] ?? false) === true, 'introspection must mark issued access token active');
+    assertTrue(($introspection['json']['token_type'] ?? '') === 'Bearer', 'access token introspection must return Bearer token type');
     assertTrue(($introspection['json']['sub'] ?? '') === $adminId, 'introspection must include access token subject');
     assertTrue(($introspection['json']['client_id'] ?? '') === $client['json']['client_id'], 'introspection must include client_id');
+    assertTrue(($introspection['json']['username'] ?? '') === $adminUsername, 'introspection must include access token username');
+    assertTrue(!array_key_exists('iss', $introspection['json']), 'introspection must not leak JWT-only issuer claim');
+    assertTrue(!array_key_exists('iat', $introspection['json']), 'access token introspection must match Go claim set');
+
+    $refreshIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $token['json']['refresh_token'],
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue($refreshIntrospection['status'] === 200, 'refresh token introspection must return 200');
+    assertTrue(($refreshIntrospection['json']['active'] ?? false) === true, 'fresh refresh token must be active');
+    assertTrue(($refreshIntrospection['json']['token_type'] ?? '') === 'refresh_token', 'refresh introspection must identify token type');
+    assertTrue(($refreshIntrospection['json']['sub'] ?? '') === $adminId, 'refresh introspection must include subject');
+    assertTrue(($refreshIntrospection['json']['client_id'] ?? '') === $client['json']['client_id'], 'refresh introspection must include client_id');
+    assertTrue(($refreshIntrospection['json']['exp'] ?? 0) > time(), 'refresh introspection must include future expiration');
+    assertTrue(($refreshIntrospection['json']['iat'] ?? 0) <= time(), 'refresh introspection must include issued-at timestamp');
 
     $inactiveIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => 'not-a-token',
@@ -573,6 +602,20 @@ try {
     assertTrue(!empty($refresh['json']['refresh_token']), 'refresh grant must return rotated refresh_token');
     assertTrue($refresh['json']['refresh_token'] !== $firstRefresh, 'refresh grant must rotate token value');
 
+    $rotatedIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $firstRefresh,
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue(($rotatedIntrospection['json']['active'] ?? true) === false, 'rotated refresh token introspection must be inactive');
+
+    $descendantIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $refresh['json']['refresh_token'],
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue(($descendantIntrospection['json']['active'] ?? false) === true, 'current refresh family descendant must be active');
+
     $reuse = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'refresh_token',
         'refresh_token' => $firstRefresh,
@@ -581,6 +624,13 @@ try {
     ]);
     assertTrue($reuse['status'] === 400, 'reusing rotated refresh token must fail');
     assertTrue(($reuse['json']['error'] ?? '') === 'invalid_grant', 'reuse must return invalid_grant');
+
+    $revokedDescendantIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $refresh['json']['refresh_token'],
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue(($revokedDescendantIntrospection['json']['active'] ?? true) === false, 'reuse detection must make refresh family inactive');
 
     $descendant = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'refresh_token',
@@ -626,6 +676,14 @@ try {
         'client_secret' => $client['json']['client_secret'],
     ]);
     assertTrue($revoke['status'] === 200, 'revocation must return 200 for authenticated client');
+    assertTrue($revoke['body'] === '', 'successful RFC 7009 revocation must return an empty body');
+
+    $revokedRefreshIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
+        'token' => $profileOnlyToken['json']['refresh_token'] ?? '',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ]);
+    assertTrue(($revokedRefreshIntrospection['json']['active'] ?? true) === false, 'revoked refresh token introspection must be inactive');
 
     $revokedRefresh = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'refresh_token',
@@ -1314,6 +1372,14 @@ try {
         'client_secret' => 'wrong-secret',
     ]);
     assertOAuthError($badSecret, 401, 'invalid_client', 'bad client secret');
+    assertTrue(responseHeader($badSecret, 'WWW-Authenticate') === 'Basic realm="sso"', 'token invalid_client must advertise Basic authentication');
+
+    $basicOverridesForm = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+    ], [basicAuthHeader('', 'wrong-secret')]);
+    assertOAuthError($basicOverridesForm, 401, 'invalid_client', 'Basic credentials overriding form credentials');
 
     $clientCredentials = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'client_credentials',
@@ -1345,6 +1411,7 @@ try {
         'client_secret' => 'wrong-secret',
     ]);
     assertOAuthError($badRevokeClient, 401, 'invalid_client', 'revoke with bad client secret');
+    assertTrue(responseHeader($badRevokeClient, 'WWW-Authenticate') === 'Basic realm="sso"', 'revoke invalid_client must advertise Basic authentication');
 
     $badIntrospectClient = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => 'not-a-token',
@@ -1352,6 +1419,7 @@ try {
         'client_secret' => 'wrong-secret',
     ]);
     assertOAuthError($badIntrospectClient, 401, 'invalid_client', 'introspect with bad client secret');
+    assertTrue(responseHeader($badIntrospectClient, 'WWW-Authenticate') === 'Basic realm="sso"', 'introspect invalid_client must advertise Basic authentication');
 
     $badScopeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',

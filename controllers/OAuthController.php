@@ -147,26 +147,32 @@ class OAuthController extends ApiController
     {
         $result = (new OAuthService())->token(Yii::$app->request);
         if (!$result['ok']) {
+            if ($result['error'] === 'invalid_client') {
+                Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
+            }
             return $this->oauthError($result['status'], $result['error'], $result['description']);
         }
 
         return $result['data'];
     }
 
-    public function actionRevoke(): array
+    public function actionRevoke()
     {
         $result = (new OAuthService())->revoke(Yii::$app->request);
         if (!$result['ok']) {
+            Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
             return $this->oauthError(401, 'invalid_client', 'client authentication failed');
         }
 
-        return [];
+        Yii::$app->response->format = \yii\web\Response::FORMAT_RAW;
+        return '';
     }
 
     public function actionIntrospect(): array
     {
         $result = (new OAuthService())->introspect(Yii::$app->request);
         if (!$result['ok']) {
+            Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
             return $this->oauthError(401, 'invalid_client', 'client authentication failed');
         }
 

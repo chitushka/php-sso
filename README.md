@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: OAuth revocation/introspection выровнены с Go и RFC 7009/7662: revoke отзывает refresh family, пишет аудит и возвращает пустой body; introspection распознаёт access/refresh tokens и их inactive states; client auth использует Basic precedence и `WWW-Authenticate` для `invalid_client`.
 - 2026-09-18: OAuth consent lifecycle выровнен с Go: consent info требует SSO-сессию, проверяет enabled client/scope и возвращает requested/granted scopes; последовательные grant-запросы объединяют scopes и пишут `consent_granted` в аудит.
 - 2026-09-18: Bearer middleware contract выровнен с Go для account/session, admin API и OIDC UserInfo: различаются `missing bearer token`, `invalid token`, `account is not active` и `token revoked`; `password/forgot` сохраняет специальную ошибку `login is required` при decode failure, поведение закреплено HTTP smoke-тестами.
 - 2026-09-17: Prometheus route labels выровнены с chi-шаблонами Go (`/api/v1/oauth/clients/{id}` и другие); внутренние Yii route names и реальные UUID больше не попадают в метрики, а версионированный cache key отсекает ранее накопленные серии.
