@@ -101,6 +101,14 @@ class OidcServiceTest extends TestCase
         $this->assertNotEmpty($jwks['keys'][0]['kid']);
         $this->assertSame('RSA', $jwks['keys'][0]['kty']);
         $this->assertSame('RS256', $jwks['keys'][0]['alg']);
+
+        $logoutToken = $service->issueLogoutToken($this->userId, 'phpunit-client');
+        $logoutClaims = $service->verifyIdTokenHint($logoutToken);
+        $this->assertSame($this->userId, $logoutClaims['sub']);
+        $this->assertSame('phpunit-client', $logoutClaims['aud']);
+        $this->assertNotEmpty($logoutClaims['jti']);
+        $this->assertArrayHasKey('http://schemas.openid.net/event/backchannel-logout', $logoutClaims['events']);
+        $this->assertSame(120, $logoutClaims['exp'] - $logoutClaims['iat']);
     }
 
     public function testUserinfoFiltersClaimsByScope(): void
@@ -154,11 +162,18 @@ class OidcServiceTest extends TestCase
         )->execute();
 
         $idToken = (new OidcService())->issueIdToken($this->userId, $clientId);
-        $logout = $oauth->logout($this->getRequest([
-            'id_token_hint' => $idToken,
-            'post_logout_redirect_uri' => 'https://rp.example.test/signed-out',
-            'state' => 'logout-state',
-        ]));
+        $logout = $oauth->logout($this->getRequest(
+            [
+                'id_token_hint' => 'query-must-not-win',
+                'post_logout_redirect_uri' => 'https://rp.example.test/not-registered',
+                'state' => 'query-state',
+            ],
+            [
+                'id_token_hint' => $idToken,
+                'post_logout_redirect_uri' => 'https://rp.example.test/signed-out',
+                'state' => 'logout-state',
+            ]
+        ));
 
         $this->assertTrue($logout['ok']);
         $this->assertSame('https://rp.example.test/signed-out?state=logout-state', $logout['redirect']);
@@ -174,7 +189,7 @@ class OidcServiceTest extends TestCase
         $this->assertSame('invalid_request', $badRedirect['error']);
     }
 
-    private function getRequest(array $query = []): Request
+    private function getRequest(array $query = [], array $body = []): Request
     {
         $_SERVER['REMOTE_ADDR'] = '203.0.113.46';
         $_COOKIE = [];
@@ -185,6 +200,7 @@ class OidcServiceTest extends TestCase
             'scriptUrl' => '/index.php',
         ]);
         $request->setQueryParams($query);
+        $request->setBodyParams($body);
 
         return $request;
     }

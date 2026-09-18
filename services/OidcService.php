@@ -77,6 +77,48 @@ class OidcService
         return $header . '.' . $body . '.' . JwtService::base64url($signature);
     }
 
+    public function issueLogoutToken(string $subject, string $clientId): string
+    {
+        $key = $this->activeKey();
+        $now = time();
+        $payload = [
+            'iss' => Yii::$app->params['issuer'],
+            'sub' => $subject,
+            'aud' => $clientId,
+            'iat' => $now,
+            'exp' => $now + 120,
+            'jti' => (string)Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar(),
+            'events' => [
+                'http://schemas.openid.net/event/backchannel-logout' => new \stdClass(),
+            ],
+        ];
+
+        $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));
+        $body = JwtService::base64url(json_encode($payload));
+        openssl_sign($header . '.' . $body, $signature, $key['private_key_pem'], OPENSSL_ALGO_SHA256);
+
+        return $header . '.' . $body . '.' . JwtService::base64url($signature);
+    }
+
+    public function sendBackchannelLogout(string $subject, string $clientId, string $uri): void
+    {
+        $body = http_build_query([
+            'logout_token' => $this->issueLogoutToken($subject, $clientId),
+        ]);
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+                'content' => $body,
+                'ignore_errors' => true,
+                'timeout' => 5,
+            ],
+        ]);
+
+        // Ошибка уведомления RP не должна отменять локальный logout.
+        @file_get_contents($uri, false, $context);
+    }
+
     public function verifyIdTokenHint(string $token): ?array
     {
         $parts = explode('.', $token);

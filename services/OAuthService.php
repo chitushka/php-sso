@@ -331,14 +331,16 @@ class OAuthService
     {
         $sessionToken = $request->cookies->getValue('sso_session', '');
         $user = (new AuthService())->userBySession($sessionToken);
-        $hint = (string)$request->get('id_token_hint', $request->post('id_token_hint', ''));
-        $redirect = (string)$request->get('post_logout_redirect_uri', $request->post('post_logout_redirect_uri', ''));
-        $state = (string)$request->get('state', $request->post('state', ''));
+        $hint = $this->logoutParameter($request, 'id_token_hint');
+        $redirect = $this->logoutParameter($request, 'post_logout_redirect_uri');
+        $state = $this->logoutParameter($request, 'state');
         $client = null;
+        $subject = '';
 
         if ($hint !== '') {
             $claims = (new OidcService())->verifyIdTokenHint($hint);
             if ($claims) {
+                $subject = (string)$claims['sub'];
                 $client = OAuthClient::findOne(['client_id' => (string)$claims['aud']]);
                 if (!$user && !empty($claims['sub'])) {
                     $user = User::findOne(['id' => (string)$claims['sub'], 'status' => User::STATUS_ACTIVE]);
@@ -355,6 +357,17 @@ class OAuthService
                 ['user_id' => $user->id, 'revoked_at' => null]
             );
             AuditService::record($user->id, 'logout', 'user', $user->id);
+            if ($subject === '') {
+                $subject = $user->id;
+            }
+        }
+
+        if ($client && $client->backchannel_logout_uri && $subject !== '') {
+            (new OidcService())->sendBackchannelLogout(
+                $subject,
+                $client->client_id,
+                (string)$client->backchannel_logout_uri
+            );
         }
 
         if ($redirect === '') {
@@ -370,6 +383,12 @@ class OAuthService
         }
 
         return ['ok' => true, 'redirect' => $redirect];
+    }
+
+    private function logoutParameter(Request $request, string $name): string
+    {
+        $bodyValue = (string)$request->post($name, '');
+        return $bodyValue !== '' ? $bodyValue : (string)$request->get($name, '');
     }
 
     private function authorizationCodeToken(Request $request, OAuthClient $client): array

@@ -10,6 +10,7 @@ $config = require __DIR__ . '/../../config/console.php';
 $app = new yii\console\Application($config);
 $db = Yii::$app->db;
 $baseUrl = rtrim(getenv('SSO_TEST_BASE_URL') ?: 'http://127.0.0.1:8081', '/');
+$backchannelUrl = rtrim(getenv('SSO_TEST_BACKCHANNEL_URL') ?: 'http://127.0.0.1:8082', '/');
 $suffix = strtolower(bin2hex(random_bytes(4)));
 $adminUsername = 'itest-admin-' . $suffix;
 $userUsername = 'itest-user-' . $suffix;
@@ -352,6 +353,9 @@ try {
     $adminToken = $login['json']['access_token'];
     $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
 
+    $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
+    assertTrue($backchannelReset['status'] === 204, 'back-channel logout fixture must be available');
+
     $client = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'name' => 'Integration test client ' . $suffix,
         'client_id' => 'itest-client-' . $suffix,
@@ -359,6 +363,7 @@ try {
         'redirect_uris' => ['http://localhost/cb'],
         'allowed_scopes' => ['openid', 'profile', 'email'],
         'post_logout_redirect_uris' => ['http://localhost/logout-cb'],
+        'backchannel_logout_uri' => $backchannelUrl . '/logout',
         'skip_consent' => true,
         'enabled' => true,
     ], $adminToken);
@@ -1529,6 +1534,9 @@ try {
     assertTrue($badLogout['status'] === 400, 'unregistered post_logout_redirect_uri must return 400');
     assertTrue(($badLogout['json']['error'] ?? '') === 'invalid_request', 'unregistered post_logout_redirect_uri must return invalid_request');
 
+    $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
+    assertTrue($backchannelReset['status'] === 204, 'back-channel fixture reset must return 204');
+
     $logout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
         'id_token_hint' => $token['json']['id_token'],
         'post_logout_redirect_uri' => 'http://localhost/logout-cb',
@@ -1537,6 +1545,34 @@ try {
     assertTrue($logout['status'] >= 300 && $logout['status'] < 400, 'registered logout redirect must redirect');
     assertTrue(strpos($logout['location'], 'http://localhost/logout-cb') === 0, 'logout must redirect to registered uri');
     assertTrue(strpos($logout['location'], 'state=logout-state-' . $suffix) !== false, 'logout redirect must preserve state');
+
+    $backchannel = httpRequest('GET', $backchannelUrl . '/last', [
+        'headers' => ['Accept: application/json'],
+    ]);
+    assertTrue($backchannel['status'] === 200, 'back-channel fixture must expose the last notification');
+    assertTrue(strpos((string)($backchannel['json']['content_type'] ?? ''), 'application/x-www-form-urlencoded') === 0, 'back-channel logout must use form encoding');
+    $logoutToken = (string)($backchannel['json']['logout_token'] ?? '');
+    assertTrue($logoutToken !== '', 'back-channel logout must send logout_token');
+    $logoutHeader = jwtPart($logoutToken, 0);
+    $logoutClaims = jwtPart($logoutToken, 1);
+    assertTrue(($logoutHeader['alg'] ?? '') === 'RS256', 'logout_token must use RS256');
+    assertTrue(($logoutClaims['iss'] ?? '') === $configuration['json']['issuer'], 'logout_token issuer must match discovery');
+    assertTrue(($logoutClaims['sub'] ?? '') === $adminId, 'logout_token subject must match user');
+    assertTrue(($logoutClaims['aud'] ?? '') === $client['json']['client_id'], 'logout_token audience must match client');
+    assertTrue(!empty($logoutClaims['jti']), 'logout_token must include jti');
+    assertTrue(isset($logoutClaims['events']['http://schemas.openid.net/event/backchannel-logout']), 'logout_token must include back-channel logout event');
+    $logoutTokenParts = explode('.', $logoutToken);
+    $logoutPublicKey = $db->createCommand(
+        "SELECT public_key_pem FROM oidc_signing_keys WHERE kid = :kid AND status IN ('active', 'retiring')",
+        [':kid' => $logoutHeader['kid'] ?? '']
+    )->queryScalar();
+    assertTrue($logoutPublicKey !== false, 'logout_token kid must reference a stored OIDC key');
+    assertTrue(openssl_verify(
+        $logoutTokenParts[0] . '.' . $logoutTokenParts[1],
+        \app\services\JwtService::base64urlDecode($logoutTokenParts[2]),
+        $logoutPublicKey,
+        OPENSSL_ALGO_SHA256
+    ) === 1, 'logout_token signature must validate against stored OIDC key');
 
     $invalidMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => 'not-a-code',
