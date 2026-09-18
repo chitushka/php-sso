@@ -129,6 +129,40 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame(0, $this->refreshTokenCount($flow['client_id']));
     }
 
+    public function testIdTokenCarriesNonceAndGrantAuthenticationTime(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(true, 'openid profile', 'nonce-from-authorize');
+        $codeClaims = $this->jwtPayload($flow['token']['data']['id_token']);
+        $codeCreatedAt = (int)Yii::$app->db->createCommand(
+            'SELECT EXTRACT(EPOCH FROM created_at)::bigint FROM oauth_authorization_codes WHERE client_id = :client_id',
+            [':client_id' => $flow['client_id']]
+        )->queryScalar();
+
+        $this->assertSame('nonce-from-authorize', $codeClaims['nonce']);
+        $this->assertSame($codeCreatedAt, $codeClaims['auth_time']);
+
+        $refreshAuthTime = 1700000000;
+        Yii::$app->db->createCommand(
+            'UPDATE refresh_tokens SET created_at = to_timestamp(:auth_time) WHERE token_hash = :token_hash',
+            [
+                ':auth_time' => $refreshAuthTime,
+                ':token_hash' => hash('sha256', $flow['token']['data']['refresh_token']),
+            ]
+        )->execute();
+
+        $refresh = (new OAuthService())->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ]));
+        $refreshClaims = $this->jwtPayload($refresh['data']['id_token']);
+
+        $this->assertTrue($refresh['ok']);
+        $this->assertSame('', $refreshClaims['nonce']);
+        $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
+    }
+
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
     {
         $flow = $this->issueAuthorizationCodeToken();
@@ -235,7 +269,11 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertFalse($revoked['data']['active']);
     }
 
-    private function issueAuthorizationCodeToken(bool $exchange = true): array
+    private function issueAuthorizationCodeToken(
+        bool $exchange = true,
+        string $scope = 'profile',
+        string $nonce = ''
+    ): array
     {
         $service = new OAuthService();
         $clientId = 'phpunit_oauth_client_' . bin2hex(random_bytes(4));
@@ -245,7 +283,7 @@ class OAuthTokenServiceTest extends TestCase
             'name' => 'PHPUnit OAuth token client',
             'type' => OAuthClient::TYPE_CONFIDENTIAL,
             'redirect_uris' => ['https://rp.example.test/callback'],
-            'allowed_scopes' => ['profile'],
+            'allowed_scopes' => ['openid', 'profile'],
             'skip_consent' => true,
             'enabled' => true,
         ]);
@@ -258,10 +296,11 @@ class OAuthTokenServiceTest extends TestCase
             'response_type' => 'code',
             'client_id' => $clientId,
             'redirect_uri' => 'https://rp.example.test/callback',
-            'scope' => 'profile',
+            'scope' => $scope,
             'state' => 'state-123',
             'code_challenge' => $challenge,
             'code_challenge_method' => 'S256',
+            'nonce' => $nonce,
         ], ['sso_session' => $this->loginSessionToken()]));
 
         $this->assertTrue($authorize['ok']);
@@ -331,6 +370,12 @@ class OAuthTokenServiceTest extends TestCase
         $request->headers->set('Authorization', 'Bearer ' . $token);
 
         return $request;
+    }
+
+    private function jwtPayload(string $token): array
+    {
+        $parts = explode('.', $token);
+        return json_decode(JwtService::base64urlDecode($parts[1]), true);
     }
 
     private function usedAuthorizationCodeCount(string $clientId): int

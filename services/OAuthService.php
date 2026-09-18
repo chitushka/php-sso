@@ -397,7 +397,7 @@ class OAuthService
             'UPDATE oauth_authorization_codes
              SET used_at = now()
              WHERE code_hash = :code_hash AND used_at IS NULL AND expires_at > now()
-             RETURNING client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce',
+             RETURNING client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, created_at',
             [':code_hash' => hash('sha256', (string)$request->post('code'))]
         )->queryOne();
 
@@ -414,7 +414,8 @@ class OAuthService
             $client,
             (string)$code['scope'],
             (string)$code['nonce'],
-            null
+            null,
+            strtotime((string)$code['created_at'])
         );
     }
 
@@ -462,7 +463,14 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        return $this->tokenResponse($old->user_id, $client, $old->scope, '', (string)$old->family_id);
+        return $this->tokenResponse(
+            $old->user_id,
+            $client,
+            $old->scope,
+            '',
+            (string)$old->family_id,
+            strtotime((string)$old->created_at)
+        );
     }
 
     private function clientCredentialsToken(Request $request, OAuthClient $client): array
@@ -490,7 +498,14 @@ class OAuthService
         ]];
     }
 
-    private function tokenResponse(string $userId, OAuthClient $client, string $scope, string $nonce, ?string $familyId): array
+    private function tokenResponse(
+        string $userId,
+        OAuthClient $client,
+        string $scope,
+        string $nonce,
+        ?string $familyId,
+        int $authTime
+    ): array
     {
         $user = User::findOne(['id' => $userId]);
         $accessToken = (new JwtService())->issue($userId, [
@@ -518,7 +533,12 @@ class OAuthService
         ];
 
         if (in_array('openid', preg_split('/\s+/', trim($scope)), true)) {
-            $data['id_token'] = (new OidcService())->issueIdToken($userId, $client->client_id, $nonce);
+            $data['id_token'] = (new OidcService())->issueIdToken(
+                $userId,
+                $client->client_id,
+                $nonce,
+                $authTime
+            );
         }
 
         return ['ok' => true, 'data' => $data];

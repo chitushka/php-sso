@@ -203,6 +203,7 @@ try {
     assertTrue(($idToken['iss'] ?? '') === $discovery['json']['issuer'], 'RP id_token must match issuer');
     assertTrue(($idToken['aud'] ?? '') === $clientId, 'RP id_token must match audience');
     assertTrue(($idToken['nonce'] ?? '') === $nonce, 'RP id_token must match nonce');
+    assertTrue(is_int($idToken['auth_time'] ?? null), 'RP id_token must include auth_time');
 
     $userinfo = httpRequest('GET', $discovery['json']['userinfo_endpoint'], [
         'headers' => ['Authorization: Bearer ' . $token['json']['access_token'], 'Accept: application/json'],
@@ -220,6 +221,9 @@ try {
     assertTrue(!empty($refresh['json']['access_token']), 'RP refresh response must include access_token');
     assertTrue(!empty($refresh['json']['refresh_token']), 'RP refresh response must include rotated refresh_token');
     assertTrue($refresh['json']['refresh_token'] !== $token['json']['refresh_token'], 'RP refresh response must rotate refresh_token');
+    $refreshIdToken = jwtPart($refresh['json']['id_token'], 1);
+    assertTrue(($refreshIdToken['nonce'] ?? null) === '', 'RP refreshed id_token must carry empty nonce');
+    assertTrue(is_int($refreshIdToken['auth_time'] ?? null), 'RP refreshed id_token must include auth_time');
 
     $logout = httpRequest('GET', $discovery['json']['end_session_endpoint'] . '?' . http_build_query([
         'id_token_hint' => $token['json']['id_token'],

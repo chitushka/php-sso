@@ -61,7 +61,12 @@ class OidcService
         ];
     }
 
-    public function issueIdToken(string $userId, string $audience, string $nonce = ''): string
+    public function issueIdToken(
+        string $userId,
+        string $audience,
+        string $nonce = '',
+        ?int $authTime = null
+    ): string
     {
         $key = $this->activeKey();
         $user = User::findOne(['id' => $userId]);
@@ -72,14 +77,12 @@ class OidcService
             'aud' => $audience,
             'iat' => $now,
             'exp' => $now + Yii::$app->params['accessTokenTtl'],
+            'auth_time' => $authTime ?? $now,
+            'nonce' => $nonce,
             'preferred_username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
             'email_verified' => $user ? (bool)$user->email_verified : false,
         ];
-
-        if ($nonce !== '') {
-            $payload['nonce'] = $nonce;
-        }
 
         $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));
         $body = JwtService::base64url(json_encode($payload));

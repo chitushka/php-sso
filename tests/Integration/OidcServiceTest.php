@@ -94,6 +94,8 @@ class OidcServiceTest extends TestCase
         $this->assertSame($this->userId, $claims['sub']);
         $this->assertSame('phpunit-client', $claims['aud']);
         $this->assertSame('nonce-123', $claims['nonce']);
+        $this->assertIsInt($claims['auth_time']);
+        $this->assertLessThanOrEqual($claims['iat'], $claims['auth_time']);
         $this->assertSame($this->username, $claims['preferred_username']);
         $this->assertSame($this->username . '@example.test', $claims['email']);
 

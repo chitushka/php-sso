@@ -518,6 +518,7 @@ try {
     assertTrue(($idTokenPayload['sub'] ?? '') === $adminId, 'id_token subject must match user');
     assertTrue(($idTokenPayload['aud'] ?? '') === $client['json']['client_id'], 'id_token audience must match client');
     assertTrue(($idTokenPayload['nonce'] ?? '') === 'nonce-' . $suffix, 'id_token nonce must match authorize request');
+    assertTrue(is_int($idTokenPayload['auth_time'] ?? null), 'id_token must include integer auth_time');
 
     $codeReuse = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
@@ -663,6 +664,9 @@ try {
     assertTrue($refresh['status'] === 200, 'refresh token grant must return 200');
     assertTrue(!empty($refresh['json']['refresh_token']), 'refresh grant must return rotated refresh_token');
     assertTrue($refresh['json']['refresh_token'] !== $firstRefresh, 'refresh grant must rotate token value');
+    $refreshIdToken = jwtPart($refresh['json']['id_token'], 1);
+    assertTrue(($refreshIdToken['nonce'] ?? null) === '', 'refreshed id_token must carry empty nonce like Go');
+    assertTrue(is_int($refreshIdToken['auth_time'] ?? null), 'refreshed id_token must include auth_time');
 
     $rotatedIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => $firstRefresh,
