@@ -98,6 +98,8 @@ Consent API повторяет Go lifecycle. `GET /oauth2/consent` сначал�
 
 `OAuthService::logout()` реализует RP-initiated logout: валидирует RS256 `id_token_hint` по stored OIDC signing key, issuer и возрасту hint; отзывает текущую `sso_session` cookie-сессию и refresh tokens пользователя; `post_logout_redirect_uri` разрешён только если он зарегистрирован у клиента из `id_token_hint`. Как Go handler, непустые form-параметры POST имеют приоритет над одноимёнными query-параметрами. Если у клиента задан `backchannel_logout_uri`, `OidcService` создаёт RS256 logout token со сроком две минуты, уникальным `jti` и event `http://schemas.openid.net/event/backchannel-logout`, затем отправляет его как `application/x-www-form-urlencoded`; сетевой отказ не отменяет локальный logout.
 
+`OidcService` лениво проверяет lifecycle signing keys при выдаче и проверке токенов и при построении JWKS. Active RSA-ключ старше 30 дней атомарно переводится в `retiring` с 24-часовым grace-периодом, а новый ключ создаётся под PostgreSQL advisory lock. JWKS публикует active и retiring keys, поэтому ранее выданные ID/logout tokens продолжают проверяться до конца grace-периода; после него ключ получает статус `retired` и исчезает из JWKS.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

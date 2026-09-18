@@ -8,6 +8,9 @@ use Yii;
 class OidcService
 {
     private const MAX_LOGOUT_HINT_AGE = 86400;
+    private const KEY_MAX_AGE_DAYS = 30;
+    private const RETIRING_GRACE_HOURS = 24;
+    private const KEY_ROTATION_LOCK = 1397968720;
 
     public function configuration(): array
     {
@@ -35,18 +38,26 @@ class OidcService
 
     public function jwks(): array
     {
-        $key = $this->activeKey();
-        $details = openssl_pkey_get_details(openssl_pkey_get_public($key['public_key_pem']));
+        $this->activeKey();
+        $keys = Yii::$app->db->createCommand(
+            "SELECT kid, public_key_pem FROM oidc_signing_keys
+             WHERE status IN ('active', 'retiring')
+             ORDER BY created_at DESC"
+        )->queryAll();
 
         return [
-            'keys' => [[
-                'kty' => 'RSA',
-                'use' => 'sig',
-                'kid' => $key['kid'],
-                'alg' => 'RS256',
-                'n' => JwtService::base64url($details['rsa']['n']),
-                'e' => JwtService::base64url($details['rsa']['e']),
-            ]],
+            'keys' => array_map(function (array $key): array {
+                $details = openssl_pkey_get_details(openssl_pkey_get_public($key['public_key_pem']));
+
+                return [
+                    'kty' => 'RSA',
+                    'use' => 'sig',
+                    'kid' => $key['kid'],
+                    'alg' => 'RS256',
+                    'n' => JwtService::base64url($details['rsa']['n']),
+                    'e' => JwtService::base64url($details['rsa']['e']),
+                ];
+            }, $keys),
         ];
     }
 
@@ -121,6 +132,8 @@ class OidcService
 
     public function verifyIdTokenHint(string $token): ?array
     {
+        $this->retireExpiredKeys();
+
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
             return null;
@@ -167,26 +180,74 @@ class OidcService
 
     private function activeKey(): array
     {
-        $row = Yii::$app->db->createCommand("SELECT * FROM oidc_signing_keys WHERE status = 'active' ORDER BY created_at DESC LIMIT 1")->queryOne();
-        if ($row) {
-            return $row;
-        }
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            // Advisory lock не даёт нескольким PHP workers одновременно создать active key.
+            Yii::$app->db->createCommand(
+                'SELECT pg_advisory_xact_lock(:lock_id)',
+                [':lock_id' => self::KEY_ROTATION_LOCK]
+            )->queryScalar();
+            $this->retireExpiredKeys();
 
-        // При первом запуске создаём RSA-ключ, аналогично EnsureActiveKey в Go-сервисе.
-        $resource = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+            $row = Yii::$app->db->createCommand(
+                "SELECT * FROM oidc_signing_keys
+                 WHERE status = 'active'
+                   AND created_at > now() - interval '" . self::KEY_MAX_AGE_DAYS . " days'
+                 ORDER BY created_at DESC LIMIT 1"
+            )->queryOne();
+            if ($row) {
+                $transaction->commit();
+                return $row;
+            }
+
+            // Старый ключ остаётся в JWKS на время жизни уже выданных токенов.
+            Yii::$app->db->createCommand(
+                "UPDATE oidc_signing_keys
+                 SET status = 'retiring', expires_at = now() + interval '" . self::RETIRING_GRACE_HOURS . " hours'
+                 WHERE status = 'active'"
+            )->execute();
+
+            $row = $this->createActiveKey();
+            $transaction->commit();
+            return $row;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    private function retireExpiredKeys(): void
+    {
+        Yii::$app->db->createCommand(
+            "UPDATE oidc_signing_keys
+             SET status = 'retired'
+             WHERE status = 'retiring' AND expires_at IS NOT NULL AND expires_at < now()"
+        )->execute();
+    }
+
+    private function createActiveKey(): array
+    {
+        $resource = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
         openssl_pkey_export($resource, $private);
         $details = openssl_pkey_get_details($resource);
-        $public = $details['key'];
-        $kid = 'kid_' . bin2hex(random_bytes(8));
+        $kid = (string)Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
 
         Yii::$app->db->createCommand()->insert('oidc_signing_keys', [
             'kid' => $kid,
             'alg' => 'RS256',
             'private_key_pem' => $private,
-            'public_key_pem' => $public,
+            'public_key_pem' => $details['key'],
             'status' => 'active',
         ])->execute();
 
-        return Yii::$app->db->createCommand('SELECT * FROM oidc_signing_keys WHERE kid = :kid', [':kid' => $kid])->queryOne();
+        return Yii::$app->db->createCommand(
+            'SELECT * FROM oidc_signing_keys WHERE kid = :kid',
+            [':kid' => $kid]
+        )->queryOne();
     }
 }

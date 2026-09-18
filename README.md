@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: перенесена ротация OIDC signing keys: новый RS256-ключ создаётся после 30 дней, прежний остаётся в JWKS на 24-часовой grace-период, а advisory lock защищает от параллельной ротации.
 - 2026-09-18: добавлен OIDC Back-Channel Logout, ранее только заявленный в Discovery: RS256 logout token с `jti`/events отправляется на `backchannel_logout_uri`; основной integration flow поднимает mock RP и проверяет доставку, claims и подпись.
 - 2026-09-18: Authorization Code + PKCE exchange выровнен с Go: code атомарно потребляется до дальнейшей валидации, не может быть повторно использован после неудачного обмена, а PKCE challenge всегда проверяется по S256; добавлены PostgreSQL и HTTP regression-тесты.
 - 2026-09-18: OAuth revocation/introspection выровнены с Go и RFC 7009/7662: revoke отзывает refresh family, пишет аудит и возвращает пустой body; introspection распознаёт access/refresh tokens и их inactive states; client auth использует Basic precedence и `WWW-Authenticate` для `invalid_client`.

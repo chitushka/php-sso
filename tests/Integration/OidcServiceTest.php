@@ -111,6 +111,54 @@ class OidcServiceTest extends TestCase
         $this->assertSame(120, $logoutClaims['exp'] - $logoutClaims['iat']);
     }
 
+    public function testSigningKeyRotationKeepsOldKeyInJwksDuringGracePeriod(): void
+    {
+        $service = new OidcService();
+        $token = $service->issueIdToken($this->userId, 'rotation-client');
+        $header = $this->jwtPart($token, 0);
+        $oldKid = (string)$header['kid'];
+        $oldKey = Yii::$app->db->createCommand(
+            'SELECT id, created_at, expires_at FROM oidc_signing_keys WHERE kid = :kid',
+            [':kid' => $oldKid]
+        )->queryOne();
+        $newKid = null;
+
+        try {
+            Yii::$app->db->createCommand(
+                "UPDATE oidc_signing_keys SET created_at = now() - interval '31 days' WHERE kid = :kid",
+                [':kid' => $oldKid]
+            )->execute();
+
+            $jwks = $service->jwks();
+            $kids = array_column($jwks['keys'], 'kid');
+            $newKid = (string)$kids[0];
+
+            $this->assertNotSame($oldKid, $newKid);
+            $this->assertContains($oldKid, $kids);
+            $this->assertNotNull($service->verifyIdTokenHint($token));
+            $this->assertSame('retiring', $this->keyStatus($oldKid));
+
+            Yii::$app->db->createCommand(
+                "UPDATE oidc_signing_keys SET expires_at = now() - interval '1 second' WHERE kid = :kid",
+                [':kid' => $oldKid]
+            )->execute();
+
+            $afterGrace = $service->jwks();
+            $this->assertNotContains($oldKid, array_column($afterGrace['keys'], 'kid'));
+            $this->assertSame('retired', $this->keyStatus($oldKid));
+            $this->assertNull($service->verifyIdTokenHint($token));
+        } finally {
+            if ($newKid !== null && $newKid !== $oldKid) {
+                Yii::$app->db->createCommand()->delete('oidc_signing_keys', ['kid' => $newKid])->execute();
+            }
+            Yii::$app->db->createCommand()->update('oidc_signing_keys', [
+                'status' => 'active',
+                'created_at' => $oldKey['created_at'],
+                'expires_at' => $oldKey['expires_at'],
+            ], ['kid' => $oldKid])->execute();
+        }
+    }
+
     public function testUserinfoFiltersClaimsByScope(): void
     {
         $controller = new OidcController('oidc', Yii::$app);
@@ -211,6 +259,20 @@ class OidcServiceTest extends TestCase
         $request->headers->set('Authorization', 'Bearer ' . $token);
 
         return $request;
+    }
+
+    private function jwtPart(string $token, int $index): array
+    {
+        $parts = explode('.', $token);
+        return json_decode(JwtService::base64urlDecode($parts[$index]), true);
+    }
+
+    private function keyStatus(string $kid): string
+    {
+        return (string)Yii::$app->db->createCommand(
+            'SELECT status FROM oidc_signing_keys WHERE kid = :kid',
+            [':kid' => $kid]
+        )->queryScalar();
     }
 
     private function revokedRefreshTokenCount(string $clientId): int
