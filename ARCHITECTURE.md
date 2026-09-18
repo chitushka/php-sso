@@ -110,6 +110,8 @@ OAuth token/revoke/introspection разбирают HTTP Basic credentials по 
 
 HS256 access tokens повторяют Go `auth.Claims`: общие identity claims — `sub`, `username`, `email`, `source`, `iat`, `exp`; OAuth user token дополнительно несёт `client_id` и непустой `scope`, а service-account token — `source=client` и `purpose=client_credentials`. Claim `iss` отсутствует, поскольку Go issuer заполняет его только в RS256 OIDC ID/logout tokens.
 
+`JwtService::verify()` не выбирает алгоритм из недоверенного token header: verifier принимает только `alg=HS256`, всегда пересчитывает HMAC-SHA256 и требует числовой `exp`, находящийся строго в будущем. Это повторяет проверку signing method и NumericDate в Go JWT library и закрывает algorithm-confusion расхождение PHP-порта.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

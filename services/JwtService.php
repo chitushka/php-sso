@@ -34,6 +34,11 @@ class JwtService
         }
 
         [$header, $payload, $signature] = $parts;
+        $headerData = json_decode(self::base64urlDecode($header), true);
+        if (!is_array($headerData) || ($headerData['alg'] ?? '') !== 'HS256') {
+            return null;
+        }
+
         $expected = self::base64url(hash_hmac('sha256', $header . '.' . $payload, $this->secret, true));
 
         if (!hash_equals($expected, $signature)) {
@@ -41,7 +46,13 @@ class JwtService
         }
 
         $data = json_decode(self::base64urlDecode($payload), true);
-        if (!is_array($data) || ($data['exp'] ?? 0) < time()) {
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $expiresAt = $data['exp'] ?? null;
+        if ((!is_int($expiresAt) && !is_float($expiresAt))
+            || $expiresAt <= time()) {
             return null;
         }
 

@@ -4,6 +4,7 @@ namespace tests\Integration;
 
 use app\models\User;
 use app\services\AuthService;
+use app\services\JwtService;
 use app\services\MfaService;
 use PHPUnit\Framework\TestCase;
 use Yii;
@@ -144,6 +145,24 @@ class AuthServiceTest extends TestCase
         $this->assertNull($service->userBySession($login['cookie']->value));
     }
 
+    public function testJwtVerificationRejectsAlgorithmConfusionAndInvalidExpiry(): void
+    {
+        $jwt = new JwtService();
+        $valid = $jwt->issue($this->userId, ['username' => $this->username], 60);
+        $parts = explode('.', $valid);
+        $forgedAlgorithm = $this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'RS256'],
+            json_decode(JwtService::base64urlDecode($parts[1]), true)
+        );
+
+        $this->assertNull($jwt->verify($forgedAlgorithm));
+        $this->assertNull($jwt->verify($jwt->issue($this->userId, [], 0)));
+        $this->assertNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            ['sub' => $this->userId, 'iat' => time(), 'exp' => 'tomorrow']
+        )));
+    }
+
     public function testMfaVerificationDistinguishesTokenCodeAndLockout(): void
     {
         $mfa = new MfaService();
@@ -235,6 +254,20 @@ class AuthServiceTest extends TestCase
         $request->headers->set('User-Agent', 'PHPUnit AuthServiceTest');
 
         return $request;
+    }
+
+    private function signedToken(array $header, array $payload): string
+    {
+        $encodedHeader = JwtService::base64url(json_encode($header));
+        $encodedPayload = JwtService::base64url(json_encode($payload));
+        $signature = JwtService::base64url(hash_hmac(
+            'sha256',
+            $encodedHeader . '.' . $encodedPayload,
+            Yii::$app->params['jwtSecret'],
+            true
+        ));
+
+        return $encodedHeader . '.' . $encodedPayload . '.' . $signature;
     }
 
     private function totpCode(string $secret): string
