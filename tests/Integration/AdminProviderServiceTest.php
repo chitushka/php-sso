@@ -7,6 +7,7 @@ use app\models\IdentityProvider;
 use app\models\LdapProvider;
 use app\services\BrokerService;
 use app\services\CryptoService;
+use app\services\JwtService;
 use app\services\LdapService;
 use PHPUnit\Framework\TestCase;
 use Yii;
@@ -95,6 +96,51 @@ class AdminProviderServiceTest extends TestCase
         $this->identityProviderIds = [];
     }
 
+    public function testBrokerStateMatchesGoWireContract(): void
+    {
+        $jwtSecret = 'phpunit-jwt-secret-32-characters-long';
+        $encryptionKey = 'different-encryption-key-32-chars';
+        $originalJwtSecret = Yii::$app->params['jwtSecret'];
+        $originalEncryptionKey = Yii::$app->params['encryptionKey'];
+        Yii::$app->params['jwtSecret'] = $jwtSecret;
+        Yii::$app->params['encryptionKey'] = $encryptionKey;
+
+        try {
+            $service = new BrokerService();
+            $signState = new \ReflectionMethod($service, 'signState');
+            $signState->setAccessible(true);
+            $verifyState = new \ReflectionMethod($service, 'verifyState');
+            $verifyState->setAccessible(true);
+
+            $state = [
+                'p' => 'google',
+                'n' => 'nonce',
+                'c' => '/users',
+                'e' => gmdate('Y-m-d\TH:i:s\Z', time() + 600),
+            ];
+            $signed = $signState->invoke($service, $state);
+            [$encodedPayload, $encodedSignature] = explode('.', $signed, 2);
+            $payload = JwtService::base64urlDecode($encodedPayload);
+            $signature = JwtService::base64urlDecode($encodedSignature);
+
+            $this->assertSame($state, json_decode($payload, true));
+            $this->assertTrue(hash_equals(hash_hmac('sha256', $payload, $jwtSecret, true), $signature));
+            $this->assertFalse(hash_equals(hash_hmac('sha256', $payload, $encryptionKey, true), $signature));
+            $this->assertSame($state, $verifyState->invoke($service, $signed));
+
+            $expiredState = $state;
+            $expiredState['e'] = gmdate('Y-m-d\TH:i:s\Z', time() - 60);
+            $this->assertNull($verifyState->invoke($service, $this->goSignedState($expiredState, $jwtSecret)));
+
+            $legacyState = $this->goSignedState($state, $encryptionKey);
+            $this->assertNull($verifyState->invoke($service, $legacyState));
+            $this->assertNull($verifyState->invoke($service, $encodedPayload . '=.' . $encodedSignature));
+        } finally {
+            Yii::$app->params['jwtSecret'] = $originalJwtSecret;
+            Yii::$app->params['encryptionKey'] = $originalEncryptionKey;
+        }
+    }
+
     public function testLdapProviderCrudHidesPasswordAndManagesGroupMappings(): void
     {
         $service = new LdapService();
@@ -141,5 +187,14 @@ class AdminProviderServiceTest extends TestCase
         $this->assertTrue($service->deleteProvider($created['data']['id'], null));
         $this->ldapProviderIds = [];
         $this->assertNull(LdapProvider::findOne(['id' => $created['data']['id']]));
+    }
+
+    private function goSignedState(array $state, string $secret): string
+    {
+        $payload = json_encode($state);
+
+        return JwtService::base64url($payload) . '.' . JwtService::base64url(
+            hash_hmac('sha256', $payload, $secret, true)
+        );
     }
 }

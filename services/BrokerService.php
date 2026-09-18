@@ -79,7 +79,7 @@ class BrokerService
             'p' => $provider->code,
             'n' => JwtService::base64url(random_bytes(16)),
             'c' => $continueUrl,
-            'e' => time() + self::STATE_TTL,
+            'e' => gmdate('Y-m-d\TH:i:s\Z', time() + self::STATE_TTL),
         ]);
 
         $query = http_build_query([
@@ -357,7 +357,7 @@ class BrokerService
     private function signState(array $state): string
     {
         $payload = json_encode($state);
-        $signature = hash_hmac('sha256', $payload, (string)Yii::$app->params['encryptionKey'], true);
+        $signature = hash_hmac('sha256', $payload, (string)Yii::$app->params['jwtSecret'], true);
 
         return JwtService::base64url($payload) . '.' . JwtService::base64url($signature);
     }
@@ -369,18 +369,55 @@ class BrokerService
             return null;
         }
 
-        $payload = JwtService::base64urlDecode($parts[0]);
-        $signature = JwtService::base64urlDecode($parts[1]);
-        $expected = hash_hmac('sha256', $payload, (string)Yii::$app->params['encryptionKey'], true);
+        $payload = $this->decodeStateSegment($parts[0]);
+        $signature = $this->decodeStateSegment($parts[1]);
+        if ($payload === null || $signature === null) {
+            return null;
+        }
+
+        $expected = hash_hmac('sha256', $payload, (string)Yii::$app->params['jwtSecret'], true);
         if (!hash_equals($expected, $signature)) {
             return null;
         }
 
         $state = json_decode($payload, true);
-        if (!is_array($state) || (int)($state['e'] ?? 0) < time()) {
+        if (!is_array($state) || !is_string($state['e'] ?? null)
+            || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/D', $state['e']) !== 1) {
+            return null;
+        }
+
+        try {
+            $expiresAt = new \DateTimeImmutable($state['e']);
+        } catch (\Exception $exception) {
+            return null;
+        }
+        $dateErrors = \DateTimeImmutable::getLastErrors();
+        if (is_array($dateErrors) && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0)) {
+            return null;
+        }
+        if ($expiresAt <= new \DateTimeImmutable('now')) {
             return null;
         }
 
         return $state;
+    }
+
+    private function decodeStateSegment(string $value): ?string
+    {
+        if ($value === '' || preg_match('/^[A-Za-z0-9_-]+$/D', $value) !== 1) {
+            return null;
+        }
+
+        $remainder = strlen($value) % 4;
+        if ($remainder === 1) {
+            return null;
+        }
+        if ($remainder > 0) {
+            $value .= str_repeat('=', 4 - $remainder);
+        }
+
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+
+        return $decoded === false ? null : $decoded;
     }
 }

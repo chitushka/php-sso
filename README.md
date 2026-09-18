@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: signed state identity broker приведён к Go wire-format: общий `SSO_JWT_SECRET`, RFC3339 expiry и строгий unpadded base64url позволяют продолжать broker login между Go/PHP-инстансами при rolling migration.
 - 2026-09-18: HS256 JWT verifier дополнен строгим unpadded base64url-разбором compact-сегментов и проверкой optional `nbf`; подписанные токены с padding/некорректным `nbf` или временем активации в будущем отклоняются.
 - 2026-09-18: HS256 JWT verifier приведён к Go security contract: строгий `alg=HS256`, числовой future `exp` и regression-тесты против algorithm confusion.
 - 2026-09-18: HS256 access token claims выровнены с Go: добавлены `email`/`source`, optional OAuth claims не сериализуются пустыми, лишний `iss` удалён; RS256 OIDC tokens сохраняют issuer.
