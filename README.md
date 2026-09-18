@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: HS256 access token claims выровнены с Go: добавлены `email`/`source`, optional OAuth claims не сериализуются пустыми, лишний `iss` удалён; RS256 OIDC tokens сохраняют issuer.
 - 2026-09-18: ответ `client_credentials` выровнен с Go: непустой подтверждённый `scope` возвращается в token response, пустой scope не сериализуется.
 - 2026-09-18: `client_secret_basic` приведён к RFC 6749 и Go: client credentials используют form-urlencoded encoding с корректной обработкой `+`, `%2B` и пробелов.
 - 2026-09-18: authorize и logout redirects выровнены с Go для URI с существующими query/fragment: OAuth-параметры заменяются без дублей и размещаются до `#fragment`.

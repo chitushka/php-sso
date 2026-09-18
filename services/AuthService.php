@@ -100,6 +100,7 @@ class AuthService
 
         $jwt = (new JwtService())->issue($user->id, [
             'username' => $user->username,
+            'email' => $user->email,
             'source' => $user->source,
         ], null, $issuedAt);
 

@@ -601,6 +601,10 @@ try {
     assertTrue(($introspection['json']['username'] ?? '') === $adminUsername, 'introspection must include access token username');
     assertTrue(!array_key_exists('iss', $introspection['json']), 'introspection must not leak JWT-only issuer claim');
     assertTrue(!array_key_exists('iat', $introspection['json']), 'access token introspection must match Go claim set');
+    $accessTokenClaims = jwtPart($token['json']['access_token'], 1);
+    assertTrue(($accessTokenClaims['email'] ?? '') === $adminUsername . '@example.test', 'OAuth access token must include user email');
+    assertTrue(($accessTokenClaims['source'] ?? '') === 'local', 'OAuth access token must include user source');
+    assertTrue(!array_key_exists('iss', $accessTokenClaims), 'OAuth access token must omit issuer like Go');
 
     $refreshIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => $token['json']['refresh_token'],
@@ -1463,6 +1467,9 @@ try {
     $clientCredentialsClaims = jwtPart($clientCredentials['json']['access_token'], 1);
     assertTrue(($clientCredentialsClaims['client_id'] ?? '') === $client['json']['client_id'], 'client_credentials token must include client_id');
     assertTrue(($clientCredentialsClaims['purpose'] ?? '') === 'client_credentials', 'client_credentials token must include purpose');
+    assertTrue(($clientCredentialsClaims['email'] ?? null) === '', 'client_credentials token must include empty email');
+    assertTrue(($clientCredentialsClaims['source'] ?? '') === 'client', 'client_credentials token must identify client source');
+    assertTrue(!array_key_exists('iss', $clientCredentialsClaims), 'client_credentials token must omit issuer like Go');
 
     $badClientCredentialsScope = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'client_credentials',

@@ -108,6 +108,8 @@ OAuth token/revoke/introspection разбирают HTTP Basic credentials по 
 
 Успешный `client_credentials` grant возвращает `access_token`, `token_type`, `expires_in` и подтверждённый непустой `scope`, но не выдаёт refresh или ID Token. Для пустого scope поле не сериализуется, повторяя Go `json:"scope,omitempty"`.
 
+HS256 access tokens повторяют Go `auth.Claims`: общие identity claims — `sub`, `username`, `email`, `source`, `iat`, `exp`; OAuth user token дополнительно несёт `client_id` и непустой `scope`, а service-account token — `source=client` и `purpose=client_credentials`. Claim `iss` отсутствует, поскольку Go issuer заполняет его только в RS256 OIDC ID/logout tokens.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

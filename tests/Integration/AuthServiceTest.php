@@ -86,6 +86,11 @@ class AuthServiceTest extends TestCase
         $jwtRequest = $this->request();
         $jwtRequest->headers->set('Authorization', 'Bearer ' . $login['data']['access_token']);
         $this->assertSame($this->userId, $service->currentUser($jwtRequest)->id);
+        $claims = $service->currentClaims($jwtRequest);
+        $this->assertSame($this->username, $claims['username']);
+        $this->assertSame($this->email, $claims['email']);
+        $this->assertSame(User::SOURCE_LOCAL, $claims['source']);
+        $this->assertArrayNotHasKey('iss', $claims);
 
         $this->assertSame(1, $this->auditCount('login_success'));
 

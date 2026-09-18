@@ -84,6 +84,10 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame('profile', $token['data']['scope']);
         $this->assertNotEmpty($token['data']['access_token']);
         $this->assertNotEmpty($token['data']['refresh_token']);
+        $accessClaims = $this->jwtPayload($token['data']['access_token']);
+        $this->assertSame($this->username . '@example.test', $accessClaims['email']);
+        $this->assertSame('local', $accessClaims['source']);
+        $this->assertArrayNotHasKey('iss', $accessClaims);
         $this->assertSame($this->userId, (new AuthService())->currentUser($this->bearerRequest($token['data']['access_token']))->id);
         $this->assertSame(1, $this->usedAuthorizationCodeCount($clientId));
         $this->assertSame(1, $this->refreshTokenCount($clientId));
@@ -207,7 +211,11 @@ class OAuthTokenServiceTest extends TestCase
 
         $this->assertTrue($token['ok']);
         $this->assertSame('profile', $token['data']['scope']);
-        $this->assertSame($clientId, $this->jwtPayload($token['data']['access_token'])['client_id']);
+        $tokenClaims = $this->jwtPayload($token['data']['access_token']);
+        $this->assertSame($clientId, $tokenClaims['client_id']);
+        $this->assertSame('', $tokenClaims['email']);
+        $this->assertSame('client', $tokenClaims['source']);
+        $this->assertArrayNotHasKey('iss', $tokenClaims);
 
         $emptyScopeRequest = $this->postRequest(['grant_type' => 'client_credentials']);
         $emptyScopeRequest->headers->set(
@@ -220,6 +228,7 @@ class OAuthTokenServiceTest extends TestCase
 
         $this->assertTrue($emptyScopeToken['ok']);
         $this->assertArrayNotHasKey('scope', $emptyScopeToken['data']);
+        $this->assertArrayNotHasKey('scope', $this->jwtPayload($emptyScopeToken['data']['access_token']));
     }
 
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void

@@ -7,12 +7,10 @@ use Yii;
 class JwtService
 {
     private string $secret;
-    private string $issuer;
 
     public function __construct()
     {
         $this->secret = Yii::$app->params['jwtSecret'];
-        $this->issuer = Yii::$app->params['issuer'];
     }
 
     public function issue(string $subject, array $claims = [], ?int $ttl = null, ?int $issuedAt = null): string
@@ -20,7 +18,6 @@ class JwtService
         $now = $issuedAt ?? time();
         $ttl = $ttl ?? Yii::$app->params['accessTokenTtl'];
         $payload = array_merge($claims, [
-            'iss' => $this->issuer,
             'sub' => $subject,
             'iat' => $now,
             'exp' => $now + $ttl,

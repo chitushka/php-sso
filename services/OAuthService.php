@@ -530,12 +530,17 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
         }
 
-        $token = (new JwtService())->issue($client->id, [
+        $claims = [
             'client_id' => $client->client_id,
             'username' => $client->client_id,
-            'scope' => $scope,
+            'email' => '',
+            'source' => 'client',
             'purpose' => 'client_credentials',
-        ]);
+        ];
+        if ($scope !== '') {
+            $claims['scope'] = $scope;
+        }
+        $token = (new JwtService())->issue($client->id, $claims);
 
         $data = [
             'access_token' => $token,
@@ -559,11 +564,16 @@ class OAuthService
     ): array
     {
         $user = User::findOne(['id' => $userId]);
-        $accessToken = (new JwtService())->issue($userId, [
+        $claims = [
             'client_id' => $client->client_id,
             'username' => $user ? $user->username : '',
-            'scope' => $scope,
-        ]);
+            'email' => $user ? $user->email : '',
+            'source' => $user ? $user->source : '',
+        ];
+        if ($scope !== '') {
+            $claims['scope'] = $scope;
+        }
+        $accessToken = (new JwtService())->issue($userId, $claims);
         $refreshToken = (new AuthService())->randomToken(32);
 
         $rt = new RefreshToken();
