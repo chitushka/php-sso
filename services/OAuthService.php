@@ -212,34 +212,74 @@ class OAuthService
 
     public function consentInfo(Request $request): array
     {
-        $client = OAuthClient::findOne(['client_id' => $request->get('client_id')]);
-        return [
+        $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
+        if (!$user) {
+            return $this->oauthFail(401, 'login_required', 'no active session');
+        }
+
+        $client = OAuthClient::findOne([
             'client_id' => $request->get('client_id'),
-            'client_name' => $client ? $client->name : '',
-            'scope' => $request->get('scope', ''),
-            'scopes' => preg_split('/\s+/', trim((string)$request->get('scope', ''))) ?: [],
+            'enabled' => true,
+        ]);
+        if (!$client) {
+            return $this->oauthFail(400, 'invalid_request', 'invalid client credentials');
+        }
+
+        $scope = (string)$request->get('scope', '');
+        if (!$this->scopeAllowed($client, $scope)) {
+            return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
+        }
+
+        $granted = Yii::$app->db->createCommand(
+            'SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id',
+            [':user_id' => $user->id, ':client_id' => $client->client_id]
+        )->queryScalar();
+
+        return [
+            'ok' => true,
+            'data' => [
+                'client_id' => $client->client_id,
+                'client_name' => $client->name,
+                'requested_scopes' => $this->splitScopes($scope),
+                'granted_scopes' => $this->splitScopes($granted === false ? '' : (string)$granted),
+            ],
         ];
     }
 
     public function grantConsent(Request $request, array $body): array
     {
         $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
-        $client = OAuthClient::findOne(['client_id' => $body['client_id'] ?? '']);
-
         if (!$user) {
             return $this->oauthFail(401, 'login_required', 'no active session');
         }
 
-        if (!$client || !$this->scopeAllowed($client, (string)($body['scope'] ?? ''))) {
+        $client = OAuthClient::findOne([
+            'client_id' => $body['client_id'] ?? '',
+            'enabled' => true,
+        ]);
+        if (!$client) {
+            return $this->oauthFail(400, 'invalid_request', 'invalid client credentials');
+        }
+
+        $scope = (string)($body['scope'] ?? '');
+        if (!$this->scopeAllowed($client, $scope)) {
             return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
         }
 
-        $scopes = implode(' ', array_unique(array_filter(preg_split('/\s+/', trim((string)$body['scope'])))));
+        $existing = Yii::$app->db->createCommand(
+            'SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id',
+            [':user_id' => $user->id, ':client_id' => $client->client_id]
+        )->queryScalar();
+        $scopes = implode(' ', array_unique(array_merge(
+            $this->splitScopes($existing === false ? '' : (string)$existing),
+            $this->splitScopes($scope)
+        )));
         Yii::$app->db->createCommand(
             'INSERT INTO user_consents(user_id, client_id, scopes) VALUES (:user_id, :client_id, :scopes)
              ON CONFLICT (user_id, client_id) DO UPDATE SET scopes = :scopes, updated_at = now()',
             [':user_id' => $user->id, ':client_id' => $client->client_id, ':scopes' => $scopes]
         )->execute();
+        AuditService::record($user->id, 'consent_granted', 'oauth_client', $client->client_id);
 
         return ['ok' => true];
     }
@@ -446,10 +486,19 @@ class OAuthService
 
     private function scopeAllowed(OAuthClient $client, string $scope): bool
     {
-        $requested = array_filter(preg_split('/\s+/', trim($scope)));
+        $requested = $this->splitScopes($scope);
         $allowed = OAuthClient::parsePgArray($client->allowed_scopes);
 
         return empty(array_diff($requested, $allowed));
+    }
+
+    private function splitScopes(string $scope): array
+    {
+        if (trim($scope) === '') {
+            return [];
+        }
+
+        return array_values(array_filter(preg_split('/\s+/', trim($scope))));
     }
 
     private function hasConsent(string $userId, string $clientId, string $scope): bool

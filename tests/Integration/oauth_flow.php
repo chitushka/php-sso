@@ -19,6 +19,7 @@ $createdClientIds = [];
 $createdGroupIds = [];
 $createdProviderIds = [];
 $createdAuditActions = [];
+$createdAuditTargets = [];
 
 function failTest(string $message): void
 {
@@ -648,6 +649,7 @@ try {
     assertTrue(isset($consentClient['json']['client']), 'create consent client must return nested client');
     $consentClient['json'] = $consentClient['json']['client'];
     $createdClientIds[] = $consentClient['json']['id'];
+    $createdAuditTargets[] = ['action' => 'consent_granted', 'target_id' => $consentClient['json']['client_id']];
 
     $consentAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
@@ -661,13 +663,35 @@ try {
     assertTrue($consentRequired['status'] === 403, 'client without consent must return 403');
     assertTrue(($consentRequired['json']['error'] ?? '') === 'consent_required', 'client without consent must return consent_required');
 
-    $consentInfo = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
+    $consentInfoUrl = $baseUrl . '/oauth2/consent?' . http_build_query([
         'client_id' => $consentClient['json']['client_id'],
         'scope' => 'openid profile',
-    ]), ['headers' => ['Accept: application/json']]);
+    ]);
+    $anonymousConsentInfo = httpRequest('GET', $consentInfoUrl, ['headers' => ['Accept: application/json']]);
+    assertOAuthError($anonymousConsentInfo, 401, 'login_required', 'anonymous consent info');
+    assertTrue(($anonymousConsentInfo['json']['error_description'] ?? '') === 'no active session', 'anonymous consent info must match Go description');
+
+    $unknownConsentClient = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
+        'client_id' => 'missing-client-' . $suffix,
+        'scope' => 'openid',
+    ]), ['headers' => ['Accept: application/json'], 'cookies' => $sessionCookie]);
+    assertOAuthError($unknownConsentClient, 400, 'invalid_request', 'unknown consent client');
+    assertTrue(($unknownConsentClient['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown consent client must match Go description');
+
+    $invalidConsentScope = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'admin',
+    ]), ['headers' => ['Accept: application/json'], 'cookies' => $sessionCookie]);
+    assertOAuthError($invalidConsentScope, 400, 'invalid_scope', 'invalid consent info scope');
+
+    $consentInfo = httpRequest('GET', $consentInfoUrl, [
+        'headers' => ['Accept: application/json'],
+        'cookies' => $sessionCookie,
+    ]);
     assertTrue($consentInfo['status'] === 200, 'consent info must return 200');
     assertTrue(($consentInfo['json']['client_id'] ?? '') === $consentClient['json']['client_id'], 'consent info must include client_id');
-    assertTrue(in_array('openid', $consentInfo['json']['scopes'] ?? [], true), 'consent info must include requested openid scope');
+    assertTrue(($consentInfo['json']['requested_scopes'] ?? []) === ['openid', 'profile'], 'consent info must include requested scopes');
+    assertTrue(($consentInfo['json']['granted_scopes'] ?? null) === [], 'consent info must initially report no granted scopes');
 
     $malformedConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
@@ -693,12 +717,43 @@ try {
     assertOAuthError($unknownConsentField, 400, 'invalid_request', 'consent JSON with unknown field');
     assertTrue(($unknownConsentField['json']['error_description'] ?? '') === 'invalid json body', 'unknown consent field must match Go description');
 
-    $grantConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
-        'client_id' => $consentClient['json']['client_id'],
-        'scope' => 'openid profile',
+    $invalidConsentClientGrant = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+        'client_id' => 'missing-client-' . $suffix,
+        'scope' => 'openid',
     ], null, $sessionCookie);
-    assertTrue($grantConsent['status'] === 200, 'grant consent must return 200');
-    assertTrue(($grantConsent['json']['status'] ?? '') === 'granted', 'grant consent must return granted status');
+    assertOAuthError($invalidConsentClientGrant, 400, 'invalid_request', 'grant consent for unknown client');
+    assertTrue(($invalidConsentClientGrant['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown grant consent client must match Go description');
+
+    $grantOpenidConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'openid',
+    ], null, $sessionCookie);
+    assertTrue($grantOpenidConsent['status'] === 200, 'grant initial consent must return 200');
+    assertTrue(($grantOpenidConsent['json']['status'] ?? '') === 'granted', 'grant initial consent must return granted status');
+
+    $partialConsentInfo = httpRequest('GET', $consentInfoUrl, [
+        'headers' => ['Accept: application/json'],
+        'cookies' => $sessionCookie,
+    ]);
+    assertTrue(($partialConsentInfo['json']['granted_scopes'] ?? []) === ['openid'], 'consent info must expose already granted scopes');
+
+    $grantProfileConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+        'client_id' => $consentClient['json']['client_id'],
+        'scope' => 'profile',
+    ], null, $sessionCookie);
+    assertTrue($grantProfileConsent['status'] === 200, 'grant additional consent must return 200');
+
+    $mergedConsentInfo = httpRequest('GET', $consentInfoUrl, [
+        'headers' => ['Accept: application/json'],
+        'cookies' => $sessionCookie,
+    ]);
+    assertTrue(($mergedConsentInfo['json']['granted_scopes'] ?? []) === ['openid', 'profile'], 'additional consent must merge with existing scopes');
+
+    $consentAuditCount = (int)$db->createCommand(
+        "SELECT count(*) FROM audit_logs WHERE actor_user_id = :user_id AND action = 'consent_granted' AND target_id = :client_id",
+        [':user_id' => $adminId, ':client_id' => $consentClient['json']['client_id']]
+    )->queryScalar();
+    assertTrue($consentAuditCount === 2, 'each consent grant must write a Go-compatible audit event');
 
     $consentedAuthorize = httpRequest('GET', $consentAuthorizeUrl, ['cookies' => $sessionCookie]);
     assertTrue($consentedAuthorize['status'] >= 300 && $consentedAuthorize['status'] < 400, 'authorize after consent must redirect');
@@ -1391,6 +1446,9 @@ try {
 
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {
+    foreach ($createdAuditTargets as $auditTarget) {
+        $db->createCommand()->delete('audit_logs', $auditTarget)->execute();
+    }
     foreach ($createdAuditActions as $action) {
         $db->createCommand()->delete('audit_logs', ['action' => $action])->execute();
     }

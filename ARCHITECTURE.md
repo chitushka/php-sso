@@ -92,7 +92,7 @@ Refresh token rotation сохраняет `refresh_tokens.family_id` между 
 
 Для public OAuth clients `OAuthService::authorize()` требует `code_challenge_method=S256` и непустой `code_challenge`; отсутствие PKCE возвращает RFC-style `invalid_request` с описанием `PKCE S256 required`.
 
-`POST /oauth2/consent` сохраняет отдельный OAuth error envelope: ошибки malformed/non-object JSON и неизвестные поля возвращаются как `400 {"error":"invalid_request","error_description":"invalid json body"}`, а не как общий API error. Разрешены только поля `client_id` и `scope`, как в анонимной Go request-структуре.
+Consent API повторяет Go lifecycle. `GET /oauth2/consent` сначала проверяет активную SSO-сессию, затем включённого OAuth-клиента и допустимость scope; успешный ответ содержит `client_id`, `client_name`, `requested_scopes` и ранее сохранённые `granted_scopes`. `POST /oauth2/consent` сохраняет отдельный OAuth error envelope: ошибки malformed/non-object JSON и неизвестные поля возвращаются как `400 {"error":"invalid_request","error_description":"invalid json body"}`, а не как общий API error. Разрешены только поля `client_id` и `scope`, как в анонимной Go request-структуре. Повторная выдача согласия объединяет новые scopes с существующими вместо замены и записывает `consent_granted` в аудит.
 
 `OidcController::actionUserinfo()` фильтрует claims по scope OAuth access token: `profile` раскрывает `preferred_username` и `source`, `email` раскрывает `email`. Локальные first-party Bearer tokens без `scope` сохраняют полный исторический ответ.
 

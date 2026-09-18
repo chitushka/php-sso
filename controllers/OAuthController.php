@@ -175,7 +175,12 @@ class OAuthController extends ApiController
 
     public function actionConsent(): array
     {
-        return (new OAuthService())->consentInfo(Yii::$app->request);
+        $result = (new OAuthService())->consentInfo(Yii::$app->request);
+        if (!$result['ok']) {
+            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        }
+
+        return $result['data'];
     }
 
     public function actionGrantConsent(): array

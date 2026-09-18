@@ -33,6 +33,8 @@ Health-check контракт завершён: live/version сохраняют 
 - Поддержать OIDC Discovery, JWKS, RS256 ID Token и UserInfo.
 - Сверить ответы ошибок с RFC 6749.
 
+Дополнение 2026-09-18: OAuth consent lifecycle выровнен с Go: GET требует активную SSO-сессию, валидирует включённого клиента и scope, возвращает `requested_scopes`/`granted_scopes`; повторные POST объединяют scopes и создают audit-событие `consent_granted`.
+
 Статус: базовая реализация выполнена; refresh token rotation hardened против гонок и reuse: family сохраняется при rotation, а повторное/параллельное использование старого refresh token отзывает всю family. Public OAuth clients требуют PKCE S256. OIDC UserInfo фильтрует claims по scope, discovery содержит revocation/introspection metadata. RP-initiated logout валидирует `id_token_hint` и `post_logout_redirect_uri`, отзывает SSO-сессию и refresh tokens пользователя. Административные GET/PUT/DELETE/rotate-secret маршруты OAuth-клиентов валидируют path UUID до service/DB слоя и возвращают Go-compatible 400/404 ошибки; create возвращает `{client, client_secret}` и использует Go zero values для enabled/массивов, а update полностью заменяет поля `UpdateClientInput`, сохраняя неизменным `type`. Consent POST использует строгую схему `client_id`/`scope`, а malformed, non-object и unknown-field JSON возвращают RFC-style `invalid_request` с Go-compatible описанием. Добавлен HTTP smoke flow для Authorization Code + PKCE, OIDC id_token/UserInfo/logout, refresh rotation/reuse detection, RBAC enforcement и ключевых RFC 6749 error contracts. Нужна дальнейшая точечная сверка оставшихся endpoint-контрактов с Go-сервисом.
 
 ## Этап 4. Административные модули
