@@ -537,11 +537,16 @@ class OAuthService
             'purpose' => 'client_credentials',
         ]);
 
-        return ['ok' => true, 'data' => [
+        $data = [
             'access_token' => $token,
             'token_type' => 'Bearer',
             'expires_in' => Yii::$app->params['accessTokenTtl'],
-        ]];
+        ];
+        if ($scope !== '') {
+            $data['scope'] = $scope;
+        }
+
+        return ['ok' => true, 'data' => $data];
     }
 
     private function tokenResponse(

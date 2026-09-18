@@ -206,7 +206,20 @@ class OAuthTokenServiceTest extends TestCase
         $token = (new OAuthService())->token($request);
 
         $this->assertTrue($token['ok']);
+        $this->assertSame('profile', $token['data']['scope']);
         $this->assertSame($clientId, $this->jwtPayload($token['data']['access_token'])['client_id']);
+
+        $emptyScopeRequest = $this->postRequest(['grant_type' => 'client_credentials']);
+        $emptyScopeRequest->headers->set(
+            'Authorization',
+            'Basic ' . base64_encode(
+                urlencode($clientId) . ':' . urlencode($created['data']['client_secret'])
+            )
+        );
+        $emptyScopeToken = (new OAuthService())->token($emptyScopeRequest);
+
+        $this->assertTrue($emptyScopeToken['ok']);
+        $this->assertArrayNotHasKey('scope', $emptyScopeToken['data']);
     }
 
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void

@@ -1456,6 +1456,7 @@ try {
     assertTrue($clientCredentials['status'] === 200, 'client_credentials must return 200');
     assertTrue(!empty($clientCredentials['json']['access_token']), 'client_credentials must include access_token');
     assertTrue(($clientCredentials['json']['token_type'] ?? '') === 'Bearer', 'client_credentials must return Bearer token');
+    assertTrue(($clientCredentials['json']['scope'] ?? '') === 'profile', 'client_credentials must echo granted scope');
     assertTrue(empty($clientCredentials['json']['refresh_token']), 'client_credentials must not include refresh_token');
     assertTrue(empty($clientCredentials['json']['id_token']), 'client_credentials must not include id_token');
 

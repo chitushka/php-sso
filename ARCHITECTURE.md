@@ -106,6 +106,8 @@ OAuth authorize и RP-initiated logout собирают redirect URI через 
 
 OAuth token/revoke/introspection разбирают HTTP Basic credentials по RFC 6749 §2.3.1 как `application/x-www-form-urlencoded`: `+` становится пробелом, а `%2B` — литеральным плюсом. Корректный Basic header по-прежнему имеет приоритет над form credentials.
 
+Успешный `client_credentials` grant возвращает `access_token`, `token_type`, `expires_in` и подтверждённый непустой `scope`, но не выдаёт refresh или ID Token. Для пустого scope поле не сериализуется, повторяя Go `json:"scope,omitempty"`.
+
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
 `php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.

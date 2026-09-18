@@ -101,6 +101,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-18: ответ `client_credentials` выровнен с Go: непустой подтверждённый `scope` возвращается в token response, пустой scope не сериализуется.
 - 2026-09-18: `client_secret_basic` приведён к RFC 6749 и Go: client credentials используют form-urlencoded encoding с корректной обработкой `+`, `%2B` и пробелов.
 - 2026-09-18: authorize и logout redirects выровнены с Go для URI с существующими query/fragment: OAuth-параметры заменяются без дублей и размещаются до `#fragment`.
 - 2026-09-18: ID Token выровнен с Go по claims `auth_time` и `nonce`: время аутентификации переносится из authorization code/refresh token, а refresh ID Token содержит пустой `nonce`.
