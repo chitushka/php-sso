@@ -2,6 +2,7 @@
 
 namespace app\models;
 
+use app\components\Rfc3339;
 use yii\db\ActiveRecord;
 
 class User extends ActiveRecord
@@ -22,7 +23,8 @@ class User extends ActiveRecord
 
     public function publicData(): array
     {
-        return [
+        $attributes = $this->decodeJson($this->attributes);
+        $data = [
             'id' => $this->id,
             'username' => $this->username,
             'email' => $this->email,
@@ -30,15 +32,24 @@ class User extends ActiveRecord
             'source' => $this->source,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
-            'attributes' => $this->decodeJson($this->attributes),
+            'attributes' => $attributes === [] ? new \stdClass() : $attributes,
             'email_verified' => (bool)$this->email_verified,
             'mfa_enabled' => (bool)$this->mfa_enabled,
-            'ldap_provider_id' => $this->ldap_provider_id,
-            'ldap_dn' => $this->ldap_dn,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
-            'last_login_at' => $this->last_login_at,
+            'created_at' => Rfc3339::format($this->created_at),
+            'updated_at' => Rfc3339::format($this->updated_at),
         ];
+
+        if ($this->ldap_provider_id !== null) {
+            $data['ldap_provider_id'] = $this->ldap_provider_id;
+        }
+        if ($this->ldap_dn !== null) {
+            $data['ldap_dn'] = $this->ldap_dn;
+        }
+        if ($this->last_login_at !== null) {
+            $data['last_login_at'] = Rfc3339::format($this->last_login_at);
+        }
+
+        return $data;
     }
 
     private function decodeJson($value): array

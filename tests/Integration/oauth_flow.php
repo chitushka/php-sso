@@ -252,6 +252,18 @@ try {
     );
     assertTrue(!array_key_exists('token_type', $login['json']), 'login must not return OAuth-only token_type');
     assertTrue(!array_key_exists('expires_in', $login['json']), 'login must not return OAuth-only expires_in');
+    assertTrue(strpos((string)$login['body'], '"attributes":{}') !== false, 'empty user attributes must be a Go-compatible JSON object');
+    assertTrue(!array_key_exists('ldap_provider_id', $login['json']['user']), 'local user must omit empty ldap_provider_id');
+    assertTrue(!array_key_exists('ldap_dn', $login['json']['user']), 'local user must omit empty ldap_dn');
+    assertTrue(!array_key_exists('last_login_at', $login['json']['user']), 'first login user must omit empty last_login_at');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($login['json']['user']['created_at'] ?? '')) === 1,
+        'user created_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($login['json']['user']['updated_at'] ?? '')) === 1,
+        'user updated_at must use Go-compatible RFC3339'
+    );
     assertTrue(!empty($login['cookies']['sso_session']), 'admin login must set sso_session cookie');
 
     $adminToken = $login['json']['access_token'];
@@ -335,6 +347,15 @@ try {
     assertTrue(count($sessions['json'] ?? []) === 2, 'session list must include both active sessions');
     assertTrue(($sessions['json'][0]['user_id'] ?? '') === $adminId, 'session list must include Go-compatible user_id');
     assertTrue(!array_key_exists('token_hash', $sessions['json'][0]), 'session list must not expose token hash');
+    assertTrue(!array_key_exists('revoked_at', $sessions['json'][0]), 'active session must omit empty revoked_at');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($sessions['json'][0]['expires_at'] ?? '')) === 1,
+        'session expires_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($sessions['json'][0]['created_at'] ?? '')) === 1,
+        'session created_at must use Go-compatible RFC3339'
+    );
 
     $invalidSession = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions/not-a-uuid', [], $adminToken);
     assertTrue($invalidSession['status'] === 400, 'invalid session id must return 400');

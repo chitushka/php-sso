@@ -82,6 +82,18 @@ class AuthServiceTest extends TestCase
         $this->assertNotFalse(strtotime($login['data']['access_token_expires_at']));
         $this->assertNotFalse(strtotime($login['data']['session_expires_at']));
         $this->assertSame($this->userId, $login['data']['user']['id']);
+        $this->assertInstanceOf(\stdClass::class, $login['data']['user']['attributes']);
+        $this->assertArrayNotHasKey('ldap_provider_id', $login['data']['user']);
+        $this->assertArrayNotHasKey('ldap_dn', $login['data']['user']);
+        $this->assertArrayNotHasKey('last_login_at', $login['data']['user']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $login['data']['user']['created_at']
+        );
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $login['data']['user']['updated_at']
+        );
         $this->assertSame(0, $this->loginAttemptCount());
 
         $sessionToken = $login['cookie']->value;
@@ -142,6 +154,15 @@ class AuthServiceTest extends TestCase
         $this->assertSame($activeSessionId, $sessions[0]['id']);
         $this->assertSame($this->userId, $sessions[0]['user_id']);
         $this->assertArrayNotHasKey('token_hash', $sessions[0]);
+        $this->assertArrayNotHasKey('revoked_at', $sessions[0]);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $sessions[0]['expires_at']
+        );
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $sessions[0]['created_at']
+        );
 
         $this->assertTrue($service->revokeSession($this->userId, $expiredSessionId));
         $this->assertTrue($service->revokeSession($this->userId, $activeSessionId));

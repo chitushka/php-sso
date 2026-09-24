@@ -12,6 +12,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
 - Login response использует Go `LoginResult`, а raw `session_token` совпадает с cookie `sso_session`; Yii signing envelope отключён, поэтому cookie можно передавать между Go/PHP-инстансами.
+- Вложенный `user` и `GET /api/v1/auth/sessions` используют Go JSON wire-format для RFC3339 timestamps, пустых map и nullable `omitempty` полей.
 - `GET /.well-known/openid-configuration`, `GET /.well-known/jwks.json`.
 - `GET /oauth2/authorize`, `POST /oauth2/token`, `POST /oauth2/revoke`, `POST /oauth2/introspect`.
 - `GET /oauth2/userinfo`, `GET|POST /oauth2/logout`, `GET|POST /oauth2/consent`.

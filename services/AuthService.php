@@ -2,6 +2,7 @@
 
 namespace app\services;
 
+use app\components\Rfc3339;
 use app\models\LoginAttempt;
 use app\models\Session;
 use app\models\User;
@@ -209,13 +210,19 @@ class AuthService
 
     public function listSessions(string $userId): array
     {
-        return Session::find()
-            ->select(['id', 'user_id', 'ip', 'user_agent', 'expires_at', 'revoked_at', 'created_at'])
+        $sessions = Session::find()
+            ->select(['id', 'user_id', 'ip', 'user_agent', 'expires_at', 'created_at'])
             ->where(['user_id' => $userId, 'revoked_at' => null])
             ->andWhere(['>', 'expires_at', new Expression('now()')])
             ->orderBy(['created_at' => SORT_DESC])
             ->asArray()
             ->all();
+
+        return array_map(static function (array $session): array {
+            $session['expires_at'] = Rfc3339::format($session['expires_at']);
+            $session['created_at'] = Rfc3339::format($session['created_at']);
+            return $session;
+        }, $sessions);
     }
 
     public function revokeSession(string $userId, string $sessionId): bool
