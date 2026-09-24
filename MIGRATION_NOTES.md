@@ -17,6 +17,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - `GET /oauth2/authorize`, `POST /oauth2/token`, `POST /oauth2/revoke`, `POST /oauth2/introspect`.
 - `GET /oauth2/userinfo`, `GET|POST /oauth2/logout`, `GET|POST /oauth2/consent`.
 - Admin API для users, roles, permissions, groups, audit, OAuth clients, LDAP providers и identity providers.
+- OAuth Clients API сохраняет Go lifecycle `updated_at` при изменении клиента и ротации секрета.
 
 Проверено текущим smoke flow:
 

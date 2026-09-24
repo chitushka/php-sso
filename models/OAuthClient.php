@@ -2,6 +2,7 @@
 
 namespace app\models;
 
+use app\components\Rfc3339;
 use yii\db\ActiveRecord;
 use yii\db\ArrayExpression;
 
@@ -28,8 +29,8 @@ class OAuthClient extends ActiveRecord
             'backchannel_logout_uri' => $this->backchannel_logout_uri,
             'skip_consent' => (bool)$this->skip_consent,
             'enabled' => (bool)$this->enabled,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'created_at' => Rfc3339::format($this->created_at),
+            'updated_at' => Rfc3339::format($this->updated_at),
         ];
     }
 

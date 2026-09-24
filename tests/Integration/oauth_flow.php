@@ -411,6 +411,43 @@ try {
     $client['json']['client_secret'] = $clientSecret;
     $createdClientIds[] = $client['json']['id'];
     $createdAuditTargets[] = ['action' => 'refresh_token_revoked', 'target_id' => $client['json']['client_id']];
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($client['json']['created_at'] ?? '')) === 1,
+        'OAuth client created_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($client['json']['updated_at'] ?? '')) === 1,
+        'OAuth client updated_at must use Go-compatible RFC3339'
+    );
+
+    $db->createCommand()->update(
+        'oauth_clients',
+        ['updated_at' => '2000-01-01 00:00:00+00'],
+        ['id' => $client['json']['id']]
+    )->execute();
+    $updatedClient = jsonRequest('PUT', $baseUrl . '/api/v1/oauth/clients/' . $client['json']['id'], [
+        'name' => $client['json']['name'],
+        'redirect_uris' => $client['json']['redirect_uris'],
+        'allowed_scopes' => $client['json']['allowed_scopes'],
+        'post_logout_redirect_uris' => $client['json']['post_logout_redirect_uris'],
+        'backchannel_logout_uri' => $client['json']['backchannel_logout_uri'],
+        'skip_consent' => $client['json']['skip_consent'],
+        'enabled' => true,
+    ], $adminToken);
+    assertTrue($updatedClient['status'] === 200, 'OAuth client update must return 200');
+    assertTrue(strtotime((string)$updatedClient['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'OAuth client update must advance updated_at');
+
+    $rotatedClient = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/oauth/clients/' . $client['json']['id'] . '/rotate-secret',
+        [],
+        $adminToken
+    );
+    assertTrue($rotatedClient['status'] === 200, 'OAuth client secret rotation must return 200');
+    assertTrue(!empty($rotatedClient['json']['client_secret']), 'OAuth client secret rotation must return new secret');
+    assertTrue($rotatedClient['json']['client_secret'] !== $clientSecret, 'OAuth client secret rotation must replace secret');
+    assertTrue(strtotime((string)$rotatedClient['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'OAuth client secret rotation must advance updated_at');
+    $client['json']['client_secret'] = $rotatedClient['json']['client_secret'];
 
     $unknownOAuthClientField = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'name' => 'Unknown field client ' . $suffix,

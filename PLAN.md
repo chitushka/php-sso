@@ -39,6 +39,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-18: OAuth consent lifecycle выровнен с Go: GET требует активную SSO-сессию, валидирует включённого клиента и scope, возвращает `requested_scopes`/`granted_scopes`; повторные POST объединяют scopes и создают audit-событие `consent_granted`.
 
+Дополнение 2026-09-24: OAuth Clients API сериализует `created_at`/`updated_at` как Go RFC3339 UTC; PUT и rotate-secret теперь явно продвигают `updated_at`, повторяя PostgreSQL repository Go-сервиса, вместо сохранения исходного времени создания.
+
 Дополнение 2026-09-18: RFC 7009/7662 endpoints выровнены с Go: revocation отзывает всю refresh family, пишет `refresh_token_revoked` и возвращает пустой body; introspection поддерживает access и refresh tokens с точным набором claims и состояниями active/rotated/revoked/expired; invalid client responses содержат `WWW-Authenticate: Basic realm="sso"`.
 
 Дополнение 2026-09-18: authorization code exchange выровнен с Go: код атомарно и одноразово потребляется до проверки client/redirect/PKCE, поэтому неудачный обмен нельзя повторить; любой сохранённый PKCE challenge проверяется только как S256, включая confidential clients.

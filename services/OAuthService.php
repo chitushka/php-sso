@@ -47,6 +47,7 @@ class OAuthService
         if (!$client->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];
         }
+        $client->refresh();
 
         $data = $client->publicData();
         if ($plainSecret !== null) {
@@ -71,10 +72,12 @@ class OAuthService
         $client->backchannel_logout_uri = (string)($body['backchannel_logout_uri'] ?? '');
         $client->skip_consent = (bool)($body['skip_consent'] ?? false);
         $client->enabled = (bool)($body['enabled'] ?? false);
+        $client->updated_at = new Expression('now()');
 
         if (!$client->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];
         }
+        $client->refresh();
 
         AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->id);
         return ['status' => 200, 'data' => $client->publicData()];
@@ -100,8 +103,11 @@ class OAuthService
         }
 
         $secret = (new AuthService())->randomToken(32);
-        $client->client_secret_hash = password_hash($secret, PASSWORD_DEFAULT);
-        $client->save(false, ['client_secret_hash', 'updated_at']);
+        OAuthClient::updateAll([
+            'client_secret_hash' => password_hash($secret, PASSWORD_DEFAULT),
+            'updated_at' => new Expression('now()'),
+        ], ['id' => $client->id]);
+        $client->refresh();
 
         return ['status' => 200, 'data' => array_merge($client->publicData(), ['client_secret' => $secret])];
     }

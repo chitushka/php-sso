@@ -62,6 +62,14 @@ class OAuthClientServiceTest extends TestCase
         $this->assertSame(['openid', 'profile'], $result['data']['allowed_scopes']);
         $this->assertSame(['https://rp.example.test/logout'], $result['data']['post_logout_redirect_uris']);
         $this->assertTrue($result['data']['skip_consent']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $result['data']['created_at']
+        );
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $result['data']['updated_at']
+        );
 
         $client = OAuthClient::findOne(['client_id' => $clientId]);
         $this->assertNotNull($client);
@@ -95,6 +103,11 @@ class OAuthClientServiceTest extends TestCase
         ]);
         $this->assertSame(201, $created['status']);
         $this->assertArrayNotHasKey('client_secret', $created['data']);
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['updated_at' => '2000-01-01 00:00:00+00'],
+            ['id' => $created['data']['id']]
+        )->execute();
 
         $updated = $service->updateClient((string)$created['data']['id'], [
             'name' => 'PHPUnit public client updated',
@@ -112,6 +125,30 @@ class OAuthClientServiceTest extends TestCase
         $this->assertTrue($updated['data']['skip_consent']);
         $this->assertFalse($updated['data']['enabled']);
         $this->assertSame(OAuthClient::TYPE_PUBLIC, $updated['data']['type']);
+        $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
+    }
+
+    public function testRotateSecretAdvancesUpdatedAt(): void
+    {
+        $clientId = $this->prefix . '_rotate';
+        $this->clientIds[] = $clientId;
+        $service = new OAuthService();
+        $created = $service->createClient([
+            'client_id' => $clientId,
+            'name' => 'PHPUnit rotate client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+        ]);
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['updated_at' => '2000-01-01 00:00:00+00'],
+            ['id' => $created['data']['id']]
+        )->execute();
+
+        $rotated = $service->rotateSecret((string)$created['data']['id']);
+
+        $this->assertSame(200, $rotated['status']);
+        $this->assertNotSame($created['data']['client_secret'], $rotated['data']['client_secret']);
+        $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($rotated['data']['updated_at']));
     }
 
     public function testCreateClientUsesGoZeroValueDefaults(): void

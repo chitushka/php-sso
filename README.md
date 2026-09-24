@@ -85,6 +85,7 @@ docker compose run --rm app php yii help
 - `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
+- OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
 - OAuth2 Authorization Code + PKCE, одноразовый authorization code, `client_secret_post`/`client_secret_basic`, consent flow, refresh token, revoke, introspect, client_credentials.
 - Refresh token rotation с reuse detection: повтор старого refresh token отзывает всю token family.
 - Public OAuth clients требуют PKCE S256; ошибки OAuth endpoints возвращаются в RFC-style формате `error` + `error_description`.
