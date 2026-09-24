@@ -64,6 +64,7 @@ docker compose run --rm app php yii help
 - `GET /metrics` в Prometheus text format с dependency-free HTTP counters через Yii cache.
 - `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
+- Успешный login возвращает Go-compatible `session_token`, `access_token_expires_at` и `session_expires_at`; тот же raw session token устанавливается в HttpOnly cookie без несовместимой Yii-обёртки.
 - Просмотр и отзыв пользовательских сессий.
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - RBAC-проверка admin API с прямыми ролями и ролями через группы.

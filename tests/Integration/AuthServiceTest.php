@@ -76,7 +76,11 @@ class AuthServiceTest extends TestCase
         ], $request);
 
         $this->assertTrue($login['ok']);
-        $this->assertSame('Bearer', $login['data']['token_type']);
+        $this->assertArrayNotHasKey('token_type', $login['data']);
+        $this->assertArrayNotHasKey('expires_in', $login['data']);
+        $this->assertSame($login['cookie']->value, $login['data']['session_token']);
+        $this->assertNotFalse(strtotime($login['data']['access_token_expires_at']));
+        $this->assertNotFalse(strtotime($login['data']['session_expires_at']));
         $this->assertSame($this->userId, $login['data']['user']['id']);
         $this->assertSame(0, $this->loginAttemptCount());
 

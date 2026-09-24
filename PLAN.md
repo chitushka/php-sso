@@ -24,6 +24,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-18: Bearer-аутентификация защищённых account/session/admin/OIDC endpoint-ов различает Go-compatible ошибки `missing bearer token`, `invalid token`, `account is not active` и `token revoked`.
 
+Дополнение 2026-09-24: успешный local/MFA/federated login возвращает Go `LoginResult`: raw `session_token`, RFC3339 `access_token_expires_at` и `session_expires_at`; OAuth-only поля `token_type`/`expires_in` удалены из auth-ответа. Cookie `sso_session` содержит тот же raw session token без Yii signing envelope, поэтому остаётся совместимой между Go/PHP-инстансами при rolling migration.
+
 Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC

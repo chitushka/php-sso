@@ -81,16 +81,16 @@ class AuthService
     private function issueLogin(User $user, Request $request): array
     {
         $sessionToken = $this->randomToken();
+        $sessionExpiresAt = time() + Yii::$app->params['sessionTtl'];
         $session = new Session();
         $session->user_id = $user->id;
         $session->token_hash = hash('sha256', $sessionToken);
         $session->ip = $request->userIP;
         $session->user_agent = $request->userAgent;
-        $session->expires_at = gmdate('Y-m-d H:i:sP', time() + Yii::$app->params['sessionTtl']);
+        $session->expires_at = gmdate('Y-m-d H:i:sP', $sessionExpiresAt);
         $session->save(false);
 
-        $user->last_login_at = new Expression('now()');
-        $user->save(false, ['last_login_at']);
+        User::updateAll(['last_login_at' => new Expression('now()')], ['id' => $user->id]);
         AuditService::record($user->id, 'login_success', 'user', $user->id);
 
         $issuedAt = time();
@@ -116,9 +116,12 @@ class AuthService
             ]),
             'data' => [
                 'access_token' => $jwt,
-                'token_type' => 'Bearer',
-                'expires_in' => Yii::$app->params['accessTokenTtl'],
-                'session_expires_at' => $session->expires_at,
+                'access_token_expires_at' => gmdate(
+                    'Y-m-d\\TH:i:s\\Z',
+                    $issuedAt + Yii::$app->params['accessTokenTtl']
+                ),
+                'session_token' => $sessionToken,
+                'session_expires_at' => gmdate('Y-m-d\\TH:i:s\\Z', $sessionExpiresAt),
                 'user' => $user->publicData(),
             ],
         ];

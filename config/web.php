@@ -31,6 +31,7 @@ return [
     'components' => [
         'request' => [
             'class' => app\components\TrustedRequest::class,
+            'enableCookieValidation' => false,
             'cookieValidationKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
             'parsers' => [
                 'application/json' => app\components\JsonParser::class,

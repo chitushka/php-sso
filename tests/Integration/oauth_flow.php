@@ -237,6 +237,21 @@ try {
     ]);
     assertTrue($login['status'] === 200, 'admin login must return 200');
     assertTrue(!empty($login['json']['access_token']), 'admin login must return access_token');
+    assertTrue(!empty($login['json']['session_token']), 'admin login must return Go-compatible session_token');
+    assertTrue(
+        ($login['json']['session_token'] ?? '') === ($login['cookies']['sso_session'] ?? ''),
+        'login session_token must match sso_session cookie'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string)($login['json']['access_token_expires_at'] ?? '')) === 1,
+        'login access_token_expires_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string)($login['json']['session_expires_at'] ?? '')) === 1,
+        'login session_expires_at must use Go-compatible RFC3339'
+    );
+    assertTrue(!array_key_exists('token_type', $login['json']), 'login must not return OAuth-only token_type');
+    assertTrue(!array_key_exists('expires_in', $login['json']), 'login must not return OAuth-only expires_in');
     assertTrue(!empty($login['cookies']['sso_session']), 'admin login must set sso_session cookie');
 
     $adminToken = $login['json']['access_token'];
