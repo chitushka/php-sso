@@ -115,7 +115,12 @@ class UsersController extends ApiController
             return $this->fail(404, 'user not found');
         }
 
-        $this->fillUser($user, $body);
+        $user->username = trim((string)($body['username'] ?? ''));
+        $user->email = trim((string)($body['email'] ?? ''));
+        $user->status = trim((string)($body['status'] ?? ''));
+        $user->first_name = trim((string)($body['first_name'] ?? ''));
+        $user->last_name = trim((string)($body['last_name'] ?? ''));
+        $user->attributes = json_encode((array)($body['attributes'] ?? []));
 
         if (!$user->save()) {
             return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);

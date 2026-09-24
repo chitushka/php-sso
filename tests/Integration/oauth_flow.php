@@ -924,6 +924,21 @@ try {
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
 
+    $db->createCommand()->update('users', [
+        'first_name' => 'Old',
+        'last_name' => 'Name',
+        'attributes' => json_encode(['legacy' => 'value']),
+    ], ['id' => $plainUserId])->execute();
+    $replacedUser = jsonRequest('PUT', $baseUrl . '/api/v1/users/' . $plainUserId, [
+        'username' => $userUsername,
+        'email' => $userUsername . '@example.test',
+        'status' => 'active',
+    ], $adminToken);
+    assertTrue($replacedUser['status'] === 200, 'user update must return 200');
+    assertTrue(($replacedUser['json']['first_name'] ?? null) === '', 'user update must clear omitted first_name like Go');
+    assertTrue(($replacedUser['json']['last_name'] ?? null) === '', 'user update must clear omitted last_name like Go');
+    assertTrue(($replacedUser['json']['attributes'] ?? null) === [], 'user update must clear omitted attributes like Go');
+
     $db->createCommand()->update('users', ['status' => 'blocked'], ['id' => $plainUserId])->execute();
     $blockedAccount = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $plainLogin['json']['access_token']);
     assertTrue($blockedAccount['status'] === 401, 'blocked account bearer token must return 401');

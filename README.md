@@ -68,6 +68,7 @@ docker compose run --rm app php yii help
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - RBAC-проверка admin API с прямыми ролями и ролями через группы.
 - Admin API для users, roles, permissions, groups и audit, включая Go-compatible ошибки создания users/roles/groups и валидацию audit-фильтров.
+- `PUT /api/v1/users/{id}` использует Go-compatible полную замену разрешённых полей; пропущенные profile-поля очищаются.
 - Admin API для LDAP providers, test bind и LDAP group mappings.
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.

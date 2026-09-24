@@ -71,6 +71,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение по Audit API: `actor` проходит строгую UUID-проверку, RFC3339-фильтры принимают дробные секунды, а `limit`/`offset` повторяют Go-семантику; невалидный или превышающий 200 `limit` сбрасывается к 50.
 
+Дополнение 2026-09-24: `PUT /api/v1/users/{id}` выровнен с Go `UpdateUserInput`: разрешённые поля полностью заменяются, поэтому отсутствующие `first_name`, `last_name` и `attributes` очищаются, а не сохраняют прежние значения. Контракт закреплён HTTP smoke-проверкой.
+
 ## Этап 5. Security hardening
 
 - Перенести MFA TOTP, recovery codes, email verification, password reset/change.
