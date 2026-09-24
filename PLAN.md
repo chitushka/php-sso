@@ -81,6 +81,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение по Audit API: `actor` проходит строгую UUID-проверку, RFC3339-фильтры принимают дробные секунды, а `limit`/`offset` повторяют Go-семантику; невалидный или превышающий 200 `limit` сбрасывается к 50.
 
+Дополнение 2026-09-24: Audit API выровнен с Go JSON wire-format: `created_at` возвращается как RFC3339 UTC, пустой `actor_user_id` отсутствует согласно `omitempty`, nullable PostgreSQL `ip`/`user_agent` сериализуются строковыми zero values.
+
 Дополнение 2026-09-24: `PUT /api/v1/users/{id}` выровнен с Go `UpdateUserInput`: разрешённые поля полностью заменяются, поэтому отсутствующие `first_name`, `last_name` и `attributes` очищаются, а не сохраняют прежние значения. Контракт закреплён HTTP smoke-проверкой.
 
 ## Этап 5. Security hardening

@@ -1265,6 +1265,22 @@ try {
         $auditRows
     )->execute();
 
+    $auditWire = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
+        'action' => $auditLimitAction,
+        'limit' => '1',
+    ]), [
+        'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
+    ]);
+    assertTrue($auditWire['status'] === 200, 'audit wire-format request must return 200');
+    assertTrue(count($auditWire['json'] ?? []) === 1, 'audit wire-format request must return one event');
+    assertTrue(!array_key_exists('actor_user_id', $auditWire['json'][0]), 'audit event must omit empty actor_user_id');
+    assertTrue(($auditWire['json'][0]['ip'] ?? null) === '', 'audit event must use Go zero value for empty ip');
+    assertTrue(($auditWire['json'][0]['user_agent'] ?? null) === '', 'audit event must use Go zero value for empty user_agent');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($auditWire['json'][0]['created_at'] ?? '')) === 1,
+        'audit created_at must use Go-compatible RFC3339'
+    );
+
     foreach (['201', '-1', '12invalid'] as $invalidAuditLimit) {
         $auditDefaultLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
             'action' => $auditLimitAction,

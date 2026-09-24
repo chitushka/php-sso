@@ -53,7 +53,9 @@ class AuditController extends ApiController
             $offset = 0;
         }
 
-        return $query->limit($limit)->offset($offset)->asArray()->all();
+        return array_map(static function (AuditLog $log): array {
+            return $log->publicData();
+        }, $query->limit($limit)->offset($offset)->all());
     }
 
     private function parseRfc3339(string $value): ?DateTimeImmutable
