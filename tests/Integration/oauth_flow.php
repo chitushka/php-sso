@@ -17,6 +17,7 @@ $userUsername = 'itest-user-' . $suffix;
 $password = 'IntegrationPass123!';
 $createdUserIds = [];
 $createdClientIds = [];
+$createdRoleIds = [];
 $createdGroupIds = [];
 $createdProviderIds = [];
 $createdLdapProviderIds = [];
@@ -1064,6 +1065,39 @@ try {
     assertTrue($duplicateRole['status'] === 409, 'duplicate role code must return 409');
     assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match Go error');
 
+    $role = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
+        'code' => 'itest-role-' . $suffix,
+        'name' => 'Integration role ' . $suffix,
+        'description' => 'Legacy description',
+    ], $adminToken);
+    assertTrue($role['status'] === 201, 'create role must return 201');
+    $createdRoleIds[] = $role['json']['id'];
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($role['json']['created_at'] ?? '')) === 1,
+        'role created_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($role['json']['updated_at'] ?? '')) === 1,
+        'role updated_at must use Go-compatible RFC3339'
+    );
+
+    $db->createCommand()->update('roles', [
+        'updated_at' => '2000-01-01 00:00:00+00',
+    ], ['id' => $role['json']['id']])->execute();
+    $updatedRole = jsonRequest('PUT', $baseUrl . '/api/v1/roles/' . $role['json']['id'], [
+        'name' => 'Updated integration role ' . $suffix,
+    ], $adminToken);
+    assertTrue($updatedRole['status'] === 200, 'update role must return 200');
+    assertTrue(!array_key_exists('description', $updatedRole['json']), 'role update must clear omitted description like Go');
+    assertTrue(strtotime((string)$updatedRole['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'role update must advance updated_at');
+
+    $permissions = jsonRequest('GET', $baseUrl . '/api/v1/permissions', [], $adminToken);
+    assertTrue($permissions['status'] === 200 && !empty($permissions['json']), 'permissions list must return seeded permissions');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($permissions['json'][0]['created_at'] ?? '')) === 1,
+        'permission created_at must use Go-compatible RFC3339'
+    );
+
     foreach ([
         ['PUT', '/api/v1/roles/not-a-uuid'],
         ['DELETE', '/api/v1/roles/not-a-uuid'],
@@ -1145,6 +1179,26 @@ try {
     ], $adminToken);
     assertTrue($group['status'] === 201, 'create group must return 201');
     $createdGroupIds[] = $group['json']['id'];
+    assertTrue(($group['json']['description'] ?? null) === '', 'group must preserve Go string zero value for empty description');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($group['json']['created_at'] ?? '')) === 1,
+        'group created_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($group['json']['updated_at'] ?? '')) === 1,
+        'group updated_at must use Go-compatible RFC3339'
+    );
+
+    $db->createCommand()->update('groups', [
+        'description' => 'Legacy description',
+        'updated_at' => '2000-01-01 00:00:00+00',
+    ], ['id' => $group['json']['id']])->execute();
+    $updatedGroup = jsonRequest('PUT', $baseUrl . '/api/v1/groups/' . $group['json']['id'], [
+        'name' => 'Updated integration group ' . $suffix,
+    ], $adminToken);
+    assertTrue($updatedGroup['status'] === 200, 'update group must return 200');
+    assertTrue(($updatedGroup['json']['description'] ?? null) === '', 'group update must clear omitted description like Go');
+    assertTrue(strtotime((string)$updatedGroup['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'group update must advance updated_at');
 
     $unknownGroupField = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => 'unknown-group-' . $suffix,
@@ -1838,6 +1892,9 @@ try {
     }
     foreach ($createdClientIds as $clientId) {
         $db->createCommand('DELETE FROM oauth_clients WHERE id = :id', [':id' => $clientId])->execute();
+    }
+    foreach ($createdRoleIds as $roleId) {
+        $db->createCommand('DELETE FROM roles WHERE id = :id', [':id' => $roleId])->execute();
     }
     foreach ($createdGroupIds as $groupId) {
         $db->createCommand('DELETE FROM groups WHERE id = :id', [':id' => $groupId])->execute();

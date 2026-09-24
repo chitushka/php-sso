@@ -7,6 +7,7 @@ use app\models\Permission;
 use app\models\Role;
 use app\models\User;
 use Yii;
+use yii\db\Expression;
 use yii\db\IntegrityException;
 
 class RbacService
@@ -39,7 +40,9 @@ class RbacService
 
     public function listRoles(): array
     {
-        return Role::find()->orderBy(['code' => SORT_ASC])->asArray()->all();
+        return array_map(static function (Role $role): array {
+            return $role->publicData();
+        }, Role::find()->orderBy(['code' => SORT_ASC])->all());
     }
 
     public function createRole(array $body): array
@@ -69,8 +72,9 @@ class RbacService
             return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
         }
 
+        $role->refresh();
         AuditService::record(null, 'role_created', 'role', $role->id);
-        return ['status' => 201, 'data' => $role->toArray()];
+        return ['status' => 201, 'data' => $role->publicData()];
     }
 
     public function updateRole(string $id, array $body): array
@@ -80,15 +84,21 @@ class RbacService
             return ['status' => 404, 'data' => ['error' => 'role not found']];
         }
 
-        $role->name = trim((string)($body['name'] ?? $role->name));
-        $role->description = (string)($body['description'] ?? $role->description);
+        $role->name = trim((string)($body['name'] ?? ''));
+        $role->description = (string)($body['description'] ?? '');
 
-        if ($role->name === '' || !$role->save()) {
+        if ($role->name === '') {
+            return ['status' => 400, 'data' => ['error' => 'role name is required']];
+        }
+
+        $role->updated_at = new Expression('now()');
+        if (!$role->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
         }
 
+        $role->refresh();
         AuditService::record(null, 'role_updated', 'role', $role->id);
-        return ['status' => 200, 'data' => $role->toArray()];
+        return ['status' => 200, 'data' => $role->publicData()];
     }
 
     public function deleteRole(string $id): array
@@ -109,18 +119,23 @@ class RbacService
 
     public function listPermissions(): array
     {
-        return Permission::find()->orderBy(['resource' => SORT_ASC, 'action' => SORT_ASC])->asArray()->all();
+        return array_map(static function (Permission $permission): array {
+            return $permission->publicData();
+        }, Permission::find()->orderBy(['resource' => SORT_ASC, 'action' => SORT_ASC])->all());
     }
 
     public function listRolePermissions(string $roleId): array
     {
-        return Permission::find()
+        $permissions = Permission::find()
             ->alias('p')
             ->innerJoin('role_permissions rp', 'rp.permission_id = p.id')
             ->where(['rp.role_id' => $roleId])
             ->orderBy(['p.resource' => SORT_ASC, 'p.action' => SORT_ASC])
-            ->asArray()
             ->all();
+
+        return array_map(static function (Permission $permission): array {
+            return $permission->publicData();
+        }, $permissions);
     }
 
     public function assignPermissionToRole(string $roleId, string $permissionId): void
@@ -137,13 +152,16 @@ class RbacService
 
     public function listUserRoles(string $userId): array
     {
-        return Role::find()
+        $roles = Role::find()
             ->alias('r')
             ->innerJoin('user_roles ur', 'ur.role_id = r.id')
             ->where(['ur.user_id' => $userId])
             ->orderBy(['r.code' => SORT_ASC])
-            ->asArray()
             ->all();
+
+        return array_map(static function (Role $role): array {
+            return $role->publicData();
+        }, $roles);
     }
 
     public function assignRoleToUser(string $userId, string $roleId): void
@@ -160,7 +178,9 @@ class RbacService
 
     public function listGroups(): array
     {
-        return Group::find()->orderBy(['code' => SORT_ASC])->asArray()->all();
+        return array_map(static function (Group $group): array {
+            return $group->publicData();
+        }, Group::find()->orderBy(['code' => SORT_ASC])->all());
     }
 
     public function createGroup(array $body): array
@@ -190,8 +210,9 @@ class RbacService
             return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
         }
 
+        $group->refresh();
         AuditService::record(null, 'group_created', 'group', $group->id);
-        return ['status' => 201, 'data' => $group->toArray()];
+        return ['status' => 201, 'data' => $group->publicData()];
     }
 
     public function updateGroup(string $id, array $body): array
@@ -201,15 +222,21 @@ class RbacService
             return ['status' => 404, 'data' => ['error' => 'group not found']];
         }
 
-        $group->name = trim((string)($body['name'] ?? $group->name));
-        $group->description = (string)($body['description'] ?? $group->description);
+        $group->name = trim((string)($body['name'] ?? ''));
+        $group->description = (string)($body['description'] ?? '');
 
-        if ($group->name === '' || !$group->save()) {
+        if ($group->name === '') {
+            return ['status' => 400, 'data' => ['error' => 'group name is required']];
+        }
+
+        $group->updated_at = new Expression('now()');
+        if (!$group->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
         }
 
+        $group->refresh();
         AuditService::record(null, 'group_updated', 'group', $group->id);
-        return ['status' => 200, 'data' => $group->toArray()];
+        return ['status' => 200, 'data' => $group->publicData()];
     }
 
     public function deleteGroup(string $id): bool
@@ -226,13 +253,16 @@ class RbacService
 
     public function listGroupRoles(string $groupId): array
     {
-        return Role::find()
+        $roles = Role::find()
             ->alias('r')
             ->innerJoin('group_roles gr', 'gr.role_id = r.id')
             ->where(['gr.group_id' => $groupId])
             ->orderBy(['r.code' => SORT_ASC])
-            ->asArray()
             ->all();
+
+        return array_map(static function (Role $role): array {
+            return $role->publicData();
+        }, $roles);
     }
 
     public function assignRoleToGroup(string $groupId, string $roleId): void
@@ -249,13 +279,16 @@ class RbacService
 
     public function listUserGroups(string $userId): array
     {
-        return Group::find()
+        $groups = Group::find()
             ->alias('g')
             ->innerJoin('user_groups ug', 'ug.group_id = g.id')
             ->where(['ug.user_id' => $userId])
             ->orderBy(['g.code' => SORT_ASC])
-            ->asArray()
             ->all();
+
+        return array_map(static function (Group $group): array {
+            return $group->publicData();
+        }, $groups);
     }
 
     public function assignGroupToUser(string $userId, string $groupId): void

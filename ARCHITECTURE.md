@@ -29,8 +29,8 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `BootstrapController` — первичная инициализация администратора.
 - `AuthController` + `AuthService` — локальный вход, cookie-сессии, Bearer JWT, отзыв сессий.
 - `UsersController` — административный CRUD пользователей и soft delete; создание возвращает Go-compatible 400 для пустых username/email и 409 для конфликта username, path UUID валидируются до PostgreSQL-запроса, pagination использует Go-границу limit 100.
-- `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям; create role/group возвращает Go-compatible 400 для пустых code/name и 409 для конфликта code, role/permission/user path UUID валидируются с точными 400-ошибками до обращения к PostgreSQL.
-- `GroupsController` — группы, роли групп и членство пользователей в группах; group/user/role UUID валидируются в Go-compatible порядке до service/DB слоя.
+- `RbacController` + `RbacService` — роли, permissions, назначение ролей пользователям и permissions ролям; create role/group возвращает Go-compatible 400 для пустых code/name и 409 для конфликта code, role/permission/user path UUID валидируются с точными 400-ошибками до обращения к PostgreSQL. `Role::publicData()` и `Permission::publicData()` нормализуют даты в RFC3339 UTC и исключают пустое `description` по Go `omitempty`; update роли полностью заменяет входные поля и продвигает `updated_at`.
+- `GroupsController` — группы, роли групп и членство пользователей в группах; group/user/role UUID валидируются в Go-compatible порядке до service/DB слоя. `Group::publicData()` сохраняет строковый zero value для `description`, нормализует даты, а update полностью заменяет поля и продвигает `updated_at`.
 - `LdapController` + `LdapService` — CRUD LDAP-провайдеров, test bind и group mappings.
 - `LdapService::authenticate()` — LDAP Search + Bind fallback для `AuthService::login()`, auto-provisioning LDAP-пользователей и синхронизация mapped groups.
 - `MfaService` — TOTP setup/enable/disable, Go-compatible `enroll`/`activate` aliases, одноразовые recovery codes и MFA challenge для login.

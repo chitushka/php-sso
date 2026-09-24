@@ -85,6 +85,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-24: `PUT /api/v1/users/{id}` выровнен с Go `UpdateUserInput`: разрешённые поля полностью заменяются, поэтому отсутствующие `first_name`, `last_name` и `attributes` очищаются, а не сохраняют прежние значения. Контракт закреплён HTTP smoke-проверкой.
 
+Дополнение 2026-09-24: роли, permissions и группы используют Go JSON wire-format с RFC3339 UTC timestamps и точной `omitempty`/zero-value семантикой `description`. PUT ролей и групп полностью заменяет update-поля и явно продвигает `updated_at` как Go repositories.
+
 ## Этап 5. Security hardening
 
 - Перенести MFA TOTP, recovery codes, email verification, password reset/change.

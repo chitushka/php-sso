@@ -70,6 +70,7 @@ docker compose run --rm app php yii help
 - Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
 - RBAC-проверка admin API с прямыми ролями и ролями через группы.
 - Admin API для users, roles, permissions, groups и audit, включая Go-compatible ошибки создания users/roles/groups и валидацию audit-фильтров.
+- Roles, Permissions и Groups API возвращают Go-compatible RFC3339 timestamps; PUT ролей/групп полностью заменяет поля и обновляет `updated_at`.
 - Audit API возвращает Go-compatible RFC3339 timestamps, строковые zero values и `omitempty` для отсутствующего actor.
 - `PUT /api/v1/users/{id}` использует Go-compatible полную замену разрешённых полей; пропущенные profile-поля очищаются.
 - Admin API для LDAP providers, test bind и LDAP group mappings.
