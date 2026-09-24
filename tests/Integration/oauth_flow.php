@@ -19,6 +19,7 @@ $createdUserIds = [];
 $createdClientIds = [];
 $createdGroupIds = [];
 $createdProviderIds = [];
+$createdLdapProviderIds = [];
 $createdAuditActions = [];
 $createdAuditTargets = [];
 
@@ -1493,6 +1494,77 @@ try {
     assertTrue($missingLdapMapping['status'] === 404, 'LDAP mapping delete must ignore parent id like Go and return 404');
     assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'mapping not found', 'missing LDAP mapping must match Go error');
 
+    $ldapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+        'name' => 'Integration LDAP ' . $suffix,
+        'host' => 'ldap.example.test',
+        'port' => 389,
+        'use_tls' => false,
+        'start_tls' => false,
+        'bind_dn' => 'cn=service,dc=example,dc=test',
+        'bind_password' => 'integration-ldap-secret',
+        'base_dn' => 'dc=example,dc=test',
+        'user_filter' => '(&(objectClass=user)(sAMAccountName={username}))',
+        'username_attribute' => 'sAMAccountName',
+        'email_attribute' => 'mail',
+        'display_name_attribute' => 'displayName',
+        'group_attribute' => 'memberOf',
+        'enabled' => true,
+    ], $adminToken);
+    assertTrue($ldapProvider['status'] === 201, 'create LDAP provider must return 201');
+    $createdLdapProviderIds[] = $ldapProvider['json']['id'];
+    assertTrue(!array_key_exists('bind_password', $ldapProvider['json']), 'LDAP provider must not expose bind password');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapProvider['json']['created_at'] ?? '')) === 1,
+        'LDAP provider created_at must use Go-compatible RFC3339'
+    );
+
+    $db->createCommand()->update(
+        'ldap_providers',
+        ['updated_at' => '2000-01-01 00:00:00+00'],
+        ['id' => $ldapProvider['json']['id']]
+    )->execute();
+    $updatedLdapProvider = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
+        [
+            'name' => $ldapProvider['json']['name'],
+            'host' => $ldapProvider['json']['host'],
+            'port' => $ldapProvider['json']['port'],
+            'use_tls' => $ldapProvider['json']['use_tls'],
+            'start_tls' => $ldapProvider['json']['start_tls'],
+            'bind_dn' => $ldapProvider['json']['bind_dn'],
+            'bind_password' => '',
+            'base_dn' => $ldapProvider['json']['base_dn'],
+            'user_filter' => $ldapProvider['json']['user_filter'],
+            'username_attribute' => $ldapProvider['json']['username_attribute'],
+            'email_attribute' => $ldapProvider['json']['email_attribute'],
+            'display_name_attribute' => $ldapProvider['json']['display_name_attribute'],
+            'group_attribute' => $ldapProvider['json']['group_attribute'],
+            'enabled' => true,
+        ],
+        $adminToken
+    );
+    assertTrue($updatedLdapProvider['status'] === 200, 'LDAP provider update must return 200');
+    assertTrue(
+        strtotime((string)$updatedLdapProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
+        'LDAP provider update must advance updated_at'
+    );
+
+    $ldapMapping = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings',
+        [
+            'ldap_group' => 'cn=integration,dc=example,dc=test',
+            'group_id' => $group['json']['id'],
+        ],
+        $adminToken
+    );
+    assertTrue($ldapMapping['status'] === 201, 'create LDAP group mapping must return 201');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapMapping['json']['created_at'] ?? '')) === 1,
+        'LDAP group mapping created_at must use Go-compatible RFC3339'
+    );
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
@@ -1756,6 +1828,9 @@ try {
     }
     foreach ($createdProviderIds as $providerId) {
         $db->createCommand('DELETE FROM identity_providers WHERE id = :id', [':id' => $providerId])->execute();
+    }
+    foreach ($createdLdapProviderIds as $providerId) {
+        $db->createCommand('DELETE FROM ldap_providers WHERE id = :id', [':id' => $providerId])->execute();
     }
     foreach ($createdUserIds as $userId) {
         $db->createCommand('DELETE FROM users WHERE id = :id', [':id' => $userId])->execute();

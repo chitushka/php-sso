@@ -177,16 +177,31 @@ class AdminProviderServiceTest extends TestCase
         ], null);
         $this->assertSame(201, $created['status']);
         $this->assertArrayNotHasKey('bind_password', $created['data']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $created['data']['created_at']
+        );
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $created['data']['updated_at']
+        );
         $this->ldapProviderIds[] = $created['data']['id'];
 
         $provider = LdapProvider::findOne(['id' => $created['data']['id']]);
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
+
+        Yii::$app->db->createCommand()->update(
+            'ldap_providers',
+            ['updated_at' => '2000-01-01 00:00:00+00'],
+            ['id' => $created['data']['id']]
+        )->execute();
 
         $updated = $service->updateProvider($created['data']['id'], [
             'name' => 'PHPUnit LDAP Updated',
             'bind_password' => '',
         ], null);
         $this->assertSame(200, $updated['status']);
+        $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
         $provider->refresh();
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
 
@@ -195,7 +210,13 @@ class AdminProviderServiceTest extends TestCase
             'group_id' => $this->groupId,
         ], null);
         $this->assertSame(201, $mapping['status']);
-        $this->assertCount(1, $service->listGroupMappings($created['data']['id']));
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $mapping['data']['created_at']
+        );
+        $mappings = $service->listGroupMappings($created['data']['id']);
+        $this->assertCount(1, $mappings);
+        $this->assertSame($mapping['data']['created_at'], $mappings[0]['created_at']);
         $this->assertTrue($service->deleteGroupMapping($mapping['data']['id'], null));
         $this->assertCount(0, $service->listGroupMappings($created['data']['id']));
 

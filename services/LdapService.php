@@ -2,6 +2,7 @@
 
 namespace app\services;
 
+use app\components\Rfc3339;
 use app\models\LdapGroupMapping;
 use app\models\LdapProvider;
 use app\models\User;
@@ -25,6 +26,7 @@ class LdapService
         if (!$provider->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid provider payload', 'details' => $provider->errors]];
         }
+        $provider->refresh();
 
         AuditService::record($actorId, 'ldap_provider_created', 'ldap_provider', $provider->id);
         return ['status' => 201, 'data' => $this->publicProvider($provider)];
@@ -38,10 +40,12 @@ class LdapService
         }
 
         $this->fillProvider($provider, $body, true);
+        $provider->updated_at = new Expression('now()');
 
         if (!$provider->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid provider payload', 'details' => $provider->errors]];
         }
+        $provider->refresh();
 
         AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
         return ['status' => 200, 'data' => $this->publicProvider($provider)];
@@ -115,11 +119,12 @@ class LdapService
 
     public function listGroupMappings(string $providerId): array
     {
-        return LdapGroupMapping::find()
+        return array_map(function (LdapGroupMapping $mapping): array {
+            return $this->publicGroupMapping($mapping);
+        }, LdapGroupMapping::find()
             ->where(['provider_id' => $providerId])
             ->orderBy(['created_at' => SORT_DESC])
-            ->asArray()
-            ->all();
+            ->all());
     }
 
     public function createGroupMapping(string $providerId, array $body, ?string $actorId): array
@@ -132,9 +137,10 @@ class LdapService
         if ($mapping->ldap_group === '' || $mapping->group_id === '' || !$mapping->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid mapping payload', 'details' => $mapping->errors]];
         }
+        $mapping->refresh();
 
         AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
-        return ['status' => 201, 'data' => $mapping->toArray()];
+        return ['status' => 201, 'data' => $this->publicGroupMapping($mapping)];
     }
 
     public function deleteGroupMapping(string $mappingId, ?string $actorId): bool
@@ -374,6 +380,15 @@ class LdapService
     {
         $data = $provider->toArray();
         unset($data['bind_password']);
+        $data['created_at'] = Rfc3339::format($provider->created_at);
+        $data['updated_at'] = Rfc3339::format($provider->updated_at);
+        return $data;
+    }
+
+    private function publicGroupMapping(LdapGroupMapping $mapping): array
+    {
+        $data = $mapping->toArray();
+        $data['created_at'] = Rfc3339::format($mapping->created_at);
         return $data;
     }
 
