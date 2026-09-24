@@ -2,11 +2,13 @@
 
 namespace app\services;
 
+use app\components\Rfc3339;
 use app\models\FederatedIdentity;
 use app\models\IdentityProvider;
 use app\models\User;
 use Yii;
 use yii\db\Exception;
+use yii\db\Expression;
 
 class BrokerService
 {
@@ -131,6 +133,7 @@ class BrokerService
 
     private function saveProvider(IdentityProvider $provider, array $body, bool $keepEmptySecret, string $auditAction, int $status): array
     {
+        $isNewRecord = $provider->isNewRecord;
         if (!$keepEmptySecret && $provider->code === '') {
             return ['status' => 400, 'data' => ['error' => 'code and client_id are required']];
         }
@@ -167,11 +170,15 @@ class BrokerService
         if (!$keepEmptySecret || !empty($body['client_secret'])) {
             $provider->client_secret = (new CryptoService())->encrypt((string)($body['client_secret'] ?? ''));
         }
+        if (!$isNewRecord) {
+            $provider->updated_at = new Expression('now()');
+        }
 
         try {
             if (!$provider->save()) {
                 return ['status' => 400, 'data' => ['error' => 'failed to save identity provider']];
             }
+            $provider->refresh();
         } catch (Exception $exception) {
             return ['status' => 409, 'data' => ['error' => 'provider already exists']];
         }
@@ -194,8 +201,8 @@ class BrokerService
             'userinfo_url' => $provider->userinfo_url,
             'scopes' => $provider->scopes,
             'enabled' => (bool)$provider->enabled,
-            'created_at' => $provider->created_at,
-            'updated_at' => $provider->updated_at,
+            'created_at' => Rfc3339::format($provider->created_at),
+            'updated_at' => Rfc3339::format($provider->updated_at),
         ];
     }
 

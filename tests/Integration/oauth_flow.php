@@ -1361,6 +1361,41 @@ try {
     assertTrue($identityProvider['status'] === 201, 'create identity provider must return 201');
     $createdProviderIds[] = $identityProvider['json']['id'];
     assertTrue(!array_key_exists('client_secret', $identityProvider['json']), 'identity provider response must not expose client_secret');
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($identityProvider['json']['created_at'] ?? '')) === 1,
+        'identity provider created_at must use Go-compatible RFC3339'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($identityProvider['json']['updated_at'] ?? '')) === 1,
+        'identity provider updated_at must use Go-compatible RFC3339'
+    );
+
+    $db->createCommand()->update(
+        'identity_providers',
+        ['updated_at' => '2000-01-01 00:00:00+00'],
+        ['id' => $identityProvider['json']['id']]
+    )->execute();
+    $updatedIdentityProvider = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/identity-providers/' . $identityProvider['json']['id'],
+        [
+            'name' => $identityProvider['json']['name'],
+            'type' => $identityProvider['json']['type'],
+            'client_id' => $identityProvider['json']['client_id'],
+            'client_secret' => '',
+            'authorize_url' => $identityProvider['json']['authorize_url'],
+            'token_url' => $identityProvider['json']['token_url'],
+            'userinfo_url' => $identityProvider['json']['userinfo_url'],
+            'scopes' => $identityProvider['json']['scopes'],
+            'enabled' => true,
+        ],
+        $adminToken
+    );
+    assertTrue($updatedIdentityProvider['status'] === 200, 'identity provider update must return 200');
+    assertTrue(
+        strtotime((string)$updatedIdentityProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
+        'identity provider update must advance updated_at'
+    );
 
     $duplicateIdentityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => $identityProvider['json']['code'],

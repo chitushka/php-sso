@@ -72,6 +72,14 @@ class AdminProviderServiceTest extends TestCase
         $this->assertSame(201, $created['status']);
         $this->assertArrayNotHasKey('client_secret', $created['data']);
         $this->assertSame(strtolower($code), $created['data']['code']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $created['data']['created_at']
+        );
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
+            $created['data']['updated_at']
+        );
         $this->identityProviderIds[] = $created['data']['id'];
 
         $provider = IdentityProvider::findOne(['id' => $created['data']['id']]);
@@ -83,11 +91,18 @@ class AdminProviderServiceTest extends TestCase
         $this->assertStringStartsWith('https://idp.example.test/authorize?', $loginUrl);
         $this->assertStringContainsString('redirect_uri=', $loginUrl);
 
+        Yii::$app->db->createCommand()->update(
+            'identity_providers',
+            ['updated_at' => '2000-01-01 00:00:00+00'],
+            ['id' => $created['data']['id']]
+        )->execute();
+
         $updated = $service->updateProvider($created['data']['id'], [
             'name' => 'PHPUnit IdP Updated',
             'client_secret' => '',
         ]);
         $this->assertSame(200, $updated['status']);
+        $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
         $provider->refresh();
         $this->assertSame('super-secret', (new CryptoService())->decrypt((string)$provider->client_secret));
 

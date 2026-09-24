@@ -28,6 +28,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-24: wire-format `User` и Session API выровнен с Go JSON: timestamps сериализуются как RFC3339 UTC, пустые user attributes возвращаются объектом `{}`, nullable `ldap_provider_id`/`ldap_dn`/`last_login_at` и `revoked_at` активной сессии отсутствуют согласно `omitempty`.
 
+Дополнение 2026-09-24: Identity Providers API сериализует `created_at`/`updated_at` как RFC3339 UTC и при PUT явно продвигает `updated_at`, повторяя Go repository `UPDATE ... updated_at=now() RETURNING`.
+
 Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC

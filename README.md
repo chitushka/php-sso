@@ -81,6 +81,7 @@ docker compose run --rm app php yii help
 - `POST /api/v1/auth/email/request`, `/verify` для email verification.
 - `GET /api/v1/broker/providers`, `/oauth2/broker/{code}/login`, `/oauth2/broker/{code}/callback` для external sign-in.
 - Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
+- Identity Providers API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT как Go-сервис.
 - Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
 - `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
