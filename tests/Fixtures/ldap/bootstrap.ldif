@@ -1,0 +1,21 @@
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=sso-users,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: sso-users
+member: uid=fixture-user,ou=people,dc=example,dc=org
+
+dn: uid=fixture-user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+cn: Fixture User
+sn: User
+uid: fixture-user
+mail: fixture-user@example.org
+departmentNumber: cn=sso-users,ou=groups,dc=example,dc=org
+userPassword: fixture-password

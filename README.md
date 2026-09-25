@@ -28,7 +28,8 @@ make cleanup  # удалить истёкшие auth/OAuth артефакты
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
 make integration-broker # прогнать broker callback flow с локальным mock OIDC provider
-make integration-ldap # прогнать LDAP bind/search flow, если заданы SSO_TEST_LDAP_*
+make integration-ldap # прогнать LDAP bind/search flow с локальным OpenLDAP fixture
+make integration-ldap-external # прогнать тот же flow против LDAP из SSO_TEST_LDAP_*
 ```
 
 Если `make` недоступен, используйте прямые Docker-команды:
@@ -104,16 +105,17 @@ docker compose run --rm app php yii help
 - PHPUnit unit tests для password policy и trusted-proxy IP resolution.
 - PHPUnit integration tests против PostgreSQL для OAuth client service, Authorization Code + PKCE token exchange, refresh rotation/reuse/revoke, OIDC ID token/JWKS/UserInfo/RP logout, auth login/session/JWT/logout, account reset/email/profile security flows, MFA, RBAC, identity provider и LDAP admin flows, PostgreSQL array-полей и audit side effects.
 - Local mock OIDC broker smoke `make integration-broker` для внешнего sign-in callback без реального внешнего провайдера.
-- Optional LDAP bind/search smoke `make integration-ldap` для реального LDAP test fixture через `SSO_TEST_LDAP_*`.
+- Автономный LDAP bind/search smoke `make integration-ldap` с локальным OpenLDAP fixture проверяет service bind, search + user bind, JIT-provisioning, group mapping и audit; `make integration-ldap-external` сохраняет проверку внешнего LDAP через `SSO_TEST_LDAP_*`.
 - Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
 - UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`, завершённая матрица Go/PHP endpoint-контрактов — в `ENDPOINT_CONTRACTS.md`, а заметки cutover — в `MIGRATION_NOTES.md`. Из внешних проверок остаётся запуск `make integration-ldap` против реального LDAP test fixture при наличии секретов.
+Актуальный порядок переноса зафиксирован в `PLAN.md`, завершённая матрица Go/PHP endpoint-контрактов — в `ENDPOINT_CONTRACTS.md`, а заметки cutover — в `MIGRATION_NOTES.md`. Автономные OAuth/OIDC, broker и LDAP compatibility flows воспроизводятся локально; `make integration-ldap-external` остаётся опциональной сертификацией конкретного внешнего каталога.
 
 ## Важные изменения
 
+- 2026-09-25: LDAP Search + Bind контур закреплён автономным OpenLDAP fixture в Docker Compose. `make integration-ldap` проверяет service bind, search, user bind, JIT-provisioning, group mapping и audit без внешних секретов; тест изолирует ранее настроенные providers и гарантированно очищает временные записи при ошибках.
 - 2026-09-25: завершена полная дифференциальная сверка Go/PHP endpoint-контрактов: строгие typed JSON edge cases, case-insensitive имена полей, UUID/time parsing, порядок проверок, MFA/OIDC wire format и audit side effects выровнены и покрыты regression-тестами.
 - 2026-09-18: signed state identity broker приведён к Go wire-format: общий `SSO_JWT_SECRET`, RFC3339 expiry и строгий unpadded base64url позволяют продолжать broker login между Go/PHP-инстансами при rolling migration.
 - 2026-09-18: HS256 JWT verifier дополнен строгим unpadded base64url-разбором compact-сегментов и проверкой optional `nbf`; подписанные токены с padding/некорректным `nbf` или временем активации в будущем отклоняются.

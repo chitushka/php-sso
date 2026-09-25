@@ -31,11 +31,22 @@ $suffix = strtolower(bin2hex(random_bytes(4)));
 $providerId = null;
 $groupId = null;
 $createdUserId = null;
+$failure = null;
+$previousEnabledProviderIds = $db->createCommand(
+    'SELECT id FROM ldap_providers WHERE enabled = TRUE'
+)->queryColumn();
+
+if (!empty($previousEnabledProviderIds)) {
+    $db->createCommand()->update(
+        'ldap_providers',
+        ['enabled' => false],
+        ['id' => $previousEnabledProviderIds]
+    )->execute();
+}
 
 function failTest(string $message): void
 {
-    fwrite(STDERR, "FAIL: {$message}\n");
-    exit(1);
+    throw new RuntimeException($message);
 }
 
 function assertTrue($condition, string $message): void
@@ -120,7 +131,8 @@ try {
     )->queryScalar();
     assertTrue($audit === 1, 'LDAP login success must be audited');
 
-    echo "LDAP bind flow passed\n";
+} catch (Throwable $exception) {
+    $failure = $exception;
 } finally {
     if ($createdUserId !== null) {
         $db->createCommand()->delete('user_groups', ['user_id' => $createdUserId, 'source' => 'ldap'])->execute();
@@ -135,4 +147,18 @@ try {
     if ($groupId !== null) {
         $db->createCommand()->delete('groups', ['id' => $groupId])->execute();
     }
+    if (!empty($previousEnabledProviderIds)) {
+        $db->createCommand()->update(
+            'ldap_providers',
+            ['enabled' => true],
+            ['id' => $previousEnabledProviderIds]
+        )->execute();
+    }
 }
+
+if ($failure !== null) {
+    fwrite(STDERR, 'FAIL: ' . $failure->getMessage() . "\n");
+    exit(1);
+}
+
+echo "LDAP bind flow passed\n";
