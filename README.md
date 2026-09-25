@@ -105,6 +105,7 @@ docker compose run --rm app php yii help
 - `php yii cutover/rotate-encryption-key` проверяет maintenance-ротацию через `SSO_OLD_ENCRYPTION_KEY`/`SSO_NEW_ENCRYPTION_KEY`; `--apply=1` атомарно перешифровывает все непустые LDAP/MFA/broker secrets и распознаёт уже переключённые строки при повторном запуске.
 - `php yii cutover/generate-local-encryption-key` доступна только вне `SSO_ENV=prod`: генерирует ключ без вывода, ротирует локальные secrets и обновляет игнорируемый `.env`; production keys должны поступать из secret manager.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
+- Локальный production-like профиль поднимается на `https://localhost:8443`: nginx завершает TLS, имеет фиксированный IP `172.31.250.10`, а приложение доверяет forwarded-заголовкам только от него. Однократная команда `make cutover-configure-local-secure-runtime` генерирует 256-битный JWT secret без вывода и атомарно включает HTTPS issuer, secure cookies и DB cache в игнорируемом `.env`.
 - CRUD-основа OAuth-клиентов.
 - OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
 - OAuth2 Authorization Code + PKCE, одноразовый authorization code, `client_secret_post`/`client_secret_basic`, consent flow, refresh token, revoke, introspect, client_credentials.
@@ -127,6 +128,7 @@ docker compose run --rm app php yii help
 ## Важные изменения
 
 - 2026-09-25: добавлена maintenance-ротация `SSO_ENCRYPTION_KEY`: old/new keys передаются только процессу команды, dry-run проверяет весь набор, apply требует совпадения old key с активной конфигурацией и production-grade new key. Повторный запуск пропускает ciphertext, уже доступный новым ключом, а неизвестный третий ключ откатывает транзакцию.
+- 2026-09-25: Docker-контур получил TLS reverse proxy и фиксированную edge-сеть; secure runtime profile синхронно настраивает issuer, HTTPS cookies, trusted proxy, DB cache и локальный production-grade JWT secret.
 - 2026-09-25: добавлена транзакционная миграция legacy secrets `make cutover-rewrap`: она блокирует выбранные LDAP/MFA/broker строки, проверяет расшифровку, записывает Go `enc:v1:` ciphertext с compare-and-update guard и проверяет round-trip до commit. По умолчанию доступен только dry-run; apply отвергает короткий или placeholder encryption key.
 - 2026-09-25: добавлен production preflight `make cutover-check`: команда проверяет обязательные `SSO_*`, совпадение Go/PHP issuer, TTL/cookie/cache/proxy настройки, соединение и критическую схему PostgreSQL, `pgcrypto`, seed roles/permissions и расшифровку всех сохранённых LDAP/MFA/broker secrets без их вывода.
 - 2026-09-25: storage-формат зашифрованных секретов выровнен с Go `secrets.AESGCM`: SHA-256 derivation, `enc:v1:`, unpadded standard Base64 и порядок `nonce || ciphertext || tag`. PHP читает ciphertext Go-сервиса и ранний PHP `v1:` формат, но все новые LDAP/MFA/broker secrets пишет в Go-формате, сохраняя rolling migration и rollback совместимость.

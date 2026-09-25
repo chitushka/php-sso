@@ -42,6 +42,8 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 
 ## Подготовка
 
+Для локальной репетиции production-настроек выполнить `make cutover-configure-local-secure-runtime`, затем `docker compose up -d --build --wait`. Команда без вывода генерирует JWT secret и атомарно настраивает `https://localhost:8443`, secure cookies, DB cache и trusted proxy `172.31.250.10`; self-signed сертификат создаётся в Docker volume. Этот профиль не заменяет внешний secret manager, публичный production issuer и реальные CIDR балансировщиков.
+
 До maintenance window запустить read-only preflight с issuer действующего Go-сервиса:
 
 ```bash

@@ -32,6 +32,44 @@ services:
       postgres:
         condition: service_healthy
     command: sh -lc "composer install --no-interaction --prefer-dist && php yii migrate --interactive=0 && php -S 0.0.0.0:8080 -t web web/router.php"
+    networks:
+      default:
+      edge:
+
+  tls-init:
+    image: sso-php-app:latest
+    restart: "no"
+    volumes:
+      - tls_data:/tls
+    command: >-
+      sh -lc "if [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
+      openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825
+      -subj '/CN=localhost'
+      -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
+      -keyout /tls/server.key -out /tls/server.crt;
+      chmod 600 /tls/server.key; fi"
+
+  https-proxy:
+    image: nginx:1.27-alpine-slim
+    restart: unless-stopped
+    ports:
+      - "8443:443"
+    volumes:
+      - ./docker/nginx/https.conf:/etc/nginx/conf.d/default.conf:ro
+      - tls_data:/tls:ro
+    depends_on:
+      app:
+        condition: service_started
+      tls-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1/health/live >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      edge:
+        ipv4_address: 172.31.250.10
 
   ldap-test:
     image: osixia/openldap:1.5.0
@@ -58,3 +96,10 @@ services:
 volumes:
   postgres_data:
   vendor_data:
+  tls_data:
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

@@ -240,4 +240,90 @@ class CutoverController extends Controller
 
         return self::EXIT_CODE_NORMAL;
     }
+
+    public function actionConfigureLocalSecureRuntime(): int
+    {
+        $envPath = dirname(__DIR__) . '/.env';
+        $contents = @file_get_contents($envPath);
+        if ($contents === false) {
+            $this->stderr("cannot read local .env\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $currentEnvironment = (string)getenv('SSO_ENV');
+        $currentIssuer = rtrim((string)getenv('SSO_ISSUER'), '/');
+        if ($currentEnvironment === 'prod' && $currentIssuer !== 'https://localhost:8443') {
+            $this->stderr("local secure runtime cannot modify an external production profile\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $currentJwtSecret = (string)getenv('SSO_JWT_SECRET');
+        $generateJwtSecret = strlen($currentJwtSecret) < 32
+            || stripos($currentJwtSecret, 'change-me') !== false;
+        $jwtSecret = $generateJwtSecret
+            ? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=')
+            : $currentJwtSecret;
+        $values = [
+            'SSO_ENV' => 'prod',
+            'SSO_ISSUER' => 'https://localhost:8443',
+            'SSO_CUTOVER_EXPECTED_ISSUER' => 'https://localhost:8443',
+            'SSO_JWT_SECRET' => $jwtSecret,
+            'SSO_COOKIE_SECURE' => 'true',
+            'SSO_CACHE_DRIVER' => 'db',
+            'SSO_TRUSTED_PROXIES' => '172.31.250.10',
+        ];
+
+        foreach ($values as $name => $value) {
+            $pattern = '/^' . preg_quote($name, '/') . '=.*$/m';
+            $entryCount = preg_match_all($pattern, $contents);
+            if ($entryCount === false || $entryCount > 1) {
+                $this->stderr("local .env must not contain duplicate {$name} entries\n");
+                return self::EXIT_CODE_ERROR;
+            }
+            if ($entryCount === 0) {
+                $contents = rtrim($contents, "\r\n") . "\n{$name}={$value}\n";
+                continue;
+            }
+
+            $contents = preg_replace($pattern, $name . '=' . $value, $contents, 1);
+            if ($contents === null) {
+                $this->stderr("cannot update {$name} in local .env\n");
+                return self::EXIT_CODE_ERROR;
+            }
+        }
+
+        $temporaryPath = tempnam(dirname($envPath), '.env-secure-');
+        if ($temporaryPath === false || @file_put_contents($temporaryPath, $contents, LOCK_EX) === false) {
+            if ($temporaryPath !== false) {
+                @unlink($temporaryPath);
+            }
+            $this->stderr("cannot prepare secure local .env\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        @chmod($temporaryPath, 0600);
+        if (!@rename($temporaryPath, $envPath)) {
+            @unlink($temporaryPath);
+            $this->stderr("cannot replace local .env\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $saved = @file_get_contents($envPath);
+        if ($saved === false) {
+            $this->stderr("cannot verify secure local .env\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        foreach ($values as $name => $value) {
+            if (strpos($saved, $name . '=' . $value) === false) {
+                $this->stderr("secure local .env verification failed for {$name}\n");
+                return self::EXIT_CODE_ERROR;
+            }
+        }
+
+        $this->stdout($generateJwtSecret
+            ? "Secure local runtime configured; generated JWT secret was not printed\n"
+            : "Secure local runtime configuration verified; existing strong JWT secret was retained\n");
+        $this->stdout("Restart the Docker stack and use https://localhost:8443\n");
+
+        return self::EXIT_CODE_NORMAL;
+    }
 }

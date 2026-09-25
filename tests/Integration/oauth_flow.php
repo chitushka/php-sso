@@ -137,6 +137,20 @@ function responseHeader(array $response, string $name): string
     return '';
 }
 
+function responseCookieHasAttribute(array $response, string $cookieName, string $attribute): bool
+{
+    foreach ($response['headers'] as $header) {
+        if (preg_match('/^Set-Cookie:\s*' . preg_quote($cookieName, '/') . '=/i', $header) !== 1) {
+            continue;
+        }
+        if (preg_match('/;\s*' . preg_quote($attribute, '/') . '(?:[=;]|$)/i', $header) === 1) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function base32DecodeValue(string $value): string
 {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -197,6 +211,14 @@ function createUser(\yii\db\Connection $db, string $username, string $password):
 }
 
 try {
+    if ((string)getenv('SSO_CACHE_DRIVER') === 'db') {
+        assertTrue(Yii::$app->cache instanceof yii\caching\DbCache, 'DB cache driver must use Yii DbCache');
+        $cacheKey = 'integration-cache-' . $suffix;
+        assertTrue(Yii::$app->cache->set($cacheKey, 'ok', 60), 'DB cache must accept writes');
+        assertTrue(Yii::$app->cache->get($cacheKey) === 'ok', 'DB cache must return written values');
+        Yii::$app->cache->delete($cacheKey);
+    }
+
     $live = httpRequest('GET', $baseUrl . '/health/live');
     assertTrue($live['status'] === 200, 'liveness endpoint must return 200');
     assertTrue(($live['json']['status'] ?? '') === 'ok', 'liveness endpoint must return Go-compatible status');
@@ -267,6 +289,12 @@ try {
         'user updated_at must use Go-compatible RFC3339'
     );
     assertTrue(!empty($login['cookies']['sso_session']), 'admin login must set sso_session cookie');
+    if ((bool)(Yii::$app->params['cookieSecure'] ?? false)) {
+        assertTrue(
+            responseCookieHasAttribute($login, 'sso_session', 'Secure'),
+            'HTTPS profile must set Secure on sso_session cookie'
+        );
+    }
 
     $adminToken = $login['json']['access_token'];
     $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
