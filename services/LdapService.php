@@ -32,7 +32,6 @@ class LdapService
         }
         $provider->refresh();
 
-        AuditService::record($actorId, 'ldap_provider_created', 'ldap_provider', $provider->id);
         return ['status' => 201, 'data' => $this->publicProvider($provider)];
     }
 
@@ -54,19 +53,15 @@ class LdapService
         }
         $provider->refresh();
 
-        AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
+        AuditService::record(null, 'ldap_provider_updated', 'ldap_provider', $provider->id);
         return ['status' => 200, 'data' => $this->publicProvider($provider)];
     }
 
     public function deleteProvider(string $id, ?string $actorId): bool
     {
-        $provider = LdapProvider::findOne(['id' => $id]);
-        if (!$provider) {
-            return false;
-        }
-
-        $provider->delete();
-        AuditService::record($actorId, 'ldap_provider_deleted', 'ldap_provider', $id);
+        // Go repository не различает удаление существующего и уже отсутствующего провайдера.
+        Yii::$app->db->createCommand()->delete('ldap_providers', ['id' => $id])->execute();
+        AuditService::record(null, 'ldap_provider_deleted', 'ldap_provider', $id);
         return true;
     }
 
@@ -130,7 +125,7 @@ class LdapService
             return $this->publicGroupMapping($mapping);
         }, LdapGroupMapping::find()
             ->where(['provider_id' => $providerId])
-            ->orderBy(['created_at' => SORT_DESC])
+            ->orderBy(['ldap_group' => SORT_ASC])
             ->all());
     }
 
@@ -155,7 +150,7 @@ class LdapService
         }
         $mapping->refresh();
 
-        AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
+        AuditService::record(null, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
         return ['status' => 201, 'data' => $this->publicGroupMapping($mapping)];
     }
 
@@ -166,9 +161,8 @@ class LdapService
             return false;
         }
 
-        $providerId = $mapping->provider_id;
         $mapping->delete();
-        AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_provider', $providerId);
+        AuditService::record(null, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
         return true;
     }
 

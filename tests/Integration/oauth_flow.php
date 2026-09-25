@@ -1542,21 +1542,21 @@ try {
         assertTrue(($invalidLdapProviderId['json']['error'] ?? '') === 'invalid id', $method . ' LDAP provider path must match Go error');
     }
 
-    foreach (['PUT', 'DELETE'] as $method) {
-        $missingLdapProvider = $method === 'PUT'
-            ? httpRequest($method, $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000', [
-                'headers' => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $adminToken],
-                'body' => '{}',
-            ])
-            : jsonRequest(
-                $method,
-                $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000',
-                [],
-                $adminToken
-            );
-        assertTrue($missingLdapProvider['status'] === 404, $method . ' missing LDAP provider must return 404');
-        assertTrue(($missingLdapProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing LDAP provider must match Go error');
-    }
+    $missingLdapProviderUpdate = httpRequest('PUT', $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $adminToken],
+        'body' => '{}',
+    ]);
+    assertTrue($missingLdapProviderUpdate['status'] === 404, 'PUT missing LDAP provider must return 404');
+    assertTrue(($missingLdapProviderUpdate['json']['error'] ?? '') === 'provider not found', 'PUT missing LDAP provider must match Go error');
+
+    $missingLdapProviderDelete = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000',
+        [],
+        $adminToken
+    );
+    assertTrue($missingLdapProviderDelete['status'] === 200, 'DELETE missing LDAP provider must be idempotent like Go');
+    assertTrue(($missingLdapProviderDelete['json']['status'] ?? '') === 'deleted', 'DELETE missing LDAP provider must return deleted status');
 
     $invalidLdapMappingId = jsonRequest(
         'DELETE',
@@ -1592,6 +1592,9 @@ try {
     ], $adminToken);
     assertTrue($ldapProvider['status'] === 201, 'create LDAP provider must return 201');
     $createdLdapProviderIds[] = $ldapProvider['json']['id'];
+    $createdAuditTargets[] = ['action' => 'ldap_provider_updated', 'target_id' => $ldapProvider['json']['id']];
+    $createdAuditTargets[] = ['action' => 'ldap_provider_deleted', 'target_id' => $ldapProvider['json']['id']];
+    $createdAuditTargets[] = ['action' => 'ldap_group_mapping_created', 'target_id' => $ldapProvider['json']['id']];
     assertTrue(!array_key_exists('bind_password', $ldapProvider['json']), 'LDAP provider must not expose bind password');
     assertTrue(($ldapProvider['json']['group_attribute'] ?? null) === '', 'LDAP provider create must preserve Go zero value for omitted group_attribute');
     assertTrue(($ldapProvider['json']['enabled'] ?? null) === false, 'LDAP provider create must preserve Go zero value for omitted enabled');
@@ -1599,6 +1602,11 @@ try {
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapProvider['json']['created_at'] ?? '')) === 1,
         'LDAP provider created_at must use Go-compatible RFC3339'
     );
+    $ldapCreateAuditCount = (int)$db->createCommand(
+        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
+        [':id' => $ldapProvider['json']['id']]
+    )->queryScalar();
+    assertTrue($ldapCreateAuditCount === 0, 'LDAP provider create must match Go and omit an audit event');
 
     $failedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Invalid integration LDAP ' . $suffix,
@@ -1649,6 +1657,11 @@ try {
         strtotime((string)$updatedLdapProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
         'LDAP provider update must advance updated_at'
     );
+    $ldapUpdateAuditCount = (int)$db->createCommand(
+        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_updated' AND target_id = :id AND actor_user_id IS NULL",
+        [':id' => $ldapProvider['json']['id']]
+    )->queryScalar();
+    assertTrue($ldapUpdateAuditCount === 1, 'LDAP provider update audit must use Go-compatible empty actor');
 
     $ldapMapping = jsonRequest(
         'POST',
@@ -1676,6 +1689,66 @@ try {
     );
     assertTrue($duplicateLdapMapping['status'] === 409, 'duplicate LDAP mapping must return 409');
     assertTrue(($duplicateLdapMapping['json']['error'] ?? '') === 'mapping already exists', 'duplicate LDAP mapping must match Go error');
+
+    $secondLdapMapping = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings',
+        [
+            'ldap_group' => 'cn=aardvarks,dc=example,dc=test',
+            'group_id' => $group['json']['id'],
+        ],
+        $adminToken
+    );
+    assertTrue($secondLdapMapping['status'] === 201, 'create second LDAP mapping must return 201');
+
+    $listedLdapMappings = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings',
+        [],
+        $adminToken
+    );
+    assertTrue($listedLdapMappings['status'] === 200, 'list LDAP mappings must return 200');
+    assertTrue(
+        array_column($listedLdapMappings['json'], 'ldap_group') === [
+            'cn=aardvarks,dc=example,dc=test',
+            'cn=integration,dc=example,dc=test',
+        ],
+        'LDAP mappings must use Go-compatible ldap_group ordering'
+    );
+
+    foreach ([$ldapMapping, $secondLdapMapping] as $mappingToDelete) {
+        $createdAuditTargets[] = [
+            'action' => 'ldap_group_mapping_deleted',
+            'target_id' => $mappingToDelete['json']['id'],
+        ];
+        $deletedLdapMapping = jsonRequest(
+            'DELETE',
+            $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings/' . $mappingToDelete['json']['id'],
+            [],
+            $adminToken
+        );
+        assertTrue($deletedLdapMapping['status'] === 200, 'delete LDAP mapping must return 200');
+        $mappingDeleteAuditCount = (int)$db->createCommand(
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id IS NULL",
+            [':id' => $mappingToDelete['json']['id']]
+        )->queryScalar();
+        assertTrue($mappingDeleteAuditCount === 1, 'LDAP mapping delete audit must target the mapping with empty actor');
+    }
+
+    foreach ([1, 2] as $deleteAttempt) {
+        $deletedLdapProvider = jsonRequest(
+            'DELETE',
+            $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
+            [],
+            $adminToken
+        );
+        assertTrue($deletedLdapProvider['status'] === 200, 'LDAP provider delete attempt ' . $deleteAttempt . ' must return 200');
+    }
+    $ldapDeleteAuditCount = (int)$db->createCommand(
+        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id IS NULL",
+        [':id' => $ldapProvider['json']['id']]
+    )->queryScalar();
+    assertTrue($ldapDeleteAuditCount === 2, 'each idempotent LDAP provider delete must write the Go-compatible audit event');
 
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');

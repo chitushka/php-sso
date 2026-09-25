@@ -194,6 +194,10 @@ class AdminProviderServiceTest extends TestCase
             $created['data']['updated_at']
         );
         $this->ldapProviderIds[] = $created['data']['id'];
+        $this->assertSame(0, (int)Yii::$app->db->createCommand(
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
+            [':id' => $created['data']['id']]
+        )->queryScalar());
 
         $invalidCreate = $service->createProvider([
             'name' => 'Invalid PHPUnit LDAP',
@@ -234,6 +238,10 @@ class AdminProviderServiceTest extends TestCase
         $this->assertFalse($updated['data']['enabled']);
         $provider->refresh();
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
+        $this->assertSame(1, (int)Yii::$app->db->createCommand(
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_updated' AND target_id = :id AND actor_user_id IS NULL",
+            [':id' => $created['data']['id']]
+        )->queryScalar());
 
         $mapping = $service->createGroupMapping($created['data']['id'], [
             'ldap_group' => 'cn=admins,dc=example,dc=test',
@@ -250,15 +258,36 @@ class AdminProviderServiceTest extends TestCase
         ], null);
         $this->assertSame(409, $duplicateMapping['status']);
         $this->assertSame('mapping already exists', $duplicateMapping['data']['error']);
+        $secondMapping = $service->createGroupMapping($created['data']['id'], [
+            'ldap_group' => 'cn=aardvarks,dc=example,dc=test',
+            'group_id' => $this->groupId,
+        ], null);
+        $this->assertSame(201, $secondMapping['status']);
         $mappings = $service->listGroupMappings($created['data']['id']);
-        $this->assertCount(1, $mappings);
-        $this->assertSame($mapping['data']['created_at'], $mappings[0]['created_at']);
+        $this->assertCount(2, $mappings);
+        $this->assertSame([
+            'cn=aardvarks,dc=example,dc=test',
+            'cn=admins,dc=example,dc=test',
+        ], array_column($mappings, 'ldap_group'));
         $this->assertTrue($service->deleteGroupMapping($mapping['data']['id'], null));
+        $this->assertSame(1, (int)Yii::$app->db->createCommand(
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id IS NULL",
+            [':id' => $mapping['data']['id']]
+        )->queryScalar());
+        $this->assertTrue($service->deleteGroupMapping($secondMapping['data']['id'], null));
         $this->assertCount(0, $service->listGroupMappings($created['data']['id']));
 
         $this->assertTrue($service->deleteProvider($created['data']['id'], null));
-        $this->ldapProviderIds = [];
+        $this->assertTrue($service->deleteProvider($created['data']['id'], null));
+        $this->assertSame(2, (int)Yii::$app->db->createCommand(
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id IS NULL",
+            [':id' => $created['data']['id']]
+        )->queryScalar());
         $this->assertNull(LdapProvider::findOne(['id' => $created['data']['id']]));
+        Yii::$app->db->createCommand()->delete('audit_logs', [
+            'target_type' => 'ldap_group_mapping',
+            'target_id' => [$mapping['data']['id'], $secondMapping['data']['id']],
+        ])->execute();
     }
 
     private function goSignedState(array $state, string $secret): string

@@ -38,6 +38,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-25: ошибки PostgreSQL в LDAP provider create/update скрываются за Go-compatible 500 `failed to create/update provider`; duplicate group mapping возвращает 409 `mapping already exists`, а невалидный `group_id` отклоняется как 400 `invalid json body` на уровне декодирования.
 
+Дополнение 2026-09-25: LDAP repository lifecycle выровнен с фактическим Go-поведением: DELETE provider идемпотентен, group mappings сортируются по `ldap_group`, create provider не пишет отсутствующее в Go audit-событие, а update/delete/mapping events используют пустого actor и точные target type/id.
+
 Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC
