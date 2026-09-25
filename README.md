@@ -76,6 +76,7 @@ docker compose run --rm app php yii help
 - Admin API для LDAP providers, test bind и LDAP group mappings.
 - LDAP providers и group mappings возвращают RFC3339 timestamps; PUT провайдера обновляет `updated_at` как Go-сервис.
 - LDAP Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `bind_password` при PUT сохраняет текущий секрет.
+- LDAP persistence errors используют Go-compatible generic 500 ответы, а duplicate group mapping возвращает 409.
 - AES-256-GCM шифрование LDAP bind password в PostgreSQL.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.

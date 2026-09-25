@@ -1518,6 +1518,18 @@ try {
     assertTrue($unknownLdapMappingField['status'] === 400, 'LDAP mapping JSON with unknown field must return 400');
     assertTrue(($unknownLdapMappingField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP mapping field must match Go error');
 
+    $invalidLdapMappingGroup = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000/group-mappings',
+        [
+            'ldap_group' => 'cn=invalid,dc=example,dc=test',
+            'group_id' => 'not-a-uuid',
+        ],
+        $adminToken
+    );
+    assertTrue($invalidLdapMappingGroup['status'] === 400, 'LDAP mapping with invalid group id must return 400');
+    assertTrue(($invalidLdapMappingGroup['json']['error'] ?? '') === 'invalid json body', 'LDAP mapping invalid group id must match Go decoder error');
+
     foreach ([
         ['PUT', '/api/v1/ldap/providers/not-a-uuid'],
         ['DELETE', '/api/v1/ldap/providers/not-a-uuid'],
@@ -1588,11 +1600,31 @@ try {
         'LDAP provider created_at must use Go-compatible RFC3339'
     );
 
+    $failedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+        'name' => 'Invalid integration LDAP ' . $suffix,
+        'host' => 'ldap.example.test',
+        'port' => -1,
+    ], $adminToken);
+    assertTrue($failedLdapProvider['status'] === 500, 'invalid LDAP provider persistence must return 500');
+    assertTrue(($failedLdapProvider['json']['error'] ?? '') === 'failed to create provider', 'LDAP provider create failure must hide database details');
+
     $db->createCommand()->update(
         'ldap_providers',
         ['updated_at' => '2000-01-01 00:00:00+00'],
         ['id' => $ldapProvider['json']['id']]
     )->execute();
+    $failedLdapUpdate = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
+        [
+            'name' => 'Invalid LDAP update ' . $suffix,
+            'port' => 0,
+        ],
+        $adminToken
+    );
+    assertTrue($failedLdapUpdate['status'] === 500, 'invalid LDAP provider update persistence must return 500');
+    assertTrue(($failedLdapUpdate['json']['error'] ?? '') === 'failed to update provider', 'LDAP provider update failure must hide database details');
+
     $updatedLdapProvider = jsonRequest(
         'PUT',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
@@ -1632,6 +1664,18 @@ try {
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapMapping['json']['created_at'] ?? '')) === 1,
         'LDAP group mapping created_at must use Go-compatible RFC3339'
     );
+
+    $duplicateLdapMapping = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings',
+        [
+            'ldap_group' => 'cn=integration,dc=example,dc=test',
+            'group_id' => $group['json']['id'],
+        ],
+        $adminToken
+    );
+    assertTrue($duplicateLdapMapping['status'] === 409, 'duplicate LDAP mapping must return 409');
+    assertTrue(($duplicateLdapMapping['json']['error'] ?? '') === 'mapping already exists', 'duplicate LDAP mapping must match Go error');
 
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');

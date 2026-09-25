@@ -195,6 +195,14 @@ class AdminProviderServiceTest extends TestCase
         );
         $this->ldapProviderIds[] = $created['data']['id'];
 
+        $invalidCreate = $service->createProvider([
+            'name' => 'Invalid PHPUnit LDAP',
+            'host' => 'ldap.example.test',
+            'port' => -1,
+        ], null);
+        $this->assertSame(500, $invalidCreate['status']);
+        $this->assertSame('failed to create provider', $invalidCreate['data']['error']);
+
         $provider = LdapProvider::findOne(['id' => $created['data']['id']]);
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
 
@@ -203,6 +211,13 @@ class AdminProviderServiceTest extends TestCase
             ['updated_at' => '2000-01-01 00:00:00+00'],
             ['id' => $created['data']['id']]
         )->execute();
+
+        $invalidUpdate = $service->updateProvider($created['data']['id'], [
+            'name' => 'Invalid PHPUnit LDAP update',
+            'port' => 0,
+        ], null);
+        $this->assertSame(500, $invalidUpdate['status']);
+        $this->assertSame('failed to update provider', $invalidUpdate['data']['error']);
 
         $updated = $service->updateProvider($created['data']['id'], [
             'name' => 'PHPUnit LDAP Updated',
@@ -229,6 +244,12 @@ class AdminProviderServiceTest extends TestCase
             '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/',
             $mapping['data']['created_at']
         );
+        $duplicateMapping = $service->createGroupMapping($created['data']['id'], [
+            'ldap_group' => 'cn=admins,dc=example,dc=test',
+            'group_id' => $this->groupId,
+        ], null);
+        $this->assertSame(409, $duplicateMapping['status']);
+        $this->assertSame('mapping already exists', $duplicateMapping['data']['error']);
         $mappings = $service->listGroupMappings($created['data']['id']);
         $this->assertCount(1, $mappings);
         $this->assertSame($mapping['data']['created_at'], $mappings[0]['created_at']);

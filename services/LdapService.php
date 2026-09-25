@@ -8,6 +8,7 @@ use app\models\LdapProvider;
 use app\models\User;
 use Yii;
 use yii\db\Expression;
+use yii\db\IntegrityException;
 
 class LdapService
 {
@@ -21,10 +22,13 @@ class LdapService
     public function createProvider(array $body, ?string $actorId): array
     {
         $provider = new LdapProvider();
-        $this->fillProvider($provider, $body, false);
-
-        if (!$provider->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid provider payload', 'details' => $provider->errors]];
+        try {
+            $this->fillProvider($provider, $body, false);
+            if (!$provider->save()) {
+                return ['status' => 500, 'data' => ['error' => 'failed to create provider']];
+            }
+        } catch (\Throwable $exception) {
+            return ['status' => 500, 'data' => ['error' => 'failed to create provider']];
         }
         $provider->refresh();
 
@@ -39,11 +43,14 @@ class LdapService
             return ['status' => 404, 'data' => ['error' => 'provider not found']];
         }
 
-        $this->fillProvider($provider, $body, true);
-        $provider->updated_at = new Expression('now()');
-
-        if (!$provider->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid provider payload', 'details' => $provider->errors]];
+        try {
+            $this->fillProvider($provider, $body, true);
+            $provider->updated_at = new Expression('now()');
+            if (!$provider->save()) {
+                return ['status' => 500, 'data' => ['error' => 'failed to update provider']];
+            }
+        } catch (\Throwable $exception) {
+            return ['status' => 500, 'data' => ['error' => 'failed to update provider']];
         }
         $provider->refresh();
 
@@ -134,8 +141,17 @@ class LdapService
         $mapping->ldap_group = trim((string)($body['ldap_group'] ?? ''));
         $mapping->group_id = (string)($body['group_id'] ?? '');
 
-        if ($mapping->ldap_group === '' || $mapping->group_id === '' || !$mapping->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid mapping payload', 'details' => $mapping->errors]];
+        try {
+            if (!$mapping->save()) {
+                return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
+            }
+        } catch (IntegrityException $exception) {
+            if (($exception->errorInfo[0] ?? '') === '23505') {
+                return ['status' => 409, 'data' => ['error' => 'mapping already exists']];
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
+        } catch (\Throwable $exception) {
+            return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
         }
         $mapping->refresh();
 

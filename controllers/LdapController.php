@@ -128,7 +128,12 @@ class LdapController extends ApiController
             return $this->fail(400, 'invalid id');
         }
 
-        $result = $this->service()->createGroupMapping($id, $this->body(self::GROUP_MAPPING_FIELDS), $auth->id);
+        $body = $this->body(self::GROUP_MAPPING_FIELDS);
+        if (array_key_exists('group_id', $body) && !$this->isUuid((string)$body['group_id'])) {
+            return $this->fail(400, 'invalid json body');
+        }
+
+        $result = $this->service()->createGroupMapping($id, $body, $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
