@@ -206,10 +206,17 @@ class AdminProviderServiceTest extends TestCase
 
         $updated = $service->updateProvider($created['data']['id'], [
             'name' => 'PHPUnit LDAP Updated',
+            'port' => 389,
             'bind_password' => '',
         ], null);
         $this->assertSame(200, $updated['status']);
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
+        foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $field) {
+            $this->assertSame('', $updated['data'][$field]);
+        }
+        $this->assertFalse($updated['data']['use_tls']);
+        $this->assertFalse($updated['data']['start_tls']);
+        $this->assertFalse($updated['data']['enabled']);
         $provider->refresh();
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
 

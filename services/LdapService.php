@@ -342,36 +342,37 @@ class LdapService
         ]);
     }
 
-    private function fillProvider(LdapProvider $provider, array $body, bool $keepEmptyPassword): void
+    private function fillProvider(LdapProvider $provider, array $body, bool $isUpdate): void
     {
         foreach (['name', 'host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $field) {
-            if (array_key_exists($field, $body)) {
-                $provider->{$field} = trim((string)$body[$field]);
+            // Go декодирует вход в новую Provider struct: отсутствующие поля получают zero values.
+            $provider->{$field} = (string)($body[$field] ?? '');
+        }
+
+        $provider->port = (int)($body['port'] ?? 0);
+        $provider->use_tls = (bool)($body['use_tls'] ?? false);
+        $provider->start_tls = (bool)($body['start_tls'] ?? false);
+        $provider->enabled = (bool)($body['enabled'] ?? false);
+
+        if (!$isUpdate) {
+            if ($provider->port === 0) {
+                $provider->port = 389;
+            }
+            if ($provider->user_filter === '') {
+                $provider->user_filter = '(&(objectClass=user)(sAMAccountName={username}))';
+            }
+            if ($provider->username_attribute === '') {
+                $provider->username_attribute = 'sAMAccountName';
+            }
+            if ($provider->email_attribute === '') {
+                $provider->email_attribute = 'mail';
+            }
+            if ($provider->display_name_attribute === '') {
+                $provider->display_name_attribute = 'displayName';
             }
         }
 
-        $provider->port = (int)($body['port'] ?? ($provider->port ?: 389));
-        $provider->use_tls = (bool)($body['use_tls'] ?? $provider->use_tls);
-        $provider->start_tls = (bool)($body['start_tls'] ?? $provider->start_tls);
-        $provider->enabled = array_key_exists('enabled', $body) ? (bool)$body['enabled'] : ($provider->enabled ?? true);
-
-        if (!$provider->user_filter) {
-            $provider->user_filter = '(&(objectClass=user)(sAMAccountName={username}))';
-        }
-        if (!$provider->username_attribute) {
-            $provider->username_attribute = 'sAMAccountName';
-        }
-        if (!$provider->email_attribute) {
-            $provider->email_attribute = 'mail';
-        }
-        if (!$provider->display_name_attribute) {
-            $provider->display_name_attribute = 'displayName';
-        }
-        if (!$provider->group_attribute) {
-            $provider->group_attribute = 'memberOf';
-        }
-
-        if (!$keepEmptyPassword || !empty($body['bind_password'])) {
+        if (!$isUpdate || !empty($body['bind_password'])) {
             $provider->bind_password = (new CryptoService())->encrypt((string)($body['bind_password'] ?? ''));
         }
     }

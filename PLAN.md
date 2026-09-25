@@ -34,6 +34,8 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-24: LDAP Providers и group mappings возвращают Go-compatible RFC3339 timestamps; create перечитывает DB-generated даты, а PUT провайдера явно обновляет `updated_at`.
 
+Дополнение 2026-09-25: LDAP Providers POST/PUT выровнены с Go zero-value/full-replacement семантикой `Provider`: create применяет Go defaults только к port, user filter и трём основным attributes, а PUT очищает пропущенные поля. Пустой `bind_password` при PUT сохраняет текущий зашифрованный пароль.
+
 Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC

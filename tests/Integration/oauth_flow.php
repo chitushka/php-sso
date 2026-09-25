@@ -1577,12 +1577,12 @@ try {
         'username_attribute' => 'sAMAccountName',
         'email_attribute' => 'mail',
         'display_name_attribute' => 'displayName',
-        'group_attribute' => 'memberOf',
-        'enabled' => true,
     ], $adminToken);
     assertTrue($ldapProvider['status'] === 201, 'create LDAP provider must return 201');
     $createdLdapProviderIds[] = $ldapProvider['json']['id'];
     assertTrue(!array_key_exists('bind_password', $ldapProvider['json']), 'LDAP provider must not expose bind password');
+    assertTrue(($ldapProvider['json']['group_attribute'] ?? null) === '', 'LDAP provider create must preserve Go zero value for omitted group_attribute');
+    assertTrue(($ldapProvider['json']['enabled'] ?? null) === false, 'LDAP provider create must preserve Go zero value for omitted enabled');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapProvider['json']['created_at'] ?? '')) === 1,
         'LDAP provider created_at must use Go-compatible RFC3339'
@@ -1597,24 +1597,22 @@ try {
         'PUT',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
         [
-            'name' => $ldapProvider['json']['name'],
-            'host' => $ldapProvider['json']['host'],
-            'port' => $ldapProvider['json']['port'],
-            'use_tls' => $ldapProvider['json']['use_tls'],
-            'start_tls' => $ldapProvider['json']['start_tls'],
-            'bind_dn' => $ldapProvider['json']['bind_dn'],
+            'name' => 'Updated LDAP ' . $suffix,
+            'port' => 389,
             'bind_password' => '',
-            'base_dn' => $ldapProvider['json']['base_dn'],
-            'user_filter' => $ldapProvider['json']['user_filter'],
-            'username_attribute' => $ldapProvider['json']['username_attribute'],
-            'email_attribute' => $ldapProvider['json']['email_attribute'],
-            'display_name_attribute' => $ldapProvider['json']['display_name_attribute'],
-            'group_attribute' => $ldapProvider['json']['group_attribute'],
-            'enabled' => true,
         ],
         $adminToken
     );
     assertTrue($updatedLdapProvider['status'] === 200, 'LDAP provider update must return 200');
+    foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $zeroValueField) {
+        assertTrue(
+            ($updatedLdapProvider['json'][$zeroValueField] ?? null) === '',
+            'LDAP provider update must clear omitted ' . $zeroValueField . ' like Go'
+        );
+    }
+    assertTrue(($updatedLdapProvider['json']['use_tls'] ?? null) === false, 'LDAP provider update must clear omitted use_tls like Go');
+    assertTrue(($updatedLdapProvider['json']['start_tls'] ?? null) === false, 'LDAP provider update must clear omitted start_tls like Go');
+    assertTrue(($updatedLdapProvider['json']['enabled'] ?? null) === false, 'LDAP provider update must clear omitted enabled like Go');
     assertTrue(
         strtotime((string)$updatedLdapProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
         'LDAP provider update must advance updated_at'
