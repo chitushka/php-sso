@@ -330,6 +330,47 @@ try {
     assertTrue($unknownLoginField['status'] === 400, 'login JSON with unknown field must return 400');
     assertTrue(($unknownLoginField['json']['error'] ?? '') === 'invalid json body', 'unknown login field must match Go error');
 
+    $typedLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => 42,
+        'password' => $password,
+    ]);
+    assertTrue($typedLogin['status'] === 400, 'login JSON with numeric username must return 400');
+    assertTrue(($typedLogin['json']['error'] ?? '') === 'invalid json body', 'typed login error must match Go decoder');
+
+    $caseInsensitiveLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'Username' => $adminUsername,
+        'Password' => $password,
+    ]);
+    assertTrue($caseInsensitiveLogin['status'] === 200, 'Go decoder must match JSON field names case-insensitively');
+    $caseInsensitiveLogout = httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
+        'cookies' => ['sso_session' => $caseInsensitiveLogin['cookies']['sso_session']],
+        'headers' => ['Accept: application/json'],
+    ]);
+    assertTrue($caseInsensitiveLogout['status'] === 200, 'case-insensitive login session cleanup must return 200');
+
+    $contentTypeIndependentLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'headers' => ['Accept: application/json'],
+        'body' => json_encode(['username' => $adminUsername, 'password' => $password]),
+    ]);
+    assertTrue($contentTypeIndependentLogin['status'] === 200, 'Go JSON decoding must not depend on Content-Type');
+    httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
+        'cookies' => ['sso_session' => $contentTypeIndependentLogin['cookies']['sso_session']],
+        'headers' => ['Accept: application/json'],
+    ]);
+
+    $nullLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => 'null',
+    ]);
+    assertTrue($nullLogin['status'] === 401, 'literal null must decode as a Go zero-value login request');
+
+    $emptyLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => '',
+    ]);
+    assertTrue($emptyLogin['status'] === 400, 'empty JSON body must match Go EOF decode error');
+    assertTrue(($emptyLogin['json']['error'] ?? '') === 'invalid json body', 'empty JSON body must match Go error');
+
     $unknownResetField = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
         'token' => 'unknown-token',
         'password' => $password,
@@ -460,6 +501,15 @@ try {
     ], $adminToken);
     assertTrue($unknownOAuthClientField['status'] === 400, 'OAuth client JSON with unknown field must return 400');
     assertTrue(($unknownOAuthClientField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client field must match Go error');
+
+    $typedOAuthClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
+        'client_id' => 'typed-client-' . $suffix,
+        'name' => 'Typed client',
+        'redirect_uris' => ['http://localhost/typed', 7],
+        'enabled' => 'false',
+    ], $adminToken);
+    assertTrue($typedOAuthClient['status'] === 400, 'OAuth client with invalid slice/bool types must return 400');
+    assertTrue(($typedOAuthClient['json']['error'] ?? '') === 'invalid json body', 'typed OAuth client error must match Go decoder');
 
     foreach ([
         ['GET', '/api/v1/oauth/clients/not-a-uuid'],
@@ -991,6 +1041,15 @@ try {
     assertTrue($unknownUserField['status'] === 400, 'create user JSON with unknown field must return 400');
     assertTrue(($unknownUserField['json']['error'] ?? '') === 'invalid json body', 'unknown user field must match Go error');
 
+    $typedUserAttributes = jsonRequest('POST', $baseUrl . '/api/v1/users', [
+        'username' => 'typed-user-' . $suffix,
+        'email' => 'typed-user-' . $suffix . '@example.test',
+        'password' => $password,
+        'attributes' => [],
+    ], $adminToken);
+    assertTrue($typedUserAttributes['status'] === 400, 'user attributes JSON array must return 400');
+    assertTrue(($typedUserAttributes['json']['error'] ?? '') === 'invalid json body', 'typed attributes error must match Go map decoder');
+
     $duplicateUser = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => $plainLogin['json']['user']['username'],
         'email' => 'duplicate-' . $suffix . '@example.test',
@@ -1034,6 +1093,15 @@ try {
     assertTrue($missingUser['status'] === 404, 'missing user must return 404');
     assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match Go error');
 
+    $rawUuidUser = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/users/' . str_replace('-', '', $adminId),
+        [],
+        $adminToken
+    );
+    assertTrue($rawUuidUser['status'] === 200, 'raw-hex UUID path must match google/uuid.Parse');
+    assertTrue(($rawUuidUser['json']['id'] ?? '') === $adminId, 'raw-hex UUID path must be canonicalized');
+
     $unknownUserUpdateField = jsonRequest(
         'PUT',
         $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000',
@@ -1042,6 +1110,15 @@ try {
     );
     assertTrue($unknownUserUpdateField['status'] === 400, 'update user JSON with Go-unknown password field must return 400');
     assertTrue(($unknownUserUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown user update field must match Go error');
+
+    $missingUserUpdate = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000',
+        ['username' => 'missing', 'email' => 'missing@example.test', 'status' => 'active'],
+        $adminToken
+    );
+    assertTrue($missingUserUpdate['status'] === 500, 'missing user update must preserve Go handler status');
+    assertTrue(($missingUserUpdate['json']['error'] ?? '') === 'failed to update user', 'missing user update must match Go error');
 
     $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => '',
@@ -1390,6 +1467,14 @@ try {
     assertTrue($unknownIdentityProviderField['status'] === 400, 'identity provider JSON with unknown field must return 400');
     assertTrue(($unknownIdentityProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider field must match Go error');
 
+    $typedIdentityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+        'code' => 'typed-idp-' . $suffix,
+        'client_id' => 'typed-idp-client-' . $suffix,
+        'enabled' => 1,
+    ], $adminToken);
+    assertTrue($typedIdentityProvider['status'] === 400, 'identity provider with numeric bool must return 400');
+    assertTrue(($typedIdentityProvider['json']['error'] ?? '') === 'invalid json body', 'typed identity provider error must match Go decoder');
+
     foreach (['PUT', 'DELETE'] as $method) {
         $invalidIdentityProviderId = jsonRequest(
             $method,
@@ -1497,6 +1582,15 @@ try {
     ], $adminToken);
     assertTrue($unknownLdapProviderField['status'] === 400, 'LDAP provider JSON with unknown field must return 400');
     assertTrue(($unknownLdapProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP provider field must match Go error');
+
+    $typedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+        'name' => 'Typed LDAP provider',
+        'host' => 'ldap.example.test',
+        'port' => '389',
+        'created_at' => 'not-rfc3339',
+    ], $adminToken);
+    assertTrue($typedLdapProvider['status'] === 400, 'LDAP provider with invalid int/time types must return 400');
+    assertTrue(($typedLdapProvider['json']['error'] ?? '') === 'invalid json body', 'typed LDAP provider error must match Go decoder');
 
     $unknownLdapTestField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers/test', [
         'host' => 'ldap.example.test',
@@ -1754,7 +1848,7 @@ try {
     assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
     assertTrue(!empty($mfaEnroll['json']['otpauth_url']), 'MFA enroll must return Go-compatible otpauth_url');
-    assertTrue(!empty($mfaEnroll['json']['otpauth_uri']), 'MFA enroll must keep PHP UI otpauth_uri');
+    assertTrue(!array_key_exists('otpauth_uri', $mfaEnroll['json']), 'MFA enroll must not add fields absent from Go response');
 
     $mfaCounter = (int)floor(time() / 30);
     $mfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
@@ -1777,7 +1871,9 @@ try {
     assertTrue($mfaLogin['status'] === 200, 'MFA password step must return 200');
     assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
     assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return Go-compatible mfa_token');
-    assertTrue(($mfaLogin['json']['challenge_token'] ?? '') === $mfaLogin['json']['mfa_token'], 'MFA password step must keep challenge_token alias');
+    assertTrue(!array_key_exists('challenge_token', $mfaLogin['json']), 'MFA password step must not add fields absent from Go LoginResult');
+    assertTrue(($mfaLogin['json']['session_expires_at'] ?? '') === '0001-01-01T00:00:00Z', 'MFA challenge must preserve Go zero session expiry');
+    assertTrue(($mfaLogin['json']['user']['id'] ?? '') === '00000000-0000-0000-0000-000000000000', 'MFA challenge must preserve Go zero user');
 
     $unknownMfaField = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],

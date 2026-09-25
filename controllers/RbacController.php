@@ -25,7 +25,8 @@ class RbacController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createRole($this->body(['code', 'name', 'description']));
+        $fields = ['code', 'name', 'description'];
+        $result = $this->service()->createRole($this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -40,8 +41,10 @@ class RbacController extends ApiController
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
-        $result = $this->service()->updateRole($roleID, $this->body(['name', 'description']));
+        $fields = ['name', 'description'];
+        $result = $this->service()->updateRole($roleID, $this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -56,6 +59,7 @@ class RbacController extends ApiController
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
         $result = $this->service()->deleteRole($roleID);
         Yii::$app->response->statusCode = $result['status'];
@@ -78,6 +82,7 @@ class RbacController extends ApiController
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
         return $this->service()->listRolePermissions($roleID);
     }
@@ -92,11 +97,9 @@ class RbacController extends ApiController
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
-        $permissionId = (string)($this->body(['permission_id'])['permission_id'] ?? '');
-        if ($permissionId !== '' && !$this->isUuid($permissionId)) {
-            return $this->fail(400, 'invalid json body');
-        }
+        $permissionId = (string)($this->body(['permission_id'], ['permission_id' => 'uuid'])['permission_id'] ?? '');
 
         $this->service()->assignPermissionToRole($roleID, $permissionId);
         return ['status' => 'assigned'];
@@ -112,9 +115,11 @@ class RbacController extends ApiController
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
         if (!$this->isUuid($permissionID)) {
             return $this->fail(400, 'invalid permission id');
         }
+        $permissionID = $this->canonicalUuid($permissionID);
 
         $this->service()->removePermissionFromRole($roleID, $permissionID);
         return ['status' => 'removed'];
@@ -130,6 +135,7 @@ class RbacController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
 
         return $this->service()->listUserRoles($userID);
     }
@@ -144,11 +150,9 @@ class RbacController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
 
-        $roleId = (string)($this->body(['role_id'])['role_id'] ?? '');
-        if ($roleId !== '' && !$this->isUuid($roleId)) {
-            return $this->fail(400, 'invalid json body');
-        }
+        $roleId = (string)($this->body(['role_id'], ['role_id' => 'uuid'])['role_id'] ?? '');
 
         $this->service()->assignRoleToUser($userID, $roleId);
         return ['status' => 'assigned'];
@@ -164,9 +168,11 @@ class RbacController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
         $this->service()->removeRoleFromUser($userID, $roleID);
         return ['status' => 'removed'];

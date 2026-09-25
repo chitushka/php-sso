@@ -5,6 +5,7 @@ namespace app\controllers;
 use app\models\User;
 use app\services\AuditService;
 use app\services\PasswordPolicy;
+use app\services\PasswordHasher;
 use Yii;
 use yii\db\Expression;
 
@@ -17,11 +18,11 @@ class UsersController extends ApiController
             return $auth;
         }
 
-        $limit = (int)Yii::$app->request->get('limit', 50);
+        $limit = $this->parseGoInt((string)Yii::$app->request->get('limit', ''));
         if ($limit <= 0 || $limit > 100) {
             $limit = 50;
         }
-        $offset = max((int)Yii::$app->request->get('offset', 0), 0);
+        $offset = max($this->parseGoInt((string)Yii::$app->request->get('offset', '')), 0);
 
         return array_map(static function (User $user) {
             return $user->publicData();
@@ -38,6 +39,7 @@ class UsersController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         $user = User::findOne(['id' => $id]);
         return $user ? $user->publicData() : $this->fail(404, 'user not found');
@@ -50,7 +52,7 @@ class UsersController extends ApiController
             return $auth;
         }
 
-        $body = $this->body([
+        $fields = [
             'username',
             'email',
             'password',
@@ -58,6 +60,15 @@ class UsersController extends ApiController
             'first_name',
             'last_name',
             'attributes',
+        ];
+        $body = $this->body($fields, [
+            'username' => 'string',
+            'email' => 'string',
+            'password' => 'string',
+            'status' => 'string',
+            'first_name' => 'string',
+            'last_name' => 'string',
+            'attributes' => 'string_map',
         ]);
         if (trim((string)($body['username'] ?? '')) === '' || trim((string)($body['email'] ?? '')) === '') {
             return $this->fail(400, 'username and email are required');
@@ -75,7 +86,7 @@ class UsersController extends ApiController
 
         $user = new User();
         $this->fillUser($user, $body);
-        $user->password_hash = password_hash($password, PASSWORD_DEFAULT);
+        $user->password_hash = PasswordHasher::hash($password);
         $user->source = User::SOURCE_LOCAL;
 
         if (!$user->save()) {
@@ -86,7 +97,7 @@ class UsersController extends ApiController
             return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);
         }
 
-        AuditService::record($auth->id, 'user_created', 'user', $user->id);
+        AuditService::record(null, 'user_created', 'user', $user->id, true);
         Yii::$app->response->statusCode = 201;
         return $user->publicData();
     }
@@ -101,18 +112,27 @@ class UsersController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
-        $body = $this->body([
+        $fields = [
             'username',
             'email',
             'status',
             'first_name',
             'last_name',
             'attributes',
+        ];
+        $body = $this->body($fields, [
+            'username' => 'string',
+            'email' => 'string',
+            'status' => 'string',
+            'first_name' => 'string',
+            'last_name' => 'string',
+            'attributes' => 'string_map',
         ]);
         $user = User::findOne(['id' => $id]);
         if (!$user) {
-            return $this->fail(404, 'user not found');
+            return $this->fail(500, 'failed to update user');
         }
 
         $user->username = trim((string)($body['username'] ?? ''));
@@ -123,10 +143,9 @@ class UsersController extends ApiController
         $user->attributes = json_encode((array)($body['attributes'] ?? []));
 
         if (!$user->save()) {
-            return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);
+            return $this->fail(500, 'failed to update user');
         }
 
-        AuditService::record($auth->id, 'user_updated', 'user', $user->id);
         return $user->publicData();
     }
 
@@ -140,6 +159,7 @@ class UsersController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         $user = User::findOne(['id' => $id]);
         if (!$user) {
@@ -149,7 +169,7 @@ class UsersController extends ApiController
         $user->status = User::STATUS_DELETED;
         $user->tokens_invalid_before = new Expression('now()');
         $user->save(false, ['status', 'tokens_invalid_before']);
-        AuditService::record($auth->id, 'user_deleted', 'user', $id);
+        AuditService::record(null, 'user_deleted', 'user', $id, true);
 
         return ['status' => 'deleted'];
     }

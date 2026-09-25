@@ -38,16 +38,10 @@ class OidcController extends ApiController
         if ($full || in_array('profile', $scopes, true)) {
             $data['preferred_username'] = $user->username;
             $data['source'] = $user->source;
-            if ($full) {
-                $data['name'] = trim($user->first_name . ' ' . $user->last_name);
-            }
         }
 
         if ($full || in_array('email', $scopes, true)) {
             $data['email'] = $user->email;
-            if ($full) {
-                $data['email_verified'] = (bool)$user->email_verified;
-            }
         }
 
         return $data;

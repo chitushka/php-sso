@@ -12,7 +12,8 @@ class AuthController extends ApiController
 {
     public function actionLogin(): array
     {
-        $result = (new AuthService())->login($this->body(['username', 'password']), Yii::$app->request);
+        $fields = ['username', 'password'];
+        $result = (new AuthService())->login($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
@@ -26,7 +27,8 @@ class AuthController extends ApiController
 
     public function actionVerifyMfa(): array
     {
-        $result = (new AuthService())->verifyMfaLogin($this->body(['mfa_token', 'code']), Yii::$app->request);
+        $fields = ['mfa_token', 'code'];
+        $result = (new AuthService())->verifyMfaLogin($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
@@ -74,6 +76,7 @@ class AuthController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid session id');
         }
+        $id = $this->canonicalUuid($id);
 
         if (!(new AuthService())->revokeSession($user->id, $id)) {
             return $this->fail(404, 'session not found');
@@ -97,7 +100,7 @@ class AuthController extends ApiController
     public function actionForgotPassword(): array
     {
         try {
-            $login = trim((string)($this->body(['login'])['login'] ?? ''));
+            $login = trim((string)($this->body(['login'], ['login' => 'string'])['login'] ?? ''));
         } catch (BadRequestHttpException $exception) {
             return $this->fail(400, 'login is required');
         }
@@ -111,7 +114,7 @@ class AuthController extends ApiController
 
     public function actionResetPassword(): array
     {
-        $body = $this->body(['token', 'password']);
+        $body = $this->body(['token', 'password'], ['token' => 'string', 'password' => 'string']);
         $result = (new AccountService())->resetPassword(
             (string)($body['token'] ?? ''),
             (string)($body['password'] ?? '')
@@ -128,7 +131,10 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $body = $this->body(['old_password', 'new_password']);
+        $body = $this->body(
+            ['old_password', 'new_password'],
+            ['old_password' => 'string', 'new_password' => 'string']
+        );
         $result = (new AccountService())->changePassword(
             $user,
             (string)($body['old_password'] ?? ''),
@@ -148,7 +154,10 @@ class AuthController extends ApiController
 
         $result = (new AccountService())->updateProfile(
             $user,
-            $this->body(['first_name', 'last_name', 'attributes'])
+            $this->body(
+                ['first_name', 'last_name', 'attributes'],
+                ['first_name' => 'string', 'last_name' => 'string', 'attributes' => 'string_map']
+            )
         );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -168,7 +177,9 @@ class AuthController extends ApiController
 
     public function actionVerifyEmail(): array
     {
-        $result = (new AccountService())->verifyEmail((string)($this->body(['token'])['token'] ?? ''));
+        $result = (new AccountService())->verifyEmail(
+            (string)($this->body(['token'], ['token' => 'string'])['token'] ?? '')
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -194,7 +205,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $body = $this->body(['code']);
+        $body = $this->body(['code'], ['code' => 'string']);
         $result = (new MfaService())->enable(
             $user,
             '',
@@ -211,7 +222,10 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new MfaService())->disable($user, (string)($this->body(['code'])['code'] ?? ''));
+        $result = (new MfaService())->disable(
+            $user,
+            (string)($this->body(['code'], ['code' => 'string'])['code'] ?? '')
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -223,7 +237,10 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new MfaService())->regenerateRecoveryCodes($user, (string)($this->body(['code'])['code'] ?? ''));
+        $result = (new MfaService())->regenerateRecoveryCodes(
+            $user,
+            (string)($this->body(['code'], ['code' => 'string'])['code'] ?? '')
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

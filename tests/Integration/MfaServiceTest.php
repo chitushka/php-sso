@@ -77,21 +77,27 @@ class MfaServiceTest extends TestCase
 
         $challenge = $service->createLoginChallenge(User::findOne(['id' => $this->userId]));
         $this->assertTrue($challenge['mfa_required']);
-        $this->assertSame($challenge['mfa_token'], $challenge['challenge_token']);
-        $this->assertSame(1, $this->activeChallengeCount());
+        $this->assertArrayNotHasKey('challenge_token', $challenge);
+        $this->assertSame('0001-01-01T00:00:00Z', $challenge['session_expires_at']);
+        $this->assertSame('00000000-0000-0000-0000-000000000000', $challenge['user']['id']);
+        $this->assertSame(0, $this->activeChallengeCount());
 
         $verified = $service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][0]);
         $this->assertSame($this->userId, $verified->id);
         $this->assertSame(0, $this->activeChallengeCount());
         $this->assertSame(7, $this->activeRecoveryCodeCount());
-        $this->assertSame(1, $this->auditCount('mfa_login_verified'));
-        $this->assertNull($service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][1]));
+        $this->assertSame(0, $this->auditCount('mfa_login_verified'));
+        $this->assertSame(
+            $this->userId,
+            $service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][1])->id
+        );
+        $this->assertSame(6, $this->activeRecoveryCodeCount());
 
         $invalidDisable = $service->disable(User::findOne(['id' => $this->userId]), 'not-a-code');
         $this->assertSame(400, $invalidDisable['status']);
         $this->assertSame('invalid code', $invalidDisable['data']['error']);
 
-        $disabled = $service->disable(User::findOne(['id' => $this->userId]), $enabled['data']['recovery_codes'][1]);
+        $disabled = $service->disable(User::findOne(['id' => $this->userId]), $enabled['data']['recovery_codes'][2]);
         $this->assertSame(200, $disabled['status']);
         $this->assertSame('mfa_disabled', $disabled['data']['status']);
         $this->assertSame(0, $this->activeRecoveryCodeCount());

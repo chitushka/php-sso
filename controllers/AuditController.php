@@ -23,6 +23,7 @@ class AuditController extends ApiController
             if (!$this->isUuid($actor)) {
                 return $this->fail(400, 'invalid actor id');
             }
+            $actor = $this->canonicalUuid($actor);
             $query->andWhere(['actor_user_id' => $actor]);
         }
         if ($request->get('action')) {
@@ -43,12 +44,12 @@ class AuditController extends ApiController
             $query->andWhere(['<=', 'created_at', $to->format('Y-m-d H:i:sP')]);
         }
 
-        $limit = $this->parseInteger((string)$request->get('limit', ''));
+        $limit = $this->parseGoInt((string)$request->get('limit', ''));
         if ($limit <= 0 || $limit > 200) {
             $limit = 50;
         }
 
-        $offset = $this->parseInteger((string)$request->get('offset', ''));
+        $offset = $this->parseGoInt((string)$request->get('offset', ''));
         if ($offset < 0) {
             $offset = 0;
         }
@@ -86,26 +87,4 @@ class AuditController extends ApiController
         return $parsed;
     }
 
-    private function parseInteger(string $value): int
-    {
-        if (!preg_match('/^[+-]?\d+$/D', $value)) {
-            return 0;
-        }
-
-        $negative = isset($value[0]) && $value[0] === '-';
-        $digits = ltrim($value, '+-0');
-        if ($digits === '') {
-            return 0;
-        }
-
-        $maximum = (string)PHP_INT_MAX;
-        if (strlen($digits) > strlen($maximum)
-            || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)
-        ) {
-            return 0;
-        }
-
-        $parsed = (int)$digits;
-        return $negative ? -$parsed : $parsed;
-    }
 }

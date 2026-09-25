@@ -109,14 +109,17 @@ class LdapService
             return null;
         }
 
-        foreach (LdapProvider::find()->where(['enabled' => true])->orderBy(['created_at' => SORT_ASC])->all() as $provider) {
-            $user = $this->authenticateWithProvider($provider, $login, $password);
-            if ($user !== null) {
-                return $user;
-            }
+        $provider = LdapProvider::find()->where(['enabled' => true])->orderBy(['created_at' => SORT_ASC])->one();
+        if (!$provider) {
+            return null;
         }
 
-        return null;
+        $user = $this->authenticateWithProvider($provider, $login, $password);
+        if ($user === null) {
+            AuditService::record(null, 'ldap_login_failed', 'user', $login);
+        }
+
+        return $user;
     }
 
     public function listGroupMappings(string $providerId): array
@@ -175,7 +178,6 @@ class LdapService
 
         $bindPassword = (new CryptoService())->decrypt((string)$provider->bind_password);
         if ($bindPassword === '' || !@ldap_bind($conn, (string)$provider->bind_dn, $bindPassword)) {
-            AuditService::record(null, 'ldap_service_bind_failed', 'ldap_provider', $provider->id);
             return null;
         }
 
@@ -230,7 +232,6 @@ class LdapService
         ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, 5);
 
         if ($provider->start_tls && !@ldap_start_tls($conn)) {
-            AuditService::record(null, 'ldap_start_tls_failed', 'ldap_provider', $provider->id);
             return null;
         }
 
@@ -241,16 +242,8 @@ class LdapService
     {
         $username = $this->firstAttribute($entry, (string)$provider->username_attribute) ?: $login;
         $email = $this->firstAttribute($entry, (string)$provider->email_attribute) ?: $username . '@ldap.local';
-        $displayName = $this->firstAttribute($entry, (string)$provider->display_name_attribute);
-        [$firstName, $lastName] = $this->splitDisplayName($displayName);
-
         $user = User::findOne(['ldap_provider_id' => $provider->id, 'ldap_dn' => $userDn]);
         $existingByUsername = User::findOne(['username' => $username]);
-        if ($existingByUsername && (!$user || $existingByUsername->id !== $user->id) && $existingByUsername->source !== User::SOURCE_LDAP) {
-            AuditService::record($existingByUsername->id, 'ldap_username_conflict', 'user', $username);
-            return null;
-        }
-
         if (!$user && $existingByUsername) {
             $user = $existingByUsername;
         }
@@ -260,20 +253,13 @@ class LdapService
             $user->username = $username;
             $user->status = User::STATUS_ACTIVE;
             $user->source = User::SOURCE_LDAP;
-            $user->email_verified = true;
+            $user->email_verified = false;
         }
 
         $user->email = $email;
         $user->source = User::SOURCE_LDAP;
         $user->ldap_provider_id = $provider->id;
         $user->ldap_dn = $userDn;
-        $user->first_name = $firstName;
-        $user->last_name = $lastName;
-        $user->attributes = json_encode([
-            'display_name' => $displayName,
-            'ldap_provider' => $provider->name,
-        ]);
-        $user->last_login_at = new Expression('now()');
         $user->save(false);
 
         return $user;
@@ -325,16 +311,6 @@ class LdapService
         }
 
         return $values;
-    }
-
-    private function splitDisplayName(string $displayName): array
-    {
-        $parts = preg_split('/\s+/', trim($displayName), 2);
-        if (!is_array($parts)) {
-            return ['', ''];
-        }
-
-        return [$parts[0] ?? '', $parts[1] ?? ''];
     }
 
     private function escapeFilterValue(string $value): string

@@ -14,6 +14,7 @@ class JsonParserTest extends TestCase
 
         $this->assertSame(['login' => 'admin'], $parser->parse('{"login":"admin"}', 'application/json'));
         $this->assertSame([], $parser->parse('null', 'application/json'));
+        $this->assertSame(['login' => 'admin'], $parser->parse('{"login":"admin"}{"ignored":true}', 'application/json'));
     }
 
     /**

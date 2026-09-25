@@ -24,6 +24,22 @@ class BrokerController extends ApiController
         'updated_at',
     ];
 
+    private const PROVIDER_TYPES = [
+        'id' => 'uuid',
+        'code' => 'string',
+        'name' => 'string',
+        'type' => 'string',
+        'client_id' => 'string',
+        'client_secret' => 'string',
+        'authorize_url' => 'string',
+        'token_url' => 'string',
+        'userinfo_url' => 'string',
+        'scopes' => 'string',
+        'enabled' => 'bool',
+        'created_at' => 'time',
+        'updated_at' => 'time',
+    ];
+
     public function actionPublicProviders(): array
     {
         return (new BrokerService())->publicProviders();
@@ -80,7 +96,9 @@ class BrokerController extends ApiController
             return $user;
         }
 
-        $result = (new BrokerService())->createProvider($this->body(self::PROVIDER_FIELDS));
+        $result = (new BrokerService())->createProvider(
+            $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES)
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -95,8 +113,12 @@ class BrokerController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
-        $result = (new BrokerService())->updateProvider($id, $this->body(self::PROVIDER_FIELDS));
+        $result = (new BrokerService())->updateProvider(
+            $id,
+            $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES)
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -111,6 +133,7 @@ class BrokerController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         $result = (new BrokerService())->deleteProvider($id);
         Yii::$app->response->statusCode = $result['status'];

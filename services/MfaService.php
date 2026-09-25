@@ -3,7 +3,6 @@
 namespace app\services;
 
 use app\models\MfaRecoveryCode;
-use app\models\OneTimeToken;
 use app\models\User;
 use Yii;
 use yii\db\Expression;
@@ -48,7 +47,6 @@ class MfaService
 
         return [
             'secret' => $secret,
-            'otpauth_uri' => 'otpauth://totp/' . $label . '?' . $query,
             'otpauth_url' => 'otpauth://totp/' . $label . '?' . $query,
         ];
     }
@@ -117,25 +115,32 @@ class MfaService
 
     public function createLoginChallenge(User $user): array
     {
-        OneTimeToken::deleteAll([
-            'user_id' => $user->id,
-            'purpose' => OneTimeToken::PURPOSE_MFA_LOGIN,
-            'used_at' => null,
-        ]);
-
-        $token = JwtService::base64url(random_bytes(32));
-        $challenge = new OneTimeToken();
-        $challenge->user_id = $user->id;
-        $challenge->purpose = OneTimeToken::PURPOSE_MFA_LOGIN;
-        $challenge->token_hash = hash('sha256', $token);
-        $challenge->expires_at = gmdate('Y-m-d H:i:sP', time() + self::CHALLENGE_TTL);
-        $challenge->save(false);
+        $token = (new JwtService())->issue($user->id, [
+            'username' => $user->username,
+            'email' => '',
+            'source' => '',
+            'purpose' => 'mfa',
+        ], self::CHALLENGE_TTL);
 
         return [
+            'user' => [
+                'id' => '00000000-0000-0000-0000-000000000000',
+                'username' => '',
+                'email' => '',
+                'status' => '',
+                'source' => '',
+                'first_name' => '',
+                'last_name' => '',
+                'attributes' => null,
+                'email_verified' => false,
+                'mfa_enabled' => false,
+                'created_at' => '0001-01-01T00:00:00Z',
+                'updated_at' => '0001-01-01T00:00:00Z',
+            ],
+            'access_token_expires_at' => '0001-01-01T00:00:00Z',
+            'session_expires_at' => '0001-01-01T00:00:00Z',
             'mfa_required' => true,
             'mfa_token' => $token,
-            'challenge_token' => $token,
-            'expires_in' => self::CHALLENGE_TTL,
         ];
     }
 
@@ -151,13 +156,13 @@ class MfaService
 
     public function loginChallengeUser(string $challengeToken): ?User
     {
-        $challenge = $this->activeLoginChallenge($challengeToken);
-        if (!$challenge) {
+        $claims = (new JwtService())->verify($challengeToken);
+        if (!$claims || ($claims['purpose'] ?? '') !== 'mfa' || empty($claims['sub'])) {
             return null;
         }
 
         return User::findOne([
-            'id' => $challenge->user_id,
+            'id' => $claims['sub'],
             'status' => User::STATUS_ACTIVE,
             'mfa_enabled' => true,
         ]);
@@ -165,32 +170,12 @@ class MfaService
 
     public function completeLoginChallenge(string $challengeToken, User $user, string $code): bool
     {
-        $challenge = $this->activeLoginChallenge($challengeToken);
-        if (!$challenge || $challenge->user_id !== $user->id || !$this->verifyUserCode($user, $code)) {
+        $challengeUser = $this->loginChallengeUser($challengeToken);
+        if (!$challengeUser || $challengeUser->id !== $user->id || !$this->verifyUserCode($user, $code)) {
             return false;
         }
 
-        $challenge->used_at = new Expression('now()');
-        $challenge->save(false, ['used_at']);
-        AuditService::record($user->id, 'mfa_login_verified', 'user', $user->id);
-
         return true;
-    }
-
-    private function activeLoginChallenge(string $challengeToken): ?OneTimeToken
-    {
-        if ($challengeToken === '') {
-            return null;
-        }
-
-        return OneTimeToken::find()
-            ->where([
-                'token_hash' => hash('sha256', $challengeToken),
-                'purpose' => OneTimeToken::PURPOSE_MFA_LOGIN,
-                'used_at' => null,
-            ])
-            ->andWhere(['>', 'expires_at', new Expression('now()')])
-            ->one();
     }
 
     private function verifyUserCode(User $user, string $code): bool
@@ -208,8 +193,7 @@ class MfaService
 
     private function verifyTotp(string $secret, string $code, int $lastUsedCounter, ?int &$matchedCounter): bool
     {
-        $normalized = preg_replace('/\D+/', '', $code);
-        if (!is_string($normalized) || strlen($normalized) !== self::TOTP_DIGITS) {
+        if (preg_match('/^\d{6}$/D', $code) !== 1) {
             return false;
         }
 
@@ -224,7 +208,7 @@ class MfaService
                 continue;
             }
 
-            if (hash_equals($this->totp($secretBytes, $counter), $normalized)) {
+            if (hash_equals($this->totp($secretBytes, $counter), $code)) {
                 $matchedCounter = $counter;
                 return true;
             }
@@ -235,24 +219,14 @@ class MfaService
 
     private function verifyRecoveryCode(User $user, string $code): bool
     {
-        $normalized = $this->normalizeRecoveryCode($code);
-        if ($normalized === '') {
+        if ($code === '') {
             return false;
         }
 
-        $codes = MfaRecoveryCode::find()
-            ->where(['user_id' => $user->id, 'used_at' => null])
-            ->all();
-        foreach ($codes as $recoveryCode) {
-            if (password_verify($normalized, (string)$recoveryCode->code_hash)) {
-                $recoveryCode->used_at = new Expression('now()');
-                $recoveryCode->save(false, ['used_at']);
-                AuditService::record($user->id, 'mfa_recovery_code_used', 'user', $user->id);
-                return true;
-            }
-        }
-
-        return false;
+        return MfaRecoveryCode::updateAll(
+            ['used_at' => new Expression('now()')],
+            ['user_id' => $user->id, 'code_hash' => hash('sha256', $code), 'used_at' => null]
+        ) > 0;
     }
 
     private function replaceRecoveryCodes(User $user): array
@@ -261,21 +235,16 @@ class MfaService
 
         $codes = [];
         for ($index = 0; $index < self::RECOVERY_CODES_COUNT; $index++) {
-            $plain = strtoupper(substr(chunk_split(bin2hex(random_bytes(6)), 4, '-'), 0, 14));
+            $plain = bin2hex(random_bytes(5));
             $codes[] = $plain;
 
             $model = new MfaRecoveryCode();
             $model->user_id = $user->id;
-            $model->code_hash = password_hash($this->normalizeRecoveryCode($plain), PASSWORD_DEFAULT);
+            $model->code_hash = hash('sha256', $plain);
             $model->save(false);
         }
 
         return $codes;
-    }
-
-    private function normalizeRecoveryCode(string $code): string
-    {
-        return strtoupper(preg_replace('/[^A-Za-z0-9]+/', '', $code) ?? '');
     }
 
     private function totp(string $secretBytes, int $counter): string

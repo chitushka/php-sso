@@ -180,8 +180,10 @@ class OidcServiceTest extends TestCase
 
         Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue($this->userId)));
         $full = $controller->actionUserinfo();
-        $this->assertSame('Open Tester', $full['name']);
-        $this->assertTrue($full['email_verified']);
+        $this->assertSame($this->username, $full['preferred_username']);
+        $this->assertSame($this->username . '@example.test', $full['email']);
+        $this->assertArrayNotHasKey('name', $full);
+        $this->assertArrayNotHasKey('email_verified', $full);
     }
 
     public function testLogoutWithIdTokenHintValidatesRedirectAndRevokesRefreshTokens(): void

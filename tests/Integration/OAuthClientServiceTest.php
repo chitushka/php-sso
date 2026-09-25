@@ -74,6 +74,7 @@ class OAuthClientServiceTest extends TestCase
         $client = OAuthClient::findOne(['client_id' => $clientId]);
         $this->assertNotNull($client);
         $this->assertTrue(password_verify($result['data']['client_secret'], (string)$client->client_secret_hash));
+        $this->assertStringStartsWith('$argon2id$v=19$m=65536,t=3,p=2$', (string)$client->client_secret_hash);
         $this->assertSame(['https://rp.example.test/callback', 'https://rp.example.test/alt'], OAuthClient::parsePgArray($client->redirect_uris));
 
         $auditCount = (int)Yii::$app->db->createCommand(
@@ -84,7 +85,7 @@ class OAuthClientServiceTest extends TestCase
                 ':action' => 'oauth_client_created',
             ]
         )->queryScalar();
-        $this->assertSame(1, $auditCount);
+        $this->assertSame(0, $auditCount);
     }
 
     public function testUpdateClientReplacesArrayFields(): void
@@ -149,6 +150,13 @@ class OAuthClientServiceTest extends TestCase
         $this->assertSame(200, $rotated['status']);
         $this->assertNotSame($created['data']['client_secret'], $rotated['data']['client_secret']);
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($rotated['data']['updated_at']));
+        $this->assertSame(1, (int)Yii::$app->db->createCommand(
+            'SELECT COUNT(*) FROM audit_logs WHERE action = :action AND target_id = :target_id',
+            [
+                ':action' => 'oauth_client_secret_rotated',
+                ':target_id' => $clientId,
+            ]
+        )->queryScalar());
     }
 
     public function testCreateClientUsesGoZeroValueDefaults(): void

@@ -41,7 +41,7 @@ class OAuthService
         $plainSecret = null;
         if ($client->type === OAuthClient::TYPE_CONFIDENTIAL) {
             $plainSecret = (new AuthService())->randomToken(32);
-            $client->client_secret_hash = password_hash($plainSecret, PASSWORD_DEFAULT);
+            $client->client_secret_hash = PasswordHasher::hash($plainSecret);
         }
 
         if (!$client->save()) {
@@ -54,7 +54,6 @@ class OAuthService
             $data['client_secret'] = $plainSecret;
         }
 
-        AuditService::record(null, 'oauth_client_created', 'oauth_client', $client->id);
         return ['status' => 201, 'data' => $data];
     }
 
@@ -79,7 +78,7 @@ class OAuthService
         }
         $client->refresh();
 
-        AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->id);
+        AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->client_id);
         return ['status' => 200, 'data' => $client->publicData()];
     }
 
@@ -104,10 +103,12 @@ class OAuthService
 
         $secret = (new AuthService())->randomToken(32);
         OAuthClient::updateAll([
-            'client_secret_hash' => password_hash($secret, PASSWORD_DEFAULT),
+            'client_secret_hash' => PasswordHasher::hash($secret),
             'updated_at' => new Expression('now()'),
         ], ['id' => $client->id]);
         $client->refresh();
+
+        AuditService::record(null, 'oauth_client_secret_rotated', 'oauth_client', $client->client_id);
 
         return ['status' => 200, 'data' => array_merge($client->publicData(), ['client_secret' => $secret])];
     }
@@ -642,7 +643,8 @@ class OAuthService
             return null;
         }
 
-        if ($client->type === OAuthClient::TYPE_CONFIDENTIAL && !password_verify($clientSecret, (string)$client->client_secret_hash)) {
+        if ($client->type === OAuthClient::TYPE_CONFIDENTIAL
+            && !PasswordHasher::verify($clientSecret, (string)$client->client_secret_hash)) {
             return null;
         }
 

@@ -34,13 +34,13 @@ class BootstrapService
         $user = new User();
         $user->username = $username;
         $user->email = $email;
-        $user->password_hash = password_hash($password, PASSWORD_DEFAULT);
+        $user->password_hash = PasswordHasher::hash($password);
         $user->status = User::STATUS_ACTIVE;
         $user->source = User::SOURCE_LOCAL;
         $user->email_verified = false;
 
         if (!$user->save()) {
-            AuditService::record(null, 'bootstrap_failed', 'user', $username);
+            AuditService::record(null, 'bootstrap_failed', 'user', $username, true);
             return ['status' => 400, 'data' => ['error' => 'invalid admin payload', 'details' => $user->errors]];
         }
 
@@ -52,7 +52,7 @@ class BootstrapService
             ])->execute();
         }
 
-        AuditService::record($user->id, 'bootstrap_completed', 'user', $user->id);
+        AuditService::record($user->id, 'bootstrap_completed', 'user', $user->id, true);
         return ['status' => 201, 'data' => $user->publicData()];
     }
 }

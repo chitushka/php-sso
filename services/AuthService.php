@@ -20,32 +20,34 @@ class AuthService
         $ip = (string)$request->userIP;
 
         if ($this->isLocked($login, $ip)) {
-            AuditService::record(null, 'login_locked', 'user', $login);
             return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
         }
 
-        $user = User::find()
-            ->where(['or', ['username' => $login], ['email' => $login]])
-            ->one();
+        if ($password === '') {
+            $this->registerLoginFailure($login, $ip);
+            return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+        }
 
-        $localPasswordValid = $user
-            && $user->status === User::STATUS_ACTIVE
-            && $user->password_hash
-            && password_verify($password, (string)$user->password_hash);
+        $user = User::findOne(['username' => $login]);
 
-        if (!$localPasswordValid) {
+        if ($user && $user->source === User::SOURCE_LOCAL) {
+            if ($user->status !== User::STATUS_ACTIVE || !$user->password_hash) {
+                return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+            }
+            if (!PasswordHasher::verify($password, (string)$user->password_hash)) {
+                $this->registerLoginFailure($login, $ip);
+                return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+            }
+        } else {
             $user = (new LdapService())->authenticate($login, $password);
         }
 
         if (!$user || $user->status !== User::STATUS_ACTIVE) {
-            $this->recordFailure($login, $ip);
-            AuditService::record($user ? $user->id : null, 'login_failed', 'user', $login);
+            $this->registerLoginFailure($login, $ip);
             return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
         }
 
         if ($user->mfa_enabled) {
-            $this->resetFailures($login, $ip);
-            AuditService::record($user->id, 'mfa_login_challenge_created', 'user', $user->id);
             return ['ok' => true, 'data' => (new MfaService())->createLoginChallenge($user)];
         }
 
@@ -65,13 +67,11 @@ class AuthService
         $login = (string)$user->username;
         $ip = (string)$request->userIP;
         if ($this->isLocked($login, $ip)) {
-            AuditService::record($user->id, 'login_locked', 'user', $login);
             return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
         }
 
         if (!$mfa->completeLoginChallenge($mfaToken, $user, (string)($body['code'] ?? ''))) {
-            $this->recordFailure($login, $ip);
-            AuditService::record($user->id, 'login_failed', 'user', $login);
+            $this->registerLoginFailure($login, $ip);
             return ['ok' => false, 'status' => 401, 'error' => 'invalid code'];
         }
 
@@ -92,7 +92,7 @@ class AuthService
         $session->save(false);
 
         User::updateAll(['last_login_at' => new Expression('now()')], ['id' => $user->id]);
-        AuditService::record($user->id, 'login_success', 'user', $user->id);
+        AuditService::record($user->id, 'login_success', 'user', $user->id, true);
 
         $issuedAt = time();
         if ($user->tokens_invalid_before) {
@@ -239,7 +239,6 @@ class AuthService
         Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
         $user->tokens_invalid_before = new Expression('now()');
         $user->save(false, ['tokens_invalid_before']);
-        AuditService::record($user->id, 'sessions_revoked_all', 'user', $user->id);
     }
 
     public function randomToken(int $bytes = 32): string
@@ -278,13 +277,23 @@ class AuthService
         // Как в Go-сервисе: после 5 ошибок включается экспоненциальная блокировка до 15 минут.
         $attempt->attempts = ((int)$attempt->attempts) + 1;
         $attempt->updated_at = new Expression('now()');
-        if ($attempt->attempts >= 5) {
+        $locked = $attempt->attempts >= 5;
+        if ($locked) {
             $power = max(0, $attempt->attempts - 5);
             $seconds = min(900, 60 * (2 ** $power));
             $attempt->locked_until = gmdate('Y-m-d H:i:sP', time() + $seconds);
         }
 
         $attempt->save(false);
+        if ($locked) {
+            AuditService::record(null, 'login_locked', 'user', $username, true);
+        }
+    }
+
+    private function registerLoginFailure(string $username, string $ip): void
+    {
+        AuditService::record(null, 'login_failed', 'user', $username, true);
+        $this->recordFailure($username, $ip);
     }
 
     private function resetFailures(string $username, string $ip): void

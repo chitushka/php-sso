@@ -155,7 +155,7 @@ $this->title = 'SSO Admin';
             <label>Verify code</label>
             <input v-model="mfaSetup.code">
             <button class="primary" @click="enableMfa">Enable MFA</button>
-            <p class="muted">{{ mfaSetup.otpauth_uri }}</p>
+            <p class="muted">{{ mfaSetup.otpauth_url }}</p>
           </div>
         </template>
         <template v-else>
@@ -550,7 +550,7 @@ const app = Vue.createApp({
       profileForm: { first_name: '', last_name: '', attributesJson: '{}' },
       passwordForm: { old_password: '', new_password: '', confirm: '' },
       mfaLoginForm: { code: '' },
-      mfaSetup: { secret: '', otpauth_uri: '', code: '' },
+      mfaSetup: { secret: '', otpauth_url: '', code: '' },
       mfaManageForm: { code: '' },
       mfaRecoveryCodes: [],
       clientForm: { name: 'Demo application', client_id: 'demo', type: 'confidential', redirects: 'http://localhost:3000/callback' },
@@ -792,7 +792,7 @@ const app = Vue.createApp({
         body: JSON.stringify({ code: this.mfaSetup.code })
       });
       this.mfaRecoveryCodes = data.recovery_codes || [];
-      this.mfaSetup = { secret: '', otpauth_uri: '', code: '' };
+      this.mfaSetup = { secret: '', otpauth_url: '', code: '' };
       this.message = 'MFA enabled. Save recovery codes now.';
       await this.refresh();
     },

@@ -14,7 +14,8 @@ class BootstrapController extends ApiController
 
     public function actionCreate(): array
     {
-        $result = (new BootstrapService())->createAdmin($this->body(['username', 'email', 'password']));
+        $fields = ['username', 'email', 'password'];
+        $result = (new BootstrapService())->createAdmin($this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

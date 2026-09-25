@@ -108,18 +108,18 @@ class BrokerService
         $provider = $this->applyPreset($provider);
         $identity = $this->fetchIdentity($provider, $code);
         if (!$identity) {
-            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode);
+            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
             return ['ok' => false, 'error' => 'external authentication failed'];
         }
 
         $user = $this->resolveUser($provider, $identity);
         if (!$user) {
-            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode);
+            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
             return ['ok' => false, 'error' => 'external authentication failed'];
         }
 
         $auth = (new AuthService())->issueFederatedLogin($user, Yii::$app->request);
-        AuditService::record($user->id, 'broker_login_success', 'identity_provider', $providerCode);
+        AuditService::record($user->id, 'broker_login_success', 'identity_provider', $providerCode, true);
 
         return [
             'ok' => true,
@@ -381,7 +381,7 @@ class BrokerService
         $user->email = $identity['email'];
         $user->status = User::STATUS_ACTIVE;
         $user->source = User::SOURCE_FEDERATED;
-        $user->email_verified = (bool)$identity['email_verified'];
+        $user->email_verified = false;
         if (!$user->save(false)) {
             return null;
         }
@@ -393,13 +393,11 @@ class BrokerService
 
     private function uniqueUsername(string $username): string
     {
-        $base = strtolower(preg_replace('/[^A-Za-z0-9_.-]+/', '-', $username) ?: 'user');
-        $candidate = trim($base, '-_.') ?: 'user';
-        if (!User::findOne(['username' => $candidate])) {
-            return $candidate;
+        if (!User::findOne(['username' => $username])) {
+            return $username;
         }
 
-        return $candidate . '-' . JwtService::base64url(random_bytes(3));
+        return $username . '-' . JwtService::base64url(random_bytes(3));
     }
 
     private function signState(array $state): string

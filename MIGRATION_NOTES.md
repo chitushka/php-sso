@@ -125,7 +125,7 @@ Rollback должен возвращать трафик на Go-сервис и 
 
 - Go-сервис поддерживал `SSO_MIGRATE_ON_START`; PHP-порт применяет миграции явной командой `php yii migrate --interactive=0`.
 - Go-конфигурация использовала duration-строки вроде `15m`/`720h`; PHP-порт ожидает TTL в секундах.
-- Go-сервис мог отдавать Prometheus `/metrics`; в PHP-порте этот endpoint не заявлен как перенесённый.
+- Prometheus `/metrics` перенесён; имена route labels совпадают с chi-шаблонами Go.
 - UI в PHP-порте встроен в Yii2 layout и не требует отдельной Vite-сборки.
 - Встроенный `make integration` использует высокий test-local rate limit только для расширенного smoke flow; production rate limit задаётся обычными `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`.
 

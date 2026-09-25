@@ -31,6 +31,28 @@ class OAuthController extends ApiController
         'enabled',
     ];
 
+    private const CREATE_CLIENT_TYPES = [
+        'client_id' => 'string',
+        'name' => 'string',
+        'type' => 'string',
+        'redirect_uris' => 'strings',
+        'allowed_scopes' => 'strings',
+        'post_logout_redirect_uris' => 'strings',
+        'backchannel_logout_uri' => 'string',
+        'skip_consent' => 'bool',
+        'enabled' => 'bool',
+    ];
+
+    private const UPDATE_CLIENT_TYPES = [
+        'name' => 'string',
+        'redirect_uris' => 'strings',
+        'allowed_scopes' => 'strings',
+        'post_logout_redirect_uris' => 'strings',
+        'backchannel_logout_uri' => 'string',
+        'skip_consent' => 'bool',
+        'enabled' => 'bool',
+    ];
+
     public function actionListClients(): array
     {
         $auth = $this->requirePermission('oauth_clients', 'read');
@@ -48,7 +70,9 @@ class OAuthController extends ApiController
             return $auth;
         }
 
-        $result = (new OAuthService())->createClient($this->body(self::CREATE_CLIENT_FIELDS));
+        $result = (new OAuthService())->createClient(
+            $this->body(self::CREATE_CLIENT_FIELDS, self::CREATE_CLIENT_TYPES)
+        );
         Yii::$app->response->statusCode = $result['status'];
         if ($result['status'] !== 201) {
             return $result['data'];
@@ -75,6 +99,7 @@ class OAuthController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         $client = (new OAuthService())->getClient($id);
         if (!$client) {
@@ -94,8 +119,12 @@ class OAuthController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
-        $result = (new OAuthService())->updateClient($id, $this->body(self::UPDATE_CLIENT_FIELDS));
+        $result = (new OAuthService())->updateClient(
+            $id,
+            $this->body(self::UPDATE_CLIENT_FIELDS, self::UPDATE_CLIENT_TYPES)
+        );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -110,6 +139,7 @@ class OAuthController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         return (new OAuthService())->deleteClient($id)
             ? ['status' => 'deleted']
@@ -126,6 +156,7 @@ class OAuthController extends ApiController
         if (!$this->isUuid($id)) {
             return $this->fail(400, 'invalid id');
         }
+        $id = $this->canonicalUuid($id);
 
         $result = (new OAuthService())->rotateSecret($id);
         Yii::$app->response->statusCode = $result['status'];
@@ -192,7 +223,10 @@ class OAuthController extends ApiController
     public function actionGrantConsent(): array
     {
         try {
-            $body = $this->body(['client_id', 'scope']);
+            $body = $this->body(
+                ['client_id', 'scope'],
+                ['client_id' => 'string', 'scope' => 'string']
+            );
         } catch (BadRequestHttpException $exception) {
             return $this->oauthError(400, 'invalid_request', 'invalid json body');
         }

@@ -37,7 +37,7 @@ class AccountService
         );
 
         (new MailService())->send((string)$user->email, 'Password reset', $body);
-        AuditService::record($user->id, 'password_reset_requested', 'user', $user->id);
+        AuditService::record($user->id, 'password_reset_requested', 'user', $user->id, true);
     }
 
     public function resetPassword(string $token, string $password): array
@@ -52,14 +52,14 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'invalid or expired token']];
         }
 
-        $user->password_hash = password_hash($password, PASSWORD_DEFAULT);
+        $user->password_hash = PasswordHasher::hash($password);
         $user->tokens_invalid_before = new Expression('now()');
         $user->save(false, ['password_hash', 'tokens_invalid_before']);
 
         // Reset считается компрометацией старых credentials: отзываем все сессии и refresh tokens.
         Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
         RefreshToken::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
-        AuditService::record($user->id, 'password_reset_completed', 'user', $user->id);
+        AuditService::record($user->id, 'password_reset_completed', 'user', $user->id, true);
 
         return ['status' => 200, 'data' => ['status' => 'password_reset']];
     }
@@ -75,11 +75,11 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'password is managed externally for this account']];
         }
 
-        if (!password_verify($oldPassword, (string)$user->password_hash)) {
+        if (!PasswordHasher::verify($oldPassword, (string)$user->password_hash)) {
             return ['status' => 400, 'data' => ['error' => 'current password is incorrect']];
         }
 
-        $user->password_hash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $user->password_hash = PasswordHasher::hash($newPassword);
         $user->save(false, ['password_hash']);
         AuditService::record($user->id, 'password_changed', 'user', $user->id);
 

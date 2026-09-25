@@ -25,7 +25,8 @@ class GroupsController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createGroup($this->body(['code', 'name', 'description']));
+        $fields = ['code', 'name', 'description'];
+        $result = $this->service()->createGroup($this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -40,8 +41,10 @@ class GroupsController extends ApiController
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
 
-        $result = $this->service()->updateGroup($groupID, $this->body(['name', 'description']));
+        $fields = ['name', 'description'];
+        $result = $this->service()->updateGroup($groupID, $this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -56,6 +59,7 @@ class GroupsController extends ApiController
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
 
         return $this->service()->deleteGroup($groupID) ? ['status' => 'deleted'] : $this->fail(404, 'group not found');
     }
@@ -70,6 +74,7 @@ class GroupsController extends ApiController
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
 
         return $this->service()->listGroupRoles($groupID);
     }
@@ -84,11 +89,9 @@ class GroupsController extends ApiController
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
 
-        $roleId = (string)($this->body(['role_id'])['role_id'] ?? '');
-        if ($roleId !== '' && !$this->isUuid($roleId)) {
-            return $this->fail(400, 'invalid json body');
-        }
+        $roleId = (string)($this->body(['role_id'], ['role_id' => 'uuid'])['role_id'] ?? '');
 
         $this->service()->assignRoleToGroup($groupID, $roleId);
         return ['status' => 'assigned'];
@@ -104,9 +107,11 @@ class GroupsController extends ApiController
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
         if (!$this->isUuid($roleID)) {
             return $this->fail(400, 'invalid role id');
         }
+        $roleID = $this->canonicalUuid($roleID);
 
         $this->service()->removeRoleFromGroup($groupID, $roleID);
         return ['status' => 'removed'];
@@ -122,6 +127,7 @@ class GroupsController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
 
         return $this->service()->listUserGroups($userID);
     }
@@ -136,11 +142,9 @@ class GroupsController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
 
-        $groupId = (string)($this->body(['group_id'])['group_id'] ?? '');
-        if ($groupId !== '' && !$this->isUuid($groupId)) {
-            return $this->fail(400, 'invalid json body');
-        }
+        $groupId = (string)($this->body(['group_id'], ['group_id' => 'uuid'])['group_id'] ?? '');
 
         $this->service()->assignGroupToUser($userID, $groupId);
         return ['status' => 'assigned'];
@@ -156,9 +160,11 @@ class GroupsController extends ApiController
         if (!$this->isUuid($userID)) {
             return $this->fail(400, 'invalid user id');
         }
+        $userID = $this->canonicalUuid($userID);
         if (!$this->isUuid($groupID)) {
             return $this->fail(400, 'invalid group id');
         }
+        $groupID = $this->canonicalUuid($groupID);
 
         $this->service()->removeGroupFromUser($userID, $groupID);
         return ['status' => 'removed'];

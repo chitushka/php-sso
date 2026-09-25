@@ -163,7 +163,7 @@ return [
                 'GET .well-known/openid-configuration' => 'oidc/configuration',
                 'GET .well-known/jwks.json' => 'oidc/jwks',
                 '' => 'admin/index',
-                '<path:.+>' => 'admin/index',
+                'GET <path:.+>' => 'admin/index',
             ],
         ],
     ],

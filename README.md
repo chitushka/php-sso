@@ -110,10 +110,11 @@ docker compose run --rm app php yii help
 
 ## Следующие работы
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`. Заметки для перехода с Go-сервиса находятся в `MIGRATION_NOTES.md`. Ближайшие задачи: дальнейшая сверка endpoint-контрактов с Go-сервисом и запуск `make integration-ldap` против реального LDAP test fixture при наличии секретов.
+Актуальный порядок переноса зафиксирован в `PLAN.md`, завершённая матрица Go/PHP endpoint-контрактов — в `ENDPOINT_CONTRACTS.md`, а заметки cutover — в `MIGRATION_NOTES.md`. Из внешних проверок остаётся запуск `make integration-ldap` против реального LDAP test fixture при наличии секретов.
 
 ## Важные изменения
 
+- 2026-09-25: завершена полная дифференциальная сверка Go/PHP endpoint-контрактов: строгие typed JSON edge cases, case-insensitive имена полей, UUID/time parsing, порядок проверок, MFA/OIDC wire format и audit side effects выровнены и покрыты regression-тестами.
 - 2026-09-18: signed state identity broker приведён к Go wire-format: общий `SSO_JWT_SECRET`, RFC3339 expiry и строгий unpadded base64url позволяют продолжать broker login между Go/PHP-инстансами при rolling migration.
 - 2026-09-18: HS256 JWT verifier дополнен строгим unpadded base64url-разбором compact-сегментов и проверкой optional `nbf`; подписанные токены с padding/некорректным `nbf` или временем активации в будущем отклоняются.
 - 2026-09-18: HS256 JWT verifier приведён к Go security contract: строгий `alg=HS256`, числовой future `exp` и regression-тесты против algorithm confusion.

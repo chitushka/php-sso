@@ -97,6 +97,7 @@ class AccountServiceTest extends TestCase
 
         $updated = User::findOne(['id' => $this->userId]);
         $this->assertTrue(password_verify('new-password-123', (string)$updated->password_hash));
+        $this->assertStringStartsWith('$argon2id$v=19$m=65536,t=3,p=2$', (string)$updated->password_hash);
         $this->assertSame(1, $this->auditCount('password_reset_completed'));
 
         $reuse = (new AccountService())->resetPassword($rawToken, 'another-password-123');

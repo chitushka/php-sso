@@ -31,7 +31,6 @@ class OidcService
             'id_token_signing_alg_values_supported' => ['RS256'],
             'scopes_supported' => ['openid', 'profile', 'email'],
             'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'email', 'preferred_username'],
-            'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'none'],
             'backchannel_logout_supported' => true,
         ];
     }
@@ -81,7 +80,6 @@ class OidcService
             'nonce' => $nonce,
             'preferred_username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
-            'email_verified' => $user ? (bool)$user->email_verified : false,
         ];
 
         $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));

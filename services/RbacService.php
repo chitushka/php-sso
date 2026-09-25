@@ -141,13 +141,13 @@ class RbacService
     public function assignPermissionToRole(string $roleId, string $permissionId): void
     {
         $this->insertIgnore('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId]);
-        AuditService::record(null, 'role_permission_assigned', 'role', $roleId);
+        AuditService::record(null, 'permission_assigned', 'role', $roleId);
     }
 
     public function removePermissionFromRole(string $roleId, string $permissionId): void
     {
         Yii::$app->db->createCommand()->delete('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId])->execute();
-        AuditService::record(null, 'role_permission_removed', 'role', $roleId);
+        AuditService::record(null, 'permission_removed', 'role', $roleId);
     }
 
     public function listUserRoles(string $userId): array
