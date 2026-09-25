@@ -10,6 +10,7 @@ return [
         '@bower' => '@vendor/bower-asset',
         '@npm' => '@vendor/npm-asset',
     ],
+    'params' => require __DIR__ . '/params.php',
     'components' => [
         'db' => $db,
         'cache' => (getenv('SSO_CACHE_DRIVER') === 'db')

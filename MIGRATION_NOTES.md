@@ -25,6 +25,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - LDAP Providers и group mappings сохраняют Go lifecycle временных полей и RFC3339 wire-format дат; POST/PUT провайдеров используют Go zero-value/full-replacement семантику, сохраняя текущий bind password при пустом PUT-секрете.
 - LDAP create/update не раскрывают ошибки PostgreSQL и возвращают стабильные Go 500 errors; duplicate group mapping возвращает 409 `mapping already exists`.
 - LDAP provider DELETE можно безопасно повторять; mapping list order и audit actor/target fields совпадают с Go-сервисом.
+- LDAP bind passwords, MFA secrets и identity provider client secrets используют общий с Go storage wire-format `enc:v1:<base64.RawStdEncoding(nonce || ciphertext || tag)>`. PHP читает существующие Go-записи и ранние PHP `v1:` записи, а новые ciphertext доступны Go-сервису при rolling migration или rollback.
 
 Проверено текущим smoke flow:
 
@@ -61,6 +62,8 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
    - SMTP-переменные, если включены password reset/email verification письма
 
 3. Проверить, что `SSO_ISSUER` остаётся тем же публичным URL. Изменение issuer ломает доверие OIDC-клиентов к уже настроенному провайдеру.
+
+   `SSO_JWT_SECRET` и `SSO_ENCRYPTION_KEY` должны в точности совпадать с Go-инстансами. Замена encryption key сделает существующие LDAP/MFA/broker secrets нерасшифровываемыми; PHP намеренно завершает такую операцию ошибкой, а не подменяет секрет пустой строкой.
 
 4. Для production с несколькими app-инстансами включить `SSO_CACHE_DRIVER=db`, чтобы rate limit использовал PostgreSQL-backed Yii cache.
 

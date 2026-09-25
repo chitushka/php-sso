@@ -79,7 +79,7 @@ docker compose run --rm app php yii help
 - LDAP Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `bind_password` при PUT сохраняет текущий секрет.
 - LDAP persistence errors используют Go-compatible generic 500 ответы, а duplicate group mapping возвращает 409.
 - LDAP provider DELETE идемпотентен; group mappings и LDAP audit side effects повторяют фактический порядок и target semantics Go repository.
-- AES-256-GCM шифрование LDAP bind password в PostgreSQL.
+- Go-compatible AES-256-GCM формат `enc:v1:` для LDAP, MFA и identity provider secrets; ранний PHP-формат остаётся доступен только для чтения.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
 - MFA TOTP setup/enable/disable с Go-compatible `enroll`/`activate` алиасами, MFA challenge при login и одноразовые recovery codes.
@@ -115,6 +115,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-25: storage-формат зашифрованных секретов выровнен с Go `secrets.AESGCM`: SHA-256 derivation, `enc:v1:`, unpadded standard Base64 и порядок `nonce || ciphertext || tag`. PHP читает ciphertext Go-сервиса и ранний PHP `v1:` формат, но все новые LDAP/MFA/broker secrets пишет в Go-формате, сохраняя rolling migration и rollback совместимость.
 - 2026-09-25: LDAP Search + Bind контур закреплён автономным OpenLDAP fixture в Docker Compose. `make integration-ldap` проверяет service bind, search, user bind, JIT-provisioning, group mapping и audit без внешних секретов; тест изолирует ранее настроенные providers и гарантированно очищает временные записи при ошибках.
 - 2026-09-25: завершена полная дифференциальная сверка Go/PHP endpoint-контрактов: строгие typed JSON edge cases, case-insensitive имена полей, UUID/time parsing, порядок проверок, MFA/OIDC wire format и audit side effects выровнены и покрыты regression-тестами.
 - 2026-09-18: signed state identity broker приведён к Go wire-format: общий `SSO_JWT_SECRET`, RFC3339 expiry и строгий unpadded base64url позволяют продолжать broker login между Go/PHP-инстансами при rolling migration.

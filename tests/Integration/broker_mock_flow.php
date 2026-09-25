@@ -18,11 +18,11 @@ $providerCode = 'mock-' . $suffix;
 $externalCode = 'broker-' . $suffix;
 $providerId = null;
 $userId = null;
+$failure = null;
 
 function failTest(string $message): void
 {
-    fwrite(STDERR, "FAIL: {$message}\n");
-    exit(1);
+    throw new RuntimeException($message);
 }
 
 function assertTrue($condition, string $message): void
@@ -129,7 +129,11 @@ try {
         ])
     );
 
-    assertTrue($callback['status'] >= 300 && $callback['status'] < 400, 'broker callback must redirect back to continue URL, got ' . $callback['status']);
+    assertTrue(
+        $callback['status'] >= 300 && $callback['status'] < 400,
+        'broker callback must redirect back to continue URL, got '
+            . $callback['status'] . ': ' . substr((string)$callback['body'], 0, 500)
+    );
     $expectedRelative = '/broker-finished#broker_token=';
     $expectedAbsolute = $baseUrl . $expectedRelative;
     assertTrue(
@@ -163,8 +167,16 @@ try {
     )->queryScalar();
     assertTrue($audit === 1, 'broker callback must audit success');
 
-    echo "Broker mock flow passed\n";
+} catch (Throwable $exception) {
+    $failure = $exception;
 } finally {
+    if ($userId === null) {
+        $fixtureUserId = $db->createCommand(
+            'SELECT id FROM users WHERE email = :email AND source = :source',
+            [':email' => $externalCode . '@broker.example.test', ':source' => 'federated']
+        )->queryScalar();
+        $userId = $fixtureUserId === false ? null : $fixtureUserId;
+    }
     if ($userId !== null) {
         $db->createCommand()->delete('sessions', ['user_id' => $userId])->execute();
         $db->createCommand()->delete('federated_identities', ['user_id' => $userId])->execute();
@@ -176,3 +188,10 @@ try {
         $db->createCommand()->delete('identity_providers', ['id' => $providerId])->execute();
     }
 }
+
+if ($failure !== null) {
+    fwrite(STDERR, 'FAIL: ' . $failure->getMessage() . "\n");
+    exit(1);
+}
+
+echo "Broker mock flow passed\n";

@@ -45,7 +45,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `OidcController` + `OidcService` — discovery, JWKS, RS256 ID Token, UserInfo.
 - `AuditController` — чтение журнала аудита с Go-compatible валидацией фильтров `actor`, `from`, `to`.
 - `AuditService` — запись важных событий.
-- `CryptoService` — AES-256-GCM шифрование секретов без Composer-зависимостей.
+- `CryptoService` — Go-compatible AES-256-GCM шифрование секретов без Composer-зависимостей и reader раннего PHP-формата для безопасного обновления.
 - `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
 - `MetricsService` + `MetricRoute` — dependency-free Prometheus text метрики HTTP-запросов на `/metrics`, сохранённые через Yii2 cache. Route labels преобразуются из внутренних Yii routes в публичные chi-совместимые шаблоны Go; path UUID не создают высокую кардинальность.
 - `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
@@ -80,7 +80,7 @@ JWT содержит время с точностью до секунды, а Po
 
 `AuthService::authenticate()` централизует Go-compatible Bearer middleware contract: отсутствие заголовка возвращает `missing bearer token`, ошибка подписи/claims — `invalid token`, неактивный пользователь — `account is not active`, а first-party JWT старше `tokens_invalid_before` — `token revoked`. `ApiController::requireUser()` применяет этот контракт к self-service/session API, `requirePermission()` — к административным endpoint-ам перед проверкой права через `RbacService`, а UserInfo использует ту же классификацию. `RbacService` учитывает как прямые роли из `user_roles`, так и роли, унаследованные через `user_groups -> group_roles`.
 
-LDAP bind password сохраняется в `ldap_providers.bind_password` в формате `v1:<base64>` через `CryptoService`. Ответы API не возвращают секрет. При update пустой `bind_password` сохраняет уже записанный секрет.
+LDAP bind password сохраняется в `ldap_providers.bind_password` через `CryptoService`. Новый ciphertext полностью повторяет Go `secrets.AESGCM`: ключ получается как SHA-256 от `SSO_ENCRYPTION_KEY`, wire-format равен `enc:v1:<base64.RawStdEncoding(nonce || ciphertext || tag)>`. Тот же формат используется для `users.mfa_secret` и `identity_providers.client_secret`, поэтому Go и PHP могут читать записи друг друга во время rolling migration и после rollback. Reader также принимает ранний PHP-формат `v1:<padded-base64(nonce || tag || ciphertext)>`, но все новые записи создаются только в Go-формате. Ответы API не возвращают секрет. При update пустой `bind_password` сохраняет уже записанный ciphertext.
 
 LDAP Providers API после create перечитывает PostgreSQL defaults, при PUT записывает `updated_at=now()` и обновляет ActiveRecord. Provider `created_at`/`updated_at` и group mapping `created_at` сериализуются общим RFC3339 UTC formatter; mapping create перечитывает DB-generated UUID и timestamp перед ответом.
 
