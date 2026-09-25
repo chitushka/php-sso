@@ -121,7 +121,13 @@ docker compose run --rm app php yii migrate --interactive=0
 
 ## Cutover
 
-1. Остановить запись в Go-сервис или перевести его в maintenance window.
+1. Остановить запись в Go-сервис или перевести его в maintenance window. Для уже направленного на PHP контура включить write-freeze:
+
+   ```bash
+   make cutover-maintenance-on
+   ```
+
+   После включения только `GET /health/live` возвращает 200; readiness и все API отвечают 503, а metrics hooks не записывают DB cache.
 2. Сделать финальный `pg_dump`.
 3. Запустить PHP-миграции против production PostgreSQL.
 4. Поднять PHP-приложение с тем же `SSO_ISSUER`.
@@ -142,7 +148,8 @@ docker compose run --rm app php yii migrate --interactive=0
    Команда требует HTTPS, проверяет сертификат системным trust store и сверяет Discovery с `SSO_ISSUER`. Флаг `SSO_TEST_TLS_INSECURE` защищён loopback guard и не может использоваться для внешнего production issuer.
 
 6. Переключить reverse proxy на PHP app.
-7. Выполнить smoke-проверки:
+7. Снять PHP write-freeze командой `make cutover-maintenance-off`.
+8. Выполнить smoke-проверки:
 
    - login/logout локального администратора;
    - `GET /api/v1/auth/me`;

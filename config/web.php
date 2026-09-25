@@ -8,9 +8,15 @@ return [
     'language' => 'ru-RU',
     'bootstrap' => ['log'],
     'on beforeRequest' => static function (): void {
+        if (app\components\MaintenanceMode::apply(Yii::$app->request, Yii::$app->response)) {
+            Yii::$app->end(0, Yii::$app->response);
+        }
         (new app\services\MetricsService())->begin();
     },
     'on afterRequest' => static function (): void {
+        if (app\components\MaintenanceMode::blockedCurrentRequest()) {
+            return;
+        }
         (new app\services\MetricsService())->end(Yii::$app->request, Yii::$app->response);
     },
     'controllerMap' => [

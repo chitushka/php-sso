@@ -23,11 +23,13 @@ services:
       - .env
     environment:
       SSO_CUTOVER_EXPECTED_ISSUER: ${SSO_CUTOVER_EXPECTED_ISSUER:-}
+      SSO_MAINTENANCE_FILE: /cutover/maintenance
     ports:
       - "8080:8080"
     volumes:
       - .:/app
       - vendor_data:/app/vendor
+      - cutover_state:/cutover:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +90,24 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/usr/local/bin/rehearse-rollback"]
 
+  maintenance-on:
+    image: sso-php-app:latest
+    profiles:
+      - cutover
+    restart: "no"
+    volumes:
+      - cutover_state:/cutover
+    command: ["/bin/sh", "-lc", "umask 077 && touch /cutover/maintenance && chmod 600 /cutover/maintenance"]
+
+  maintenance-off:
+    image: sso-php-app:latest
+    profiles:
+      - cutover
+    restart: "no"
+    volumes:
+      - cutover_state:/cutover
+    command: ["/bin/sh", "-lc", "rm -f /cutover/maintenance"]
+
   ldap-test:
     image: osixia/openldap:1.5.0
     command:
@@ -114,6 +134,7 @@ volumes:
   postgres_data:
   vendor_data:
   tls_data:
+  cutover_state:
 
 networks:
   edge:

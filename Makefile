@@ -1,4 +1,4 @@
-.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key cutover-generate-local-key cutover-configure-local-secure-runtime cutover-rehearse-rollback cutover-smoke cutover-smoke-local unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
+.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key cutover-generate-local-key cutover-configure-local-secure-runtime cutover-rehearse-rollback cutover-maintenance-on cutover-maintenance-off cutover-smoke cutover-smoke-local unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
 
 build:
 	docker compose build
@@ -47,6 +47,12 @@ cutover-configure-local-secure-runtime:
 
 cutover-rehearse-rollback:
 	docker compose --profile cutover run --rm rollback-rehearsal
+
+cutover-maintenance-on:
+	docker compose --profile cutover run --rm maintenance-on
+
+cutover-maintenance-off:
+	docker compose --profile cutover run --rm maintenance-off
 
 cutover-smoke:
 	docker compose run --rm --no-deps app php tests/Integration/cutover_smoke.php
