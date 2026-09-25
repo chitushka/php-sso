@@ -71,6 +71,23 @@ services:
       edge:
         ipv4_address: 172.31.250.10
 
+  rollback-rehearsal:
+    image: postgres:13-alpine
+    profiles:
+      - cutover
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-sso}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sso}
+      SOURCE_DB: ${POSTGRES_DB:-sso}
+    volumes:
+      - ./docker/postgres/rehearse-rollback.sh:/usr/local/bin/rehearse-rollback:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/usr/local/bin/rehearse-rollback"]
+
   ldap-test:
     image: osixia/openldap:1.5.0
     command:

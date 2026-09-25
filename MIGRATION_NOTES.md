@@ -146,6 +146,14 @@ docker compose run --rm app php yii migrate --interactive=0
 
 ## Rollback
 
+До maintenance window выполнить локальную репетицию восстановления:
+
+```bash
+make cutover-rehearse-rollback
+```
+
+Runner не подменяет рабочую БД: он создаёт consistent custom-format dump, восстанавливает его во временную БД, проверяет критическую схему и данные и удаляет оба временных объекта. Production backup всё равно должен сохраняться в штатном зашифрованном backup storage с заданной retention policy.
+
 Rollback должен возвращать трафик на Go-сервис и базу из дампа, сделанного перед cutover.
 
 Если PHP-приложение уже принимало production-записи, простой возврат трафика без восстановления дампа рискован: новые сессии, refresh tokens, audit logs, one-time tokens и изменения пользователей могли появиться только после переключения.

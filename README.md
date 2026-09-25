@@ -106,6 +106,7 @@ docker compose run --rm app php yii help
 - `php yii cutover/generate-local-encryption-key` доступна только вне `SSO_ENV=prod`: генерирует ключ без вывода, ротирует локальные secrets и обновляет игнорируемый `.env`; production keys должны поступать из secret manager.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - Локальный production-like профиль поднимается на `https://localhost:8443`: nginx завершает TLS, имеет фиксированный IP `172.31.250.10`, а приложение доверяет forwarded-заголовкам только от него. Однократная команда `make cutover-configure-local-secure-runtime` генерирует 256-битный JWT secret без вывода и атомарно включает HTTPS issuer, secure cookies и DB cache в игнорируемом `.env`.
+- `make cutover-rehearse-rollback` создаёт ephemeral custom-format dump, восстанавливает его в изолированную временную БД и сверяет критическую схему, `pgcrypto`, seed data, business row counts и инвентарь пяти `enc:v1` secrets. Исходная БД не изменяется, временная БД и архив удаляются даже при ошибке.
 - CRUD-основа OAuth-клиентов.
 - OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
 - OAuth2 Authorization Code + PKCE, одноразовый authorization code, `client_secret_post`/`client_secret_basic`, consent flow, refresh token, revoke, introspect, client_credentials.
