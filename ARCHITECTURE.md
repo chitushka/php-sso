@@ -50,6 +50,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `MetricsService` + `MetricRoute` — dependency-free Prometheus text метрики HTTP-запросов на `/metrics`, сохранённые через Yii2 cache. Route labels преобразуются из внутренних Yii routes в публичные chi-совместимые шаблоны Go; path UUID не создают высокую кардинальность.
 - `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
 - `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
+- `CutoverController` + `CutoverCheckService` — read-only production preflight. Команда агрегирует PASS/WARN/FAIL для runtime-конфигурации, PostgreSQL-схемы и seed data, затем пробует расшифровать каждое непустое LDAP/MFA/broker secret без вывода значения. FAIL приводит к ненулевому exit code, поэтому проверку можно использовать как deployment gate.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
 
 ## База данных

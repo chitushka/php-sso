@@ -118,3 +118,12 @@ Health-check контракт завершён: live/version сохраняют 
 Дополнение 2026-09-18: HTTP smoke закрепляет точные Bearer-ошибки для account/session, admin API и UserInfo. `password/forgot` повторяет особый Go-контракт и возвращает `login is required` при malformed, non-object или unknown-field JSON вместо общего `invalid json body`.
 
 Статус: выполнено. Матрица endpoint-контрактов зафиксирована в `ENDPOINT_CONTRACTS.md`. PHP повторяет Go `encoding/json` + `DisallowUnknownFields`, включая строгие scalar/list/map/UUID/time типы, case-insensitive matching имён, `null`/zero values и порядок path/body/auth проверок. Выравнены редкие статусы и ответы Users/OIDC/MFA, UUID-формы `google/uuid.Parse`, login LDAP fallback и audit side effects. Контракты закреплены unit, PostgreSQL PHPUnit, расширенным HTTP smoke flow, внешним OAuth/OIDC client flow, mock broker flow и автономным OpenLDAP bind/search flow. Проверка конкретного корпоративного LDAP через `make integration-ldap-external` остаётся опциональной инфраструктурной сертификацией, а не частью переноса endpoint-функциональности.
+
+## Этап 7. Production cutover
+
+- Автоматизировать read-only проверку production-конфигурации и совпадения issuer.
+- Проверить критическую PostgreSQL-схему, extensions и seed data до остановки Go-сервиса.
+- Проверить расшифровку существующих LDAP/MFA/broker secrets общим `SSO_ENCRYPTION_KEY`.
+- Выполнить backup, maintenance window, переключение reverse proxy и rollback rehearsal по `MIGRATION_NOTES.md`.
+
+Статус: preflight реализован командой `php yii cutover/check` (`make cutover-check`). Она возвращает ненулевой exit code при placeholder/коротких secrets, несовпадении issuer, невалидных TTL/cookie настройках, неполной схеме, отсутствии `pgcrypto`/seed data, неверном encryption key или PHP-only `v1:` ciphertext, который мешает безопасному rollback на Go. File cache и пустой trusted-proxy список отмечаются предупреждениями, поскольку допустимы только в отдельных topology. Финальные backup, остановка записи, production smoke и переключение трафика выполняются в целевом окружении.

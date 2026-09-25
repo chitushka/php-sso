@@ -25,6 +25,7 @@ make lint     # проверить PHP-синтаксис
 make unit     # прогнать PHPUnit unit tests
 make phpunit-integration # прогнать PHPUnit integration tests против PostgreSQL
 make cleanup  # удалить истёкшие auth/OAuth артефакты
+make cutover-check # проверить готовность конфигурации, БД и secrets к Go -> PHP cutover
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
 make integration-broker # прогнать broker callback flow с локальным mock OIDC provider
@@ -46,6 +47,7 @@ docker compose run --rm app php yii help
 
 - `SSO_DATABASE_URL` — PostgreSQL DSN.
 - `SSO_ISSUER` — публичный issuer URL для OAuth2/OIDC.
+- `SSO_CUTOVER_EXPECTED_ISSUER` — issuer действующего Go-сервиса для строгой проверки перед переключением.
 - `SSO_JWT_SECRET` — HMAC-секрет access token, минимум 32 символа.
 - `SSO_ENCRYPTION_KEY` — ключ для будущего шифрования секретов, минимум 32 символа.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
@@ -93,6 +95,7 @@ docker compose run --rm app php yii help
 - Broker authorize redirects заменяют OAuth query-параметры, сохраняют provider query/fragment, а callback errors возвращаются на `/login`.
 - Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
 - `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
+- `php yii cutover/check` — read-only preflight конфигурации, PostgreSQL-схемы, seed data и расшифровки LDAP/MFA/broker secrets; возвращает ненулевой exit code при блокерах.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
 - OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
@@ -115,6 +118,7 @@ docker compose run --rm app php yii help
 
 ## Важные изменения
 
+- 2026-09-25: добавлен production preflight `make cutover-check`: команда проверяет обязательные `SSO_*`, совпадение Go/PHP issuer, TTL/cookie/cache/proxy настройки, соединение и критическую схему PostgreSQL, `pgcrypto`, seed roles/permissions и расшифровку всех сохранённых LDAP/MFA/broker secrets без их вывода.
 - 2026-09-25: storage-формат зашифрованных секретов выровнен с Go `secrets.AESGCM`: SHA-256 derivation, `enc:v1:`, unpadded standard Base64 и порядок `nonce || ciphertext || tag`. PHP читает ciphertext Go-сервиса и ранний PHP `v1:` формат, но все новые LDAP/MFA/broker secrets пишет в Go-формате, сохраняя rolling migration и rollback совместимость.
 - 2026-09-25: LDAP Search + Bind контур закреплён автономным OpenLDAP fixture в Docker Compose. `make integration-ldap` проверяет service bind, search, user bind, JIT-provisioning, group mapping и audit без внешних секретов; тест изолирует ранее настроенные providers и гарантированно очищает временные записи при ошибках.
 - 2026-09-25: завершена полная дифференциальная сверка Go/PHP endpoint-контрактов: строгие typed JSON edge cases, case-insensitive имена полей, UUID/time parsing, порядок проверок, MFA/OIDC wire format и audit side effects выровнены и покрыты regression-тестами.

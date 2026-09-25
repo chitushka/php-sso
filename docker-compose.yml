@@ -21,6 +21,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      SSO_CUTOVER_EXPECTED_ISSUER: ${SSO_CUTOVER_EXPECTED_ISSUER:-}
     ports:
       - "8080:8080"
     volumes:
