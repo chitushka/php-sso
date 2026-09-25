@@ -80,11 +80,33 @@ try {
             ':code' => $providerCode,
             ':client_id' => 'mock-client-' . $suffix,
             ':client_secret' => (new CryptoService())->encrypt('mock-secret-' . $suffix),
-            ':authorize_url' => $providerUrl . '/authorize',
+            ':authorize_url' => $providerUrl . '/authorize?prompt=login&client_id=stale#provider-fragment',
             ':token_url' => $providerUrl . '/token',
             ':userinfo_url' => $providerUrl . '/userinfo',
         ]
     )->queryScalar();
+
+    $providerError = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?error=access_denied'
+    );
+    assertTrue($providerError['status'] === 302, 'broker provider error must redirect');
+    assertTrue(
+        $providerError['location'] === '/login?broker_error=access_denied'
+            || $providerError['location'] === $baseUrl . '/login?broker_error=access_denied',
+        'broker provider error must redirect to the Go-compatible login route'
+    );
+
+    $failedCallback = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback'
+    );
+    assertTrue($failedCallback['status'] === 302, 'invalid broker callback must redirect');
+    assertTrue(
+        $failedCallback['location'] === '/login?broker_error=failed'
+            || $failedCallback['location'] === $baseUrl . '/login?broker_error=failed',
+        'invalid broker callback must redirect to the Go-compatible login route'
+    );
 
     $login = httpRequest('GET', $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/login?continue=' . rawurlencode('/broker-finished'));
     assertTrue($login['status'] >= 300 && $login['status'] < 400, 'broker login must redirect to provider');
@@ -92,6 +114,9 @@ try {
 
     $authorizeParts = parse_url($login['location']);
     parse_str($authorizeParts['query'] ?? '', $authorizeQuery);
+    assertTrue(($authorizeParts['fragment'] ?? '') === 'provider-fragment', 'authorize redirect must preserve provider URI fragment');
+    assertTrue(substr_count((string)$login['location'], 'client_id=') === 1, 'authorize redirect must replace stale client_id');
+    assertTrue(($authorizeQuery['prompt'] ?? '') === 'login', 'authorize redirect must preserve existing query parameters');
     assertTrue(($authorizeQuery['client_id'] ?? '') === 'mock-client-' . $suffix, 'authorize redirect must include client_id');
     assertTrue(($authorizeQuery['redirect_uri'] ?? '') === $baseUrl . '/oauth2/broker/' . $providerCode . '/callback', 'authorize redirect must include callback URL');
     assertTrue(!empty($authorizeQuery['state']), 'authorize redirect must include signed state');

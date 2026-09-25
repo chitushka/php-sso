@@ -89,6 +89,7 @@ docker compose run --rm app php yii help
 - Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
 - Identity Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `client_secret` при PUT безопасно сохраняет текущий секрет.
 - Identity Providers API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT как Go-сервис.
+- Broker authorize redirects заменяют OAuth query-параметры, сохраняют provider query/fragment, а callback errors возвращаются на `/login`.
 - Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
 - `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.

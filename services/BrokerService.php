@@ -84,15 +84,13 @@ class BrokerService
             'e' => gmdate('Y-m-d\TH:i:s\Z', time() + self::STATE_TTL),
         ]);
 
-        $query = http_build_query([
+        return $this->withQueryParameters((string)$provider->authorize_url, [
             'response_type' => 'code',
             'client_id' => $provider->client_id,
             'redirect_uri' => $this->callbackUrl((string)$provider->code),
             'scope' => $provider->scopes,
             'state' => $state,
         ]);
-
-        return $provider->authorize_url . (strpos($provider->authorize_url, '?') === false ? '?' : '&') . $query;
     }
 
     public function callback(string $providerCode, string $rawState, string $code): array
@@ -228,6 +226,49 @@ class BrokerService
     private function callbackUrl(string $code): string
     {
         return rtrim((string)Yii::$app->params['issuer'], '/') . '/oauth2/broker/' . rawurlencode($code) . '/callback';
+    }
+
+    private function withQueryParameters(string $uri, array $parameters): ?string
+    {
+        if (parse_url($uri) === false) {
+            return null;
+        }
+
+        $fragment = '';
+        $fragmentPosition = strpos($uri, '#');
+        if ($fragmentPosition !== false) {
+            $fragment = substr($uri, $fragmentPosition);
+            $uri = substr($uri, 0, $fragmentPosition);
+        }
+
+        $base = $uri;
+        $rawQuery = '';
+        $queryPosition = strpos($uri, '?');
+        if ($queryPosition !== false) {
+            $base = substr($uri, 0, $queryPosition);
+            $rawQuery = substr($uri, $queryPosition + 1);
+        }
+
+        $query = [];
+        foreach ($rawQuery === '' ? [] : explode('&', $rawQuery) as $part) {
+            [$rawKey, $rawValue] = array_pad(explode('=', $part, 2), 2, '');
+            $key = rawurldecode(str_replace('+', ' ', $rawKey));
+            $value = rawurldecode(str_replace('+', ' ', $rawValue));
+            $query[$key][] = $value;
+        }
+        foreach ($parameters as $key => $value) {
+            $query[(string)$key] = [(string)$value];
+        }
+        ksort($query, SORT_STRING);
+
+        $parts = [];
+        foreach ($query as $key => $values) {
+            foreach ($values as $value) {
+                $parts[] = http_build_query([$key => $value]);
+            }
+        }
+
+        return $base . '?' . implode('&', $parts) . $fragment;
     }
 
     private function fetchIdentity(IdentityProvider $provider, string $code): ?array

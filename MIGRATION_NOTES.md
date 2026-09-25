@@ -21,6 +21,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - Audit events используют Go JSON wire-format для `created_at`, nullable actor и строковых network metadata.
 - OAuth Clients API сохраняет Go lifecycle `updated_at` при изменении клиента и ротации секрета.
 - Identity Providers API сохраняет Go lifecycle `updated_at`, RFC3339 wire-format дат и zero-value/full-replacement семантику POST/PUT; пустой PUT `client_secret` не стирает сохранённый секрет.
+- Identity broker сохраняет custom query/fragment authorize URL без дублирования OAuth-параметров и использует Go-compatible `/login` callback error redirects.
 - LDAP Providers и group mappings сохраняют Go lifecycle временных полей и RFC3339 wire-format дат; POST/PUT провайдеров используют Go zero-value/full-replacement семантику, сохраняя текущий bind password при пустом PUT-секрете.
 - LDAP create/update не раскрывают ошибки PostgreSQL и возвращают стабильные Go 500 errors; duplicate group mapping возвращает 409 `mapping already exists`.
 - LDAP provider DELETE можно безопасно повторять; mapping list order и audit actor/target fields совпадают с Go-сервисом.

@@ -92,6 +92,19 @@ class AdminProviderServiceTest extends TestCase
         $this->assertStringStartsWith('https://idp.example.test/authorize?', $loginUrl);
         $this->assertStringContainsString('redirect_uri=', $loginUrl);
 
+        Yii::$app->db->createCommand()->update('identity_providers', [
+            'authorize_url' => 'https://idp.example.test/authorize?prompt=login&client_id=stale#provider-fragment',
+        ], ['id' => $created['data']['id']])->execute();
+        $provider->refresh();
+        $loginUrlWithQuery = $service->start(strtolower($code), '/users');
+        $this->assertStringEndsWith('#provider-fragment', $loginUrlWithQuery);
+        $this->assertSame(1, substr_count($loginUrlWithQuery, 'client_id='));
+        $loginParts = parse_url($loginUrlWithQuery);
+        parse_str($loginParts['query'] ?? '', $loginQuery);
+        $this->assertSame('login', $loginQuery['prompt'] ?? null);
+        $this->assertSame('client-' . $code, $loginQuery['client_id'] ?? null);
+        $this->assertSame('code', $loginQuery['response_type'] ?? null);
+
         Yii::$app->db->createCommand()->update(
             'identity_providers',
             ['updated_at' => '2000-01-01 00:00:00+00'],

@@ -46,7 +46,7 @@ class BrokerController extends ApiController
     public function actionCallback(string $providerCode): Response
     {
         if ((string)Yii::$app->request->get('error', '') !== '') {
-            return Yii::$app->response->redirect('/?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
+            return Yii::$app->response->redirect('/login?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
         }
 
         $result = (new BrokerService())->callback(
@@ -55,7 +55,7 @@ class BrokerController extends ApiController
             (string)Yii::$app->request->get('code', '')
         );
         if (!$result['ok']) {
-            return Yii::$app->response->redirect('/?broker_error=failed', 302);
+            return Yii::$app->response->redirect('/login?broker_error=failed', 302);
         }
 
         Yii::$app->response->cookies->add($result['cookie']);
