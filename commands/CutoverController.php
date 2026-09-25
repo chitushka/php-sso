@@ -156,4 +156,88 @@ class CutoverController extends Controller
 
         return self::EXIT_CODE_NORMAL;
     }
+
+    public function actionGenerateLocalEncryptionKey(): int
+    {
+        if ((string)getenv('SSO_ENV') === 'prod') {
+            $this->stderr("local key generation is forbidden when SSO_ENV=prod\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $oldKey = (string)(getenv('SSO_ENCRYPTION_KEY') ?: '');
+        if ($oldKey === '') {
+            $this->stderr("active SSO_ENCRYPTION_KEY is required\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $envPath = dirname(__DIR__) . '/.env';
+        $recoveryPath = dirname(__DIR__) . '/runtime/cutover-new-encryption-key';
+        $contents = @file_get_contents($envPath);
+        if ($contents === false) {
+            $this->stderr("cannot read local .env\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $newKey = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $updatedContents = preg_replace(
+            '/^SSO_ENCRYPTION_KEY=.*$/m',
+            'SSO_ENCRYPTION_KEY=' . $newKey,
+            $contents,
+            1,
+            $replacementCount
+        );
+        if ($updatedContents === null || $replacementCount !== 1) {
+            $this->stderr("local .env must contain exactly one SSO_ENCRYPTION_KEY entry\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        // Recovery-файл не даёт потерять новый ключ, если запись .env оборвётся после commit БД.
+        if (@file_put_contents($recoveryPath, $newKey . "\n", LOCK_EX) === false) {
+            $this->stderr("cannot create runtime key recovery file\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        @chmod($recoveryPath, 0600);
+
+        try {
+            $service = new SecretKeyRotationService(
+                Yii::$app->db,
+                new CryptoService($oldKey),
+                new CryptoService($newKey)
+            );
+            $dryRun = $service->rotate(false);
+            $result = $service->rotate(true);
+            if ($dryRun['rotate_total'] !== $result['rotate_total']) {
+                throw new \RuntimeException('secret set changed between dry-run and apply');
+            }
+        } catch (\Throwable $exception) {
+            @unlink($recoveryPath);
+            $this->stderr('Local encryption key rotation failed: ' . $exception->getMessage() . "\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        if (@file_put_contents($envPath, $updatedContents, LOCK_EX) === false) {
+            $this->stderr(
+                "database was rotated, but .env update failed; recover the key from runtime/cutover-new-encryption-key\n"
+            );
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $saved = @file_get_contents($envPath);
+        if ($saved === false || strpos($saved, 'SSO_ENCRYPTION_KEY=' . $newKey) === false) {
+            $this->stderr(
+                "database was rotated, but .env verification failed; recover the key from runtime/cutover-new-encryption-key\n"
+            );
+            return self::EXIT_CODE_ERROR;
+        }
+
+        @unlink($recoveryPath);
+        $this->stdout(sprintf(
+            "Local encryption key generated: %d secrets rotated, %d already used the generated key\n",
+            $result['rotate_total'],
+            $result['already_rotated_total']
+        ));
+        $this->stdout("Restart PHP containers before using encrypted LDAP/MFA/broker data\n");
+
+        return self::EXIT_CODE_NORMAL;
+    }
 }

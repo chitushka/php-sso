@@ -30,6 +30,7 @@ make cutover-rewrap-dry-run # проверить возможность прео
 make cutover-rewrap # атомарно преобразовать v1: secrets в общий Go enc:v1: формат
 make cutover-rotate-key-dry-run # проверить ротацию SSO_ENCRYPTION_KEY без записи
 make cutover-rotate-key # атомарно перешифровать secrets новым production key
+make cutover-generate-local-key # сгенерировать local-only key и ротировать dev secrets
 make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
 make integration-client # прогнать внешний OAuth/OIDC RP client flow
 make integration-broker # прогнать broker callback flow с локальным mock OIDC provider
@@ -102,6 +103,7 @@ docker compose run --rm app php yii help
 - `php yii cutover/check` — read-only preflight конфигурации, PostgreSQL-схемы, seed data и расшифровки LDAP/MFA/broker secrets; возвращает ненулевой exit code при блокерах.
 - `php yii cutover/rewrap-secrets` выполняет read-only dry-run старых PHP `v1:` secrets, а `--apply=1` атомарно перепаковывает их в общий Go `enc:v1:` формат без изменения plaintext.
 - `php yii cutover/rotate-encryption-key` проверяет maintenance-ротацию через `SSO_OLD_ENCRYPTION_KEY`/`SSO_NEW_ENCRYPTION_KEY`; `--apply=1` атомарно перешифровывает все непустые LDAP/MFA/broker secrets и распознаёт уже переключённые строки при повторном запуске.
+- `php yii cutover/generate-local-encryption-key` доступна только вне `SSO_ENV=prod`: генерирует ключ без вывода, ротирует локальные secrets и обновляет игнорируемый `.env`; production keys должны поступать из secret manager.
 - Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
 - CRUD-основа OAuth-клиентов.
 - OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
