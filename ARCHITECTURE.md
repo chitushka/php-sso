@@ -51,6 +51,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
 - `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
 - `CutoverController` + `CutoverCheckService` — read-only production preflight. Команда агрегирует PASS/WARN/FAIL для runtime-конфигурации, PostgreSQL-схемы и seed data, затем пробует расшифровать каждое непустое LDAP/MFA/broker secret без вывода значения. FAIL приводит к ненулевому exit code, поэтому проверку можно использовать как deployment gate.
+- `SecretRewrapService` — атомарный переход раннего PHP `v1:` storage format к Go `enc:v1:`. Dry-run берёт те же row locks и проверяет decrypt без записи; apply обновляет LDAP providers, identity providers и MFA secrets одной транзакцией, защищает каждую строку сравнением исходного ciphertext и проверяет новый ciphertext обратной расшифровкой до commit.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
 
 ## База данных

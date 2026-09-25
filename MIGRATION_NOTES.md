@@ -50,7 +50,15 @@ SSO_CUTOVER_EXPECTED_ISSUER="https://sso.example.com" docker compose run --rm ap
 
 Команда не изменяет БД и возвращает ненулевой exit code при блокерах. Она проверяет обязательные secrets и TTL, точное совпадение issuer, HTTPS cookie, соединение и критическую PostgreSQL-схему, `pgcrypto`, seed roles/permissions, а также расшифровку всех LDAP/MFA/broker secrets. Значения secrets в отчёт не выводятся. `WARN` по file cache допустим только для одного PHP-инстанса; пустой trusted-proxy список допустим только без reverse proxy.
 
-Ранний PHP ciphertext с префиксом `v1:` читается PHP-портом, но не Go-сервисом, поэтому preflight считает его rollback-блокером. LDAP и identity provider secrets нужно пересохранить через соответствующий admin API, а MFA secret — перевыпустить через disable/enroll; новые значения будут записаны в общем формате `enc:v1:`.
+Ранний PHP ciphertext с префиксом `v1:` читается PHP-портом, но не Go-сервисом, поэтому preflight считает его rollback-блокером. После резервной копии запустить сначала dry-run, затем apply с тем же `SSO_ENCRYPTION_KEY`, которым зашифрованы текущие записи:
+
+```bash
+docker compose run --rm app php yii cutover/rewrap-secrets
+docker compose run --rm app php yii cutover/rewrap-secrets --apply=1
+docker compose run --rm app php yii cutover/check
+```
+
+Apply отказывается работать с коротким или placeholder key. LDAP, MFA и identity provider secrets блокируются и обновляются одной транзакцией; при ошибке расшифровки, конкурентном изменении или неудачном round-trip откатывается весь набор. Plaintext и ciphertext в вывод не попадают. Повторный запуск идемпотентен и должен сообщить `0 secrets rewrapped`.
 
 1. Зафиксировать версию Go-сервиса, от которой выполняется переход, и сохранить дамп PostgreSQL:
 
