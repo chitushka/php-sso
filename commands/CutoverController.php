@@ -4,6 +4,7 @@ namespace app\commands;
 
 use app\services\CryptoService;
 use app\services\CutoverCheckService;
+use app\services\SecretKeyRotationService;
 use app\services\SecretRewrapService;
 use Yii;
 use yii\console\Controller;
@@ -16,7 +17,7 @@ class CutoverController extends Controller
     public function options($actionID): array
     {
         $options = parent::options($actionID);
-        if ($actionID === 'rewrap-secrets') {
+        if (in_array($actionID, ['rewrap-secrets', 'rotate-encryption-key'], true)) {
             $options[] = 'apply';
         }
 
@@ -95,6 +96,62 @@ class CutoverController extends Controller
             $mode,
             $result['total'],
             $apply ? 'rewrapped' : 'would be rewrapped'
+        ));
+
+        return self::EXIT_CODE_NORMAL;
+    }
+
+    public function actionRotateEncryptionKey(): int
+    {
+        $apply = filter_var($this->apply, FILTER_VALIDATE_BOOLEAN);
+        $activeKey = (string)(getenv('SSO_ENCRYPTION_KEY') ?: '');
+        $oldKey = (string)(getenv('SSO_OLD_ENCRYPTION_KEY') ?: '');
+        $newKey = (string)(getenv('SSO_NEW_ENCRYPTION_KEY') ?: '');
+
+        if ($oldKey === '' || $newKey === '') {
+            $this->stderr("SSO_OLD_ENCRYPTION_KEY and SSO_NEW_ENCRYPTION_KEY are required\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        if (hash_equals($oldKey, $newKey)) {
+            $this->stderr("old and new encryption keys must differ\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        if (strlen($newKey) < 32 || stripos($newKey, 'change-me') !== false) {
+            $this->stderr("SSO_NEW_ENCRYPTION_KEY must be at least 32 characters and not a placeholder\n");
+            return self::EXIT_CODE_ERROR;
+        }
+        if ($apply && !hash_equals($oldKey, $activeKey)) {
+            $this->stderr("SSO_OLD_ENCRYPTION_KEY must match the active SSO_ENCRYPTION_KEY\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        try {
+            $result = (new SecretKeyRotationService(
+                Yii::$app->db,
+                new CryptoService($oldKey),
+                new CryptoService($newKey)
+            ))->rotate($apply);
+        } catch (\Throwable $exception) {
+            $this->stderr('Encryption key rotation failed: ' . $exception->getMessage() . "\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $mode = $apply ? 'APPLIED' : 'DRY-RUN';
+        foreach ($result['sources'] as $source => $counts) {
+            $this->stdout(sprintf(
+                "[%s] %s: %d rotate, %d already rotated\n",
+                $mode,
+                $source,
+                $counts['rotate'],
+                $counts['already_rotated']
+            ));
+        }
+        $this->stdout(sprintf(
+            "%s complete: %d secrets %s, %d already used the new key\n",
+            $mode,
+            $result['rotate_total'],
+            $apply ? 'rotated' : 'would be rotated',
+            $result['already_rotated_total']
         ));
 
         return self::EXIT_CODE_NORMAL;

@@ -1,4 +1,4 @@
-.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
+.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
 
 build:
 	docker compose build
@@ -32,6 +32,12 @@ cutover-rewrap-dry-run:
 
 cutover-rewrap:
 	docker compose run --rm app php yii cutover/rewrap-secrets --apply=1
+
+cutover-rotate-key-dry-run:
+	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii cutover/rotate-encryption-key
+
+cutover-rotate-key:
+	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii cutover/rotate-encryption-key --apply=1
 
 integration:
 	docker compose run --rm app sh -lc "php yii migrate --interactive=0 && SSO_RATE_LIMIT_PER_MINUTE=1000 SSO_RATE_LIMIT_BURST=1000 php -S 127.0.0.1:8081 -t web web/router.php >/tmp/sso-php-integration.log 2>&1 & php -S 127.0.0.1:8082 -t tests/Fixtures/backchannel_logout tests/Fixtures/backchannel_logout/router.php >/tmp/sso-php-backchannel.log 2>&1 & sleep 1 && SSO_TEST_BASE_URL=http://127.0.0.1:8081 SSO_TEST_BACKCHANNEL_URL=http://127.0.0.1:8082 php tests/Integration/oauth_flow.php"

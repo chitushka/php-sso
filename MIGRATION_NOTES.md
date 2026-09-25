@@ -60,6 +60,17 @@ docker compose run --rm app php yii cutover/check
 
 Apply отказывается работать с коротким или placeholder key. LDAP, MFA и identity provider secrets блокируются и обновляются одной транзакцией; при ошибке расшифровки, конкурентном изменении или неудачном round-trip откатывается весь набор. Plaintext и ciphertext в вывод не попадают. Повторный запуск идемпотентен и должен сообщить `0 secrets rewrapped`.
 
+Если текущий `SSO_ENCRYPTION_KEY` является placeholder, коротким или должен быть заменён, одного rewrap недостаточно: нужна maintenance-ротация. До apply остановить Go/PHP writers и сделать backup. Передавать ключи следует через secret manager или переменные окружения, не значениями в аргументах командной строки:
+
+```bash
+export SSO_OLD_ENCRYPTION_KEY='<current-key>'
+export SSO_NEW_ENCRYPTION_KEY='<new-production-key>'
+make cutover-rotate-key-dry-run
+make cutover-rotate-key
+```
+
+Apply требует, чтобы `SSO_OLD_ENCRYPTION_KEY` совпадал с активным `SSO_ENCRYPTION_KEY`, а новый ключ имел минимум 32 символа и не был placeholder. После commit, не возобновляя traffic, заменить `SSO_ENCRYPTION_KEY` новым значением во всех Go/PHP-инстансах и перезапустить их. Затем удалить одноразовые old/new variables и запустить `make cutover-check`. Повторный запуск rotation безопасен: уже ротированные строки распознаются новым ключом и пропускаются. Если хотя бы одна строка не открывается ни старым, ни новым ключом, вся транзакция откатывается.
+
 1. Зафиксировать версию Go-сервиса, от которой выполняется переход, и сохранить дамп PostgreSQL:
 
    ```bash

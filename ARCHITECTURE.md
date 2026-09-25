@@ -52,6 +52,7 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
 - `CutoverController` + `CutoverCheckService` — read-only production preflight. Команда агрегирует PASS/WARN/FAIL для runtime-конфигурации, PostgreSQL-схемы и seed data, затем пробует расшифровать каждое непустое LDAP/MFA/broker secret без вывода значения. FAIL приводит к ненулевому exit code, поэтому проверку можно использовать как deployment gate.
 - `SecretRewrapService` — атомарный переход раннего PHP `v1:` storage format к Go `enc:v1:`. Dry-run берёт те же row locks и проверяет decrypt без записи; apply обновляет LDAP providers, identity providers и MFA secrets одной транзакцией, защищает каждую строку сравнением исходного ciphertext и проверяет новый ciphertext обратной расшифровкой до commit.
+- `SecretKeyRotationService` — maintenance-ротация ключа шифрования. Сервис блокирует все непустые secrets одной транзакцией, классифицирует ciphertext через old/new decrypt, переводит plaintext, PHP `v1:` и старый Go `enc:v1:` под новый ключ и пропускает уже ротированные записи. Ciphertext, который не открывается ни одним ключом, compare-and-update conflict или failed round-trip отменяют весь commit.
 - `models/*` — ActiveRecord-представление схемы Go-сервиса.
 
 ## База данных
