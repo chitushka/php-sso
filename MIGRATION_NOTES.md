@@ -133,6 +133,14 @@ docker compose run --rm app php yii migrate --interactive=0
    curl -fsS "$SSO_ISSUER/.well-known/openid-configuration"
    ```
 
+   Затем выполнить строгий автоматизированный smoke из deployment-окружения:
+
+   ```bash
+   make cutover-smoke
+   ```
+
+   Команда требует HTTPS, проверяет сертификат системным trust store и сверяет Discovery с `SSO_ISSUER`. Флаг `SSO_TEST_TLS_INSECURE` защищён loopback guard и не может использоваться для внешнего production issuer.
+
 6. Переключить reverse proxy на PHP app.
 7. Выполнить smoke-проверки:
 
