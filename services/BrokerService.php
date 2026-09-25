@@ -138,32 +138,32 @@ class BrokerService
             return ['status' => 400, 'data' => ['error' => 'code and client_id are required']];
         }
 
-        foreach (['name', 'type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $field) {
-            if (array_key_exists($field, $body)) {
-                $provider->$field = trim((string)$body[$field]);
+        if ($isNewRecord) {
+            foreach (['name', 'type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $field) {
+                $provider->$field = (string)($body[$field] ?? '');
             }
-        }
-        if (array_key_exists('enabled', $body)) {
-            $provider->enabled = (bool)$body['enabled'];
-        } elseif ($provider->isNewRecord) {
-            $provider->enabled = true;
-        }
-        if (!$provider->type) {
-            $provider->type = 'oidc';
-        }
-        if (!$provider->scopes) {
-            $provider->scopes = 'openid profile email';
+            $provider->enabled = (bool)($body['enabled'] ?? false);
+            if ($provider->type === '') {
+                $provider->type = 'oidc';
+            }
+
+            $provider = $this->applyPreset($provider);
+            if ($provider->client_id === '') {
+                return ['status' => 400, 'data' => ['error' => 'code and client_id are required']];
+            }
+            if (!$provider->authorize_url || !$provider->token_url || !$provider->userinfo_url) {
+                return ['status' => 400, 'data' => ['error' => 'authorize_url, token_url and userinfo_url are required for type oidc']];
+            }
+        } else {
+            // Go декодирует PUT в новую Provider struct: пропущенные поля получают zero values.
+            foreach (['name', 'type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $field) {
+                $provider->$field = (string)($body[$field] ?? '');
+            }
+            $provider->enabled = (bool)($body['enabled'] ?? false);
+            $provider = $this->applyPreset($provider);
         }
 
-        $provider = $this->applyPreset($provider);
-        if (!$provider->code || !$provider->client_id) {
-            return ['status' => 400, 'data' => ['error' => 'code and client_id are required']];
-        }
-        if (!$provider->authorize_url || !$provider->token_url || !$provider->userinfo_url) {
-            return ['status' => 400, 'data' => ['error' => 'authorize_url, token_url and userinfo_url are required for type oidc']];
-        }
-
-        if ($provider->isNewRecord && IdentityProvider::find()->where(['code' => $provider->code])->exists()) {
+        if ($isNewRecord && IdentityProvider::find()->where(['code' => $provider->code])->exists()) {
             return ['status' => 409, 'data' => ['error' => 'provider already exists']];
         }
 

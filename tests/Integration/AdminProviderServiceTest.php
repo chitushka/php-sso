@@ -68,6 +68,7 @@ class AdminProviderServiceTest extends TestCase
             'token_url' => 'https://idp.example.test/token',
             'userinfo_url' => 'https://idp.example.test/userinfo',
             'scopes' => 'openid email',
+            'enabled' => true,
         ]);
         $this->assertSame(201, $created['status']);
         $this->assertArrayNotHasKey('client_secret', $created['data']);
@@ -103,6 +104,13 @@ class AdminProviderServiceTest extends TestCase
         ]);
         $this->assertSame(200, $updated['status']);
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
+        $this->assertSame('', $updated['data']['type']);
+        $this->assertSame('', $updated['data']['client_id']);
+        $this->assertSame('', $updated['data']['authorize_url']);
+        $this->assertSame('', $updated['data']['token_url']);
+        $this->assertSame('', $updated['data']['userinfo_url']);
+        $this->assertSame('', $updated['data']['scopes']);
+        $this->assertFalse($updated['data']['enabled']);
         $provider->refresh();
         $this->assertSame('super-secret', (new CryptoService())->decrypt((string)$provider->client_secret));
 

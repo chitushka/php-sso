@@ -20,7 +20,7 @@ PHP-порт сохраняет single-tenant модель, PostgreSQL-схем�
 - Roles, Permissions и Groups API используют Go JSON wire-format дат и описаний; update ролей/групп сохраняет Go full-replacement и `updated_at` lifecycle.
 - Audit events используют Go JSON wire-format для `created_at`, nullable actor и строковых network metadata.
 - OAuth Clients API сохраняет Go lifecycle `updated_at` при изменении клиента и ротации секрета.
-- Identity Providers API сохраняет Go lifecycle `updated_at` при PUT и RFC3339 wire-format дат.
+- Identity Providers API сохраняет Go lifecycle `updated_at`, RFC3339 wire-format дат и zero-value/full-replacement семантику POST/PUT; пустой PUT `client_secret` не стирает сохранённый секрет.
 - LDAP Providers и group mappings сохраняют Go lifecycle временных полей и RFC3339 wire-format дат.
 
 Проверено текущим smoke flow:
