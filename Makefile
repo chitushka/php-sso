@@ -1,4 +1,4 @@
-.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key cutover-generate-local-key cutover-configure-local-secure-runtime cutover-rehearse-rollback cutover-maintenance-on cutover-maintenance-off cutover-smoke cutover-smoke-local unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
+.PHONY: build up down migrate lint cleanup cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key cutover-generate-local-key cutover-configure-local-secure-runtime cutover-rehearse-rollback cutover-maintenance-on cutover-maintenance-off cutover-smoke cutover-smoke-authenticated cutover-smoke-authenticated-local cutover-smoke-local unit phpunit-integration integration integration-client integration-broker integration-ldap integration-ldap-external
 
 build:
 	docker compose build
@@ -56,6 +56,12 @@ cutover-maintenance-off:
 
 cutover-smoke:
 	docker compose run --rm --no-deps app php tests/Integration/cutover_smoke.php
+
+cutover-smoke-authenticated:
+	docker compose run --rm --no-deps app php tests/Integration/cutover_authenticated_smoke.php
+
+cutover-smoke-authenticated-local:
+	docker compose run --rm --no-deps app php tests/Integration/cutover_authenticated_smoke_local.php
 
 cutover-smoke-local:
 	docker compose run --rm --no-deps -e SSO_TEST_BASE_URL=https://https-proxy -e SSO_TEST_EXPECTED_ISSUER=https://localhost:8443 -e SSO_TEST_TLS_INSECURE=true app php tests/Integration/cutover_smoke.php

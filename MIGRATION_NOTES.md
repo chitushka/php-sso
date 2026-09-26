@@ -149,15 +149,25 @@ docker compose run --rm app php yii migrate --interactive=0
 
 6. Переключить reverse proxy на PHP app.
 7. Снять PHP write-freeze командой `make cutover-maintenance-off`.
-8. Выполнить smoke-проверки:
+8. Задать через secret manager `SSO_CUTOVER_SMOKE_USERNAME`, `SSO_CUTOVER_SMOKE_PASSWORD`, `SSO_CUTOVER_SMOKE_CLIENT_ID`, `SSO_CUTOVER_SMOKE_REDIRECT_URI` и `SSO_CUTOVER_SMOKE_LOGOUT_REDIRECT_URI`. Для confidential client также задать `SSO_CUTOVER_SMOKE_CLIENT_SECRET`, а для MFA непосредственно перед запуском — `SSO_CUTOVER_SMOKE_MFA_CODE`. Использовать выделенного smoke-пользователя: RP logout штатно отзывает его refresh tokens. Redirect URI должны быть заранее зарегистрированы у клиента.
 
-   - login/logout локального администратора;
+   Затем выполнить authenticated flow:
+
+   ```bash
+   make cutover-smoke-authenticated
+   ```
+
+   Команда проверяет:
+
+   - login/logout выделенного локального пользователя;
    - `GET /api/v1/auth/me`;
    - Authorization Code + PKCE из реального клиента;
    - refresh token;
    - `/oauth2/userinfo`;
    - `/oauth2/logout`;
    - вход через LDAP или identity provider, если они используются.
+
+   Автоматизированная часть использует local login. LDAP/identity provider login остаётся ручной проверкой, если он включён. Скрипт не создаёт fixtures и не выводит credentials/tokens, однако штатный flow создаёт и отзывает session/code/refresh records и пишет audit. Если client требует consent, его следует выдать заранее; `SSO_CUTOVER_SMOKE_GRANT_CONSENT=true` разрешает скрипту сделать это явно и идемпотентно.
 
 ## Rollback
 
