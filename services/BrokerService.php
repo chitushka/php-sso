@@ -76,7 +76,10 @@ class BrokerService
         }
 
         $provider = $this->applyPreset($provider);
-        $continueUrl = strpos($continueUrl, '/') === 0 ? $continueUrl : '/';
+        if (!$this->providerEndpointsAreSafe($provider)) {
+            return null;
+        }
+        $continueUrl = $this->localContinueUrl($continueUrl);
         $state = $this->signState([
             'p' => $provider->code,
             'n' => JwtService::base64url(random_bytes(16)),
@@ -123,9 +126,8 @@ class BrokerService
 
         return [
             'ok' => true,
-            'continue' => strpos((string)($state['c'] ?? ''), '/') === 0 ? (string)$state['c'] : '/',
+            'continue' => $this->localContinueUrl((string)($state['c'] ?? '')),
             'cookie' => $auth['cookie'],
-            'access_token' => $auth['data']['access_token'],
         ];
     }
 
@@ -159,6 +161,10 @@ class BrokerService
             }
             $provider->enabled = (bool)($body['enabled'] ?? false);
             $provider = $this->applyPreset($provider);
+        }
+
+        if (!$this->providerEndpointsAreSafe($provider)) {
+            return ['status' => 400, 'data' => ['error' => 'identity provider endpoints must use trusted HTTPS URLs']];
         }
 
         if ($isNewRecord && IdentityProvider::find()->where(['code' => $provider->code])->exists()) {
@@ -281,7 +287,7 @@ class BrokerService
             'client_id' => $provider->client_id,
             'client_secret' => $secret,
         ]);
-        $token = $this->jsonRequest((string)$provider->token_url, 'POST', $tokenBody, [
+        $token = (new OutboundHttpService())->requestJson((string)$provider->token_url, 'POST', $tokenBody, [
             'Content-Type: application/x-www-form-urlencoded',
             'Accept: application/json',
         ]);
@@ -289,7 +295,7 @@ class BrokerService
             return null;
         }
 
-        $info = $this->jsonRequest((string)$provider->userinfo_url, 'GET', null, [
+        $info = (new OutboundHttpService())->requestJson((string)$provider->userinfo_url, 'GET', null, [
             'Authorization: Bearer ' . $token['access_token'],
             'Accept: application/json',
             'User-Agent: sso-php',
@@ -311,26 +317,6 @@ class BrokerService
         ];
     }
 
-    private function jsonRequest(string $url, string $method, ?string $body, array $headers): ?array
-    {
-        $context = stream_context_create([
-            'http' => [
-                'method' => $method,
-                'header' => implode("\r\n", $headers),
-                'content' => $body ?? '',
-                'timeout' => 10,
-                'ignore_errors' => true,
-            ],
-        ]);
-        $raw = @file_get_contents($url, false, $context);
-        if ($raw === false || strlen($raw) > 1048576) {
-            return null;
-        }
-
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : null;
-    }
-
     private function resolveUser(IdentityProvider $provider, array $identity): ?User
     {
         $linked = FederatedIdentity::findOne([
@@ -341,29 +327,39 @@ class BrokerService
             return User::findOne(['id' => $linked->user_id, 'status' => User::STATUS_ACTIVE]);
         }
 
-        $user = null;
-        if ($identity['email'] !== '' && $identity['email_verified']) {
-            $user = User::findOne(['email' => $identity['email']]);
-            if ($user && (bool)$user->mfa_enabled) {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            // Совпадение email не доказывает владение локальной учётной записью.
+            $user = $this->provisionUser($provider, $identity);
+            if (!$user) {
+                $transaction->rollBack();
                 return null;
             }
-        }
-        if (!$user) {
-            $user = $this->provisionUser($provider, $identity);
-        }
-        if (!$user) {
-            return null;
-        }
 
-        $link = new FederatedIdentity();
-        $link->provider_id = $provider->id;
-        $link->external_subject = $identity['subject'];
-        $link->user_id = $user->id;
-        $link->email = $identity['email'];
-        $link->save(false);
-        AuditService::record($user->id, 'identity_linked', 'identity_provider', $provider->code);
+            $link = new FederatedIdentity();
+            $link->provider_id = $provider->id;
+            $link->external_subject = $identity['subject'];
+            $link->user_id = $user->id;
+            $link->email = $identity['email'];
+            if (!$link->save(false)) {
+                throw new \RuntimeException('failed to link federated identity');
+            }
+            AuditService::record($user->id, 'identity_linked', 'identity_provider', $provider->code);
+            $transaction->commit();
+            return $user;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
 
-        return $user;
+            $linked = FederatedIdentity::findOne([
+                'provider_id' => $provider->id,
+                'external_subject' => $identity['subject'],
+            ]);
+            return $linked
+                ? User::findOne(['id' => $linked->user_id, 'status' => User::STATUS_ACTIVE])
+                : null;
+        }
     }
 
     private function provisionUser(IdentityProvider $provider, array $identity): ?User
@@ -378,7 +374,7 @@ class BrokerService
 
         $user = new User();
         $user->username = $this->uniqueUsername($username);
-        $user->email = $identity['email'];
+        $user->email = strtolower(trim((string)$identity['email']));
         $user->status = User::STATUS_ACTIVE;
         $user->source = User::SOURCE_FEDERATED;
         $user->email_verified = false;
@@ -398,6 +394,47 @@ class BrokerService
         }
 
         return $username . '-' . JwtService::base64url(random_bytes(3));
+    }
+
+    private function localContinueUrl(string $url): string
+    {
+        if ($url === '' || strpos($url, '/') !== 0 || preg_match('/[\x00-\x1F\x7F]/', $url)) {
+            return '/';
+        }
+
+        $decoded = $url;
+        for ($iteration = 0; $iteration < 3; $iteration++) {
+            if (strpos($decoded, '//') === 0 || strpos($decoded, '\\') !== false) {
+                return '/';
+            }
+            $next = rawurldecode($decoded);
+            if ($next === $decoded) {
+                break;
+            }
+            $decoded = $next;
+        }
+
+        $parts = parse_url($url);
+        if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || isset($parts['user'])) {
+            return '/';
+        }
+
+        return $url;
+    }
+
+    private function providerEndpointsAreSafe(IdentityProvider $provider): bool
+    {
+        if (!(bool)$provider->enabled
+            && (string)$provider->authorize_url === ''
+            && (string)$provider->token_url === ''
+            && (string)$provider->userinfo_url === '') {
+            return true;
+        }
+
+        $http = new OutboundHttpService();
+        return $http->isValidEndpoint((string)$provider->authorize_url, true)
+            && $http->isValidEndpoint((string)$provider->token_url)
+            && $http->isValidEndpoint((string)$provider->userinfo_url);
     }
 
     private function signState(array $state): string

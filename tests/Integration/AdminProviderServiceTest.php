@@ -91,6 +91,19 @@ class AdminProviderServiceTest extends TestCase
         $loginUrl = $service->start(strtolower($code), 'https://evil.example.test/path');
         $this->assertStringStartsWith('https://idp.example.test/authorize?', $loginUrl);
         $this->assertStringContainsString('redirect_uri=', $loginUrl);
+        $loginParts = parse_url($loginUrl);
+        parse_str($loginParts['query'] ?? '', $loginQuery);
+        $verifyState = new \ReflectionMethod($service, 'verifyState');
+        $verifyState->setAccessible(true);
+        $this->assertSame('/', $verifyState->invoke($service, $loginQuery['state'])['c']);
+
+        $localContinue = new \ReflectionMethod($service, 'localContinueUrl');
+        $localContinue->setAccessible(true);
+        $this->assertSame('/', $localContinue->invoke($service, '//evil.example.test/path'));
+        $this->assertSame('/', $localContinue->invoke($service, '/\\evil.example.test/path'));
+        $this->assertSame('/', $localContinue->invoke($service, '/%2f%2fevil.example.test/path'));
+        $this->assertSame('/', $localContinue->invoke($service, '/%5cevil.example.test/path'));
+        $this->assertSame('/users?active=1', $localContinue->invoke($service, '/users?active=1'));
 
         Yii::$app->db->createCommand()->update('identity_providers', [
             'authorize_url' => 'https://idp.example.test/authorize?prompt=login&client_id=stale#provider-fragment',
@@ -99,11 +112,11 @@ class AdminProviderServiceTest extends TestCase
         $loginUrlWithQuery = $service->start(strtolower($code), '/users');
         $this->assertStringEndsWith('#provider-fragment', $loginUrlWithQuery);
         $this->assertSame(1, substr_count($loginUrlWithQuery, 'client_id='));
-        $loginParts = parse_url($loginUrlWithQuery);
-        parse_str($loginParts['query'] ?? '', $loginQuery);
-        $this->assertSame('login', $loginQuery['prompt'] ?? null);
-        $this->assertSame('client-' . $code, $loginQuery['client_id'] ?? null);
-        $this->assertSame('code', $loginQuery['response_type'] ?? null);
+        $loginPartsWithQuery = parse_url($loginUrlWithQuery);
+        parse_str($loginPartsWithQuery['query'] ?? '', $loginQueryWithQuery);
+        $this->assertSame('login', $loginQueryWithQuery['prompt'] ?? null);
+        $this->assertSame('client-' . $code, $loginQueryWithQuery['client_id'] ?? null);
+        $this->assertSame('code', $loginQueryWithQuery['response_type'] ?? null);
 
         Yii::$app->db->createCommand()->update(
             'identity_providers',

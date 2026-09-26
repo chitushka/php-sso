@@ -46,6 +46,20 @@ class AuthController extends ApiController
         return ['status' => 'logged_out'];
     }
 
+    public function actionSessionToken(): array
+    {
+        $auth = new AuthService();
+        $user = $auth->userBySession((string)Yii::$app->request->cookies->getValue('sso_session', ''));
+        if (!$user) {
+            return $this->fail(401, 'invalid session');
+        }
+
+        return [
+            'access_token' => $auth->issueAccessToken($user),
+            'user' => $user->publicData(),
+        ];
+    }
+
     public function actionMe(): array
     {
         $user = $this->requireUser();

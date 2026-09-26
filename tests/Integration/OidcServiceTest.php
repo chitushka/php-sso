@@ -98,6 +98,12 @@ class OidcServiceTest extends TestCase
         $this->assertLessThanOrEqual($claims['iat'], $claims['auth_time']);
         $this->assertSame($this->username, $claims['preferred_username']);
         $this->assertSame($this->username . '@example.test', $claims['email']);
+        $storedPrivateKey = (string)Yii::$app->db->createCommand(
+            'SELECT private_key_pem FROM oidc_signing_keys WHERE status = :status ORDER BY created_at DESC LIMIT 1',
+            [':status' => 'active']
+        )->queryScalar();
+        $this->assertStringStartsWith('enc:v1:', $storedPrivateKey);
+        $this->assertStringNotContainsString('BEGIN PRIVATE KEY', $storedPrivateKey);
 
         $jwks = $service->jwks();
         $this->assertNotEmpty($jwks['keys'][0]['kid']);

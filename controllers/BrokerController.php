@@ -76,7 +76,7 @@ class BrokerController extends ApiController
 
         Yii::$app->response->cookies->add($result['cookie']);
 
-        return Yii::$app->response->redirect($result['continue'] . '#broker_token=' . rawurlencode($result['access_token']), 302);
+        return Yii::$app->response->redirect($result['continue'], 302);
     }
 
     public function actionListProviders(): array

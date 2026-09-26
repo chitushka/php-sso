@@ -84,7 +84,9 @@ class OidcService
 
         $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));
         $body = JwtService::base64url(json_encode($payload));
-        openssl_sign($header . '.' . $body, $signature, $key['private_key_pem'], OPENSSL_ALGO_SHA256);
+        if (!openssl_sign($header . '.' . $body, $signature, $this->privateKey($key), OPENSSL_ALGO_SHA256)) {
+            throw new \RuntimeException('failed to sign id token');
+        }
 
         return $header . '.' . $body . '.' . JwtService::base64url($signature);
     }
@@ -107,7 +109,9 @@ class OidcService
 
         $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));
         $body = JwtService::base64url(json_encode($payload));
-        openssl_sign($header . '.' . $body, $signature, $key['private_key_pem'], OPENSSL_ALGO_SHA256);
+        if (!openssl_sign($header . '.' . $body, $signature, $this->privateKey($key), OPENSSL_ALGO_SHA256)) {
+            throw new \RuntimeException('failed to sign logout token');
+        }
 
         return $header . '.' . $body . '.' . JwtService::base64url($signature);
     }
@@ -117,18 +121,13 @@ class OidcService
         $body = http_build_query([
             'logout_token' => $this->issueLogoutToken($subject, $clientId),
         ]);
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-                'content' => $body,
-                'ignore_errors' => true,
-                'timeout' => 5,
-            ],
-        ]);
-
         // Ошибка уведомления RP не должна отменять локальный logout.
-        @file_get_contents($uri, false, $context);
+        (new OutboundHttpService())->request(
+            $uri,
+            'POST',
+            $body,
+            ['Content-Type: application/x-www-form-urlencoded']
+        );
     }
 
     public function verifyIdTokenHint(string $token): ?array
@@ -234,14 +233,19 @@ class OidcService
             'private_key_bits' => 2048,
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
         ]);
-        openssl_pkey_export($resource, $private);
+        if ($resource === false || !openssl_pkey_export($resource, $private)) {
+            throw new \RuntimeException('failed to generate OIDC signing key');
+        }
         $details = openssl_pkey_get_details($resource);
+        if (!is_array($details) || empty($details['key'])) {
+            throw new \RuntimeException('failed to read OIDC signing key');
+        }
         $kid = (string)Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
 
         Yii::$app->db->createCommand()->insert('oidc_signing_keys', [
             'kid' => $kid,
             'alg' => 'RS256',
-            'private_key_pem' => $private,
+            'private_key_pem' => (new CryptoService())->encrypt($private),
             'public_key_pem' => $details['key'],
             'status' => 'active',
         ])->execute();
@@ -250,5 +254,15 @@ class OidcService
             'SELECT * FROM oidc_signing_keys WHERE kid = :kid',
             [':kid' => $kid]
         )->queryOne();
+    }
+
+    private function privateKey(array $key): string
+    {
+        $stored = (string)($key['private_key_pem'] ?? '');
+        if (strpos($stored, 'enc:v1:') !== 0) {
+            throw new \RuntimeException('OIDC private key is not encrypted');
+        }
+
+        return (new CryptoService())->decrypt($stored);
     }
 }

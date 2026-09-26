@@ -3,6 +3,7 @@
 return [
     'version' => '0.1.0-port',
     'issuer' => rtrim(getenv('SSO_ISSUER') ?: 'http://localhost:8080', '/'),
+    'apiAudience' => getenv('SSO_API_AUDIENCE') ?: rtrim(getenv('SSO_ISSUER') ?: 'http://localhost:8080', '/') . '/api',
     'jwtSecret' => getenv('SSO_JWT_SECRET') ?: 'change-me-please-change-me-please-change-me',
     'encryptionKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
     'accessTokenTtl' => (int)(getenv('SSO_ACCESS_TOKEN_TTL') ?: 900),
@@ -14,6 +15,7 @@ return [
     'rateLimitBurst' => (int)(getenv('SSO_RATE_LIMIT_BURST') ?: 10),
     'cacheDriver' => getenv('SSO_CACHE_DRIVER') ?: 'file',
     'trustedProxies' => getenv('SSO_TRUSTED_PROXIES') ?: '',
+    'outboundHostAllowlist' => getenv('SSO_OUTBOUND_HOST_ALLOWLIST') ?: '',
     'rateLimitedRoutes' => [
         'auth/login',
         'auth/verify-mfa',

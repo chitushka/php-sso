@@ -4,6 +4,7 @@ namespace app\services;
 
 use app\components\Rfc3339;
 use app\models\LoginAttempt;
+use app\models\OAuthClient;
 use app\models\Session;
 use app\models\User;
 use Yii;
@@ -99,11 +100,7 @@ class AuthService
             $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
         }
 
-        $jwt = (new JwtService())->issue($user->id, [
-            'username' => $user->username,
-            'email' => $user->email,
-            'source' => $user->source,
-        ], null, $issuedAt);
+        $jwt = $this->issueAccessToken($user, $issuedAt);
 
         return [
             'ok' => true,
@@ -113,6 +110,7 @@ class AuthService
                 'httpOnly' => true,
                 'secure' => Yii::$app->params['cookieSecure'],
                 'sameSite' => Cookie::SAME_SITE_LAX,
+                'path' => '/',
                 'expire' => time() + Yii::$app->params['sessionTtl'],
             ]),
             'data' => [
@@ -133,6 +131,20 @@ class AuthService
         return $this->issueLogin($user, $request);
     }
 
+    public function issueAccessToken(User $user, ?int $issuedAt = null): string
+    {
+        $issuedAt = $issuedAt ?? time();
+        if ($user->tokens_invalid_before) {
+            $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
+        }
+
+        return (new JwtService())->issue($user->id, [
+            'username' => $user->username,
+            'email' => $user->email,
+            'source' => $user->source,
+        ], null, $issuedAt);
+    }
+
     public function currentUser(Request $request): ?User
     {
         return $this->authenticate($request)['user'];
@@ -142,29 +154,38 @@ class AuthService
     {
         $header = (string)$request->headers->get('Authorization', '');
         if (stripos($header, 'Bearer ') !== 0) {
-            return ['user' => null, 'error' => 'missing bearer token'];
+            return ['user' => null, 'claims' => null, 'error' => 'missing bearer token'];
         }
 
         $claims = (new JwtService())->verify(trim(substr($header, 7)));
         if (!$claims || empty($claims['sub']) || !empty($claims['purpose'])) {
-            return ['user' => null, 'error' => 'invalid token'];
+            return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
+        }
+
+        if (!empty($claims['client_id'])) {
+            $client = OAuthClient::findOne([
+                'client_id' => (string)$claims['client_id'],
+                'enabled' => true,
+            ]);
+            if (!$client || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']) {
+                return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
+            }
         }
 
         $user = User::findOne(['id' => $claims['sub']]);
         if (!$user) {
-            return ['user' => null, 'error' => 'invalid token'];
+            return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
         }
         if ($user->status !== User::STATUS_ACTIVE) {
-            return ['user' => null, 'error' => 'account is not active'];
+            return ['user' => null, 'claims' => null, 'error' => 'account is not active'];
         }
 
-        if (empty($claims['client_id'])
-            && $user->tokens_invalid_before
+        if ($user->tokens_invalid_before
             && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)) {
-            return ['user' => null, 'error' => 'token revoked'];
+            return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
         }
 
-        return ['user' => $user, 'error' => null];
+        return ['user' => $user, 'claims' => $claims, 'error' => null];
     }
 
     public function currentClaims(Request $request): ?array
@@ -180,6 +201,16 @@ class AuthService
         }
 
         return $claims;
+    }
+
+    public function tokenAllowsPermission(array $claims, string $resource, string $action): bool
+    {
+        if (empty($claims['client_id'])) {
+            return true;
+        }
+
+        $scopes = preg_split('/\s+/', trim((string)($claims['scope'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        return in_array($resource . ':' . $action, $scopes, true);
     }
 
     public function userBySession(string $sessionToken): ?User

@@ -10,6 +10,7 @@ class SecretKeyRotationService
         ['ldap_providers', 'id', 'bind_password'],
         ['identity_providers', 'id', 'client_secret'],
         ['users', 'id', 'mfa_secret'],
+        ['oidc_signing_keys', 'id', 'private_key_pem'],
     ];
 
     /** @var Connection */

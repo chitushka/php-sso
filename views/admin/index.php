@@ -516,7 +516,7 @@ const app = Vue.createApp({
     return {
       view: 'dashboard',
       message: '',
-      accessToken: localStorage.getItem('sso_access_token') || '',
+      accessToken: '',
       user: null,
       mfaChallenge: '',
       bootstrap: {},
@@ -589,12 +589,7 @@ const app = Vue.createApp({
     };
   },
   async mounted() {
-    const hashMatch = window.location.hash.match(/broker_token=([^&]+)/);
-    if (hashMatch) {
-      this.accessToken = decodeURIComponent(hashMatch[1]);
-      localStorage.setItem('sso_access_token', this.accessToken);
-      history.replaceState({}, document.title, window.location.pathname + window.location.search);
-    }
+    await this.restoreSession();
     const params = new URLSearchParams(window.location.search);
     if (params.get('broker_error')) {
       this.message = 'External sign-in failed';
@@ -630,11 +625,27 @@ const app = Vue.createApp({
     }
   },
   methods: {
+    async restoreSession() {
+      try {
+        const response = await fetch('/api/v1/auth/session-token', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        this.accessToken = data.access_token || '';
+        this.user = data.user || null;
+      } catch (error) {
+        this.accessToken = '';
+      }
+    },
     headers() {
       return this.accessToken ? { 'Authorization': 'Bearer ' + this.accessToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
     },
     async api(url, options = {}) {
-      const response = await fetch(url, Object.assign({ headers: this.headers() }, options));
+      const response = await fetch(url, Object.assign({ headers: this.headers(), credentials: 'same-origin' }, options));
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || data.error_description || 'request failed');
@@ -672,7 +683,6 @@ const app = Vue.createApp({
       }
 
       this.accessToken = data.access_token;
-      localStorage.setItem('sso_access_token', this.accessToken);
       this.user = data.user;
       this.message = 'Signed in';
       await this.refresh();
@@ -768,7 +778,6 @@ const app = Vue.createApp({
         body: JSON.stringify({ mfa_token: this.mfaChallenge, code: this.mfaLoginForm.code })
       });
       this.accessToken = data.access_token;
-      localStorage.setItem('sso_access_token', this.accessToken);
       this.user = data.user;
       this.mfaChallenge = '';
       this.mfaLoginForm.code = '';
@@ -779,7 +788,6 @@ const app = Vue.createApp({
       await this.api('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
       this.accessToken = '';
       this.user = null;
-      localStorage.removeItem('sso_access_token');
       this.message = 'Signed out';
     },
     async setupMfa() {

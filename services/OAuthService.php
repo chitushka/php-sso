@@ -38,6 +38,10 @@ class OAuthService
         $client->skip_consent = (bool)($body['skip_consent'] ?? false);
         $client->enabled = (bool)($body['enabled'] ?? false);
 
+        if (!$this->backchannelLogoutUriIsSafe((string)$client->backchannel_logout_uri)) {
+            return ['status' => 400, 'data' => ['error' => 'backchannel_logout_uri must be a trusted HTTPS URL']];
+        }
+
         $plainSecret = null;
         if ($client->type === OAuthClient::TYPE_CONFIDENTIAL) {
             $plainSecret = (new AuthService())->randomToken(32);
@@ -72,6 +76,10 @@ class OAuthService
         $client->skip_consent = (bool)($body['skip_consent'] ?? false);
         $client->enabled = (bool)($body['enabled'] ?? false);
         $client->updated_at = new Expression('now()');
+
+        if (!$this->backchannelLogoutUriIsSafe((string)$client->backchannel_logout_uri)) {
+            return ['status' => 400, 'data' => ['error' => 'backchannel_logout_uri must be a trusted HTTPS URL']];
+        }
 
         if (!$client->save()) {
             return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];
@@ -539,6 +547,7 @@ class OAuthService
 
         $claims = [
             'client_id' => $client->client_id,
+            'aud' => Yii::$app->params['apiAudience'],
             'username' => $client->client_id,
             'email' => '',
             'source' => 'client',
@@ -573,6 +582,7 @@ class OAuthService
         $user = User::findOne(['id' => $userId]);
         $claims = [
             'client_id' => $client->client_id,
+            'aud' => Yii::$app->params['apiAudience'],
             'username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
             'source' => $user ? $user->source : '',
@@ -666,6 +676,11 @@ class OAuthService
         }
 
         return array_values(array_filter(preg_split('/\s+/', trim($scope))));
+    }
+
+    private function backchannelLogoutUriIsSafe(string $uri): bool
+    {
+        return $uri === '' || (new OutboundHttpService())->isValidEndpoint($uri);
     }
 
     private function hasConsent(string $userId, string $clientId, string $scope): bool

@@ -106,6 +106,7 @@ return [
                 'POST api/v1/auth/mfa/disable' => 'auth/mfa-disable',
                 'POST api/v1/auth/mfa/recovery-codes' => 'auth/mfa-recovery-codes',
                 'POST api/v1/auth/logout' => 'auth/logout',
+                'POST api/v1/auth/session-token' => 'auth/session-token',
                 'GET api/v1/auth/me' => 'auth/me',
                 'GET api/v1/auth/sessions' => 'auth/sessions',
                 'DELETE api/v1/auth/sessions' => 'auth/revoke-all-sessions',

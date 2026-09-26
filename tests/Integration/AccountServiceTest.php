@@ -90,10 +90,7 @@ class AccountServiceTest extends TestCase
         $this->assertSame(0, $this->activeSessionCount());
         $this->assertSame(0, $this->activeRefreshTokenCount());
         $this->assertNull($auth->currentUser($this->bearerRequest($login['data']['access_token'])));
-        $this->assertSame(
-            $this->userId,
-            $auth->currentUser($this->bearerRequest($externalAccessToken))->id
-        );
+        $this->assertNull($auth->currentUser($this->bearerRequest($externalAccessToken)));
 
         $updated = User::findOne(['id' => $this->userId]);
         $this->assertTrue(password_verify('new-password-123', (string)$updated->password_hash));

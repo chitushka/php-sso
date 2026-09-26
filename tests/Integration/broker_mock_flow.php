@@ -18,6 +18,7 @@ $providerCode = 'mock-' . $suffix;
 $externalCode = 'broker-' . $suffix;
 $providerId = null;
 $userId = null;
+$localUserId = null;
 $failure = null;
 
 function failTest(string $message): void
@@ -32,11 +33,20 @@ function assertTrue($condition, string $message): void
     }
 }
 
-function httpRequest(string $method, string $url): array
+function httpRequest(string $method, string $url, array $cookies = []): array
 {
+    $headers = [];
+    if (!empty($cookies)) {
+        $pairs = [];
+        foreach ($cookies as $name => $value) {
+            $pairs[] = $name . '=' . $value;
+        }
+        $headers[] = 'Cookie: ' . implode('; ', $pairs);
+    }
     $context = stream_context_create([
         'http' => [
             'method' => $method,
+            'header' => implode("\r\n", $headers),
             'ignore_errors' => true,
             'follow_location' => 0,
             'max_redirects' => 0,
@@ -83,6 +93,17 @@ try {
             ':authorize_url' => $providerUrl . '/authorize?prompt=login&client_id=stale#provider-fragment',
             ':token_url' => $providerUrl . '/token',
             ':userinfo_url' => $providerUrl . '/userinfo',
+        ]
+    )->queryScalar();
+
+    $localUserId = (string)$db->createCommand(
+        "INSERT INTO users(username,email,password_hash,status,source,email_verified)
+         VALUES (:username,:email,:password_hash,'active','local',true)
+         RETURNING id",
+        [
+            ':username' => 'local-' . $suffix,
+            ':email' => $externalCode . '@broker.example.test',
+            ':password_hash' => password_hash('local-password-123', PASSWORD_DEFAULT),
         ]
     )->queryScalar();
 
@@ -134,20 +155,26 @@ try {
         'broker callback must redirect back to continue URL, got '
             . $callback['status'] . ': ' . substr((string)$callback['body'], 0, 500)
     );
-    $expectedRelative = '/broker-finished#broker_token=';
+    $expectedRelative = '/broker-finished';
     $expectedAbsolute = $baseUrl . $expectedRelative;
     assertTrue(
-        strpos($callback['location'], $expectedRelative) === 0 || strpos($callback['location'], $expectedAbsolute) === 0,
-        'broker callback must include broker token fragment, got ' . $callback['location']
+        $callback['location'] === $expectedRelative || $callback['location'] === $expectedAbsolute,
+        'broker callback must not expose an access token in the URL, got ' . $callback['location']
     );
     assertTrue(!empty($callback['cookies']['sso_session']), 'broker callback must set SSO session cookie');
 
+    $sessionToken = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', $callback['cookies']);
+    $sessionPayload = json_decode((string)$sessionToken['body'], true);
+    assertTrue($sessionToken['status'] === 200, 'broker session cookie must mint an in-memory access token');
+    assertTrue(!empty($sessionPayload['access_token']), 'session-token response must include access_token');
+
     $user = $db->createCommand(
-        'SELECT id, username, email, source, email_verified FROM users WHERE email = :email',
-        [':email' => $externalCode . '@broker.example.test']
+        'SELECT id, username, email, source, email_verified FROM users WHERE email = :email AND source = :source',
+        [':email' => $externalCode . '@broker.example.test', ':source' => 'federated']
     )->queryOne();
     assertTrue((bool)$user, 'broker callback must provision federated user');
     assertTrue($user['source'] === 'federated', 'broker user must be federated');
+    assertTrue($user['id'] !== $localUserId, 'verified email must not auto-link an existing local account');
     assertTrue((bool)$user['email_verified'] === false, 'broker provision must preserve Go email_verified zero value');
     $userId = $user['id'];
 
@@ -186,6 +213,9 @@ try {
     if ($providerId !== null) {
         $db->createCommand()->delete('audit_logs', ['target_type' => 'identity_provider', 'target_id' => $providerId])->execute();
         $db->createCommand()->delete('identity_providers', ['id' => $providerId])->execute();
+    }
+    if ($localUserId !== null) {
+        $db->createCommand()->delete('users', ['id' => $localUserId])->execute();
     }
 }
 

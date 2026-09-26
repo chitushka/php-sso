@@ -757,6 +757,16 @@ try {
     $accessTokenClaims = jwtPart($token['json']['access_token'], 1);
     assertTrue(($accessTokenClaims['email'] ?? '') === $adminUsername . '@example.test', 'OAuth access token must include user email');
     assertTrue(($accessTokenClaims['source'] ?? '') === 'local', 'OAuth access token must include user source');
+    assertTrue(
+        ($accessTokenClaims['aud'] ?? '') === $configuration['json']['issuer'] . '/api',
+        'OAuth access token must target the API audience'
+    );
+    $oauthAdminDenied = jsonRequest('GET', $baseUrl . '/api/v1/users', [], $token['json']['access_token']);
+    assertTrue($oauthAdminDenied['status'] === 403, 'standard OAuth scopes must not authorize admin API access');
+    assertTrue(
+        ($oauthAdminDenied['json']['error'] ?? '') === 'insufficient scope',
+        'admin API must report insufficient OAuth scope before RBAC'
+    );
     assertTrue(!array_key_exists('iss', $accessTokenClaims), 'OAuth access token must omit issuer like Go');
 
     $refreshIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
@@ -2118,8 +2128,7 @@ try {
     assertTrue($firstPartyAfterRevokeAll['status'] === 401, 'revoke all must invalidate first-party token');
 
     $externalTokenAfterRevokeAll = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', [], $token['json']['access_token']);
-    assertTrue($externalTokenAfterRevokeAll['status'] === 200, 'revoke all must preserve external OAuth access token');
-    assertTrue(($externalTokenAfterRevokeAll['json']['sub'] ?? '') === $adminId, 'preserved external token must still resolve its user');
+    assertTrue($externalTokenAfterRevokeAll['status'] === 401, 'revoke all must invalidate external OAuth access token');
 
     fwrite(STDOUT, "OK: integration OAuth/OIDC smoke flow passed\n");
 } finally {

@@ -170,7 +170,7 @@ docker compose run --rm app php yii help
 - 2026-09-17: Groups CRUD, group-role и user-group path/body UUID выровнены с Go; составные маршруты возвращают точные `invalid group id`, `invalid user id`, `invalid role id` и `invalid json body`.
 - 2026-09-17: Roles CRUD и permission assignment path/body UUID выровнены с Go: API возвращает точные `invalid role id`, `invalid permission id` и `invalid json body` вместо SPA fallback или PostgreSQL-ошибки.
 - 2026-09-17: Users GET/PUT/DELETE path UUID и pagination limit выровнены с Go: невалидный ID возвращает 400 JSON вместо SPA fallback, отсутствующий пользователь — 404, максимальный limit равен 100.
-- 2026-09-17: `tokens_invalid_before` выровнен с Go-семантикой: password reset и revoke-all отзывают first-party JWT и refresh tokens, но внешний OAuth access token с `client_id` продолжает работать до `exp`; блокировка аккаунта по-прежнему отзывает все типы токенов.
+- 2026-09-26: `tokens_invalid_before` применяется ко всем пользовательским JWT, включая OAuth access tokens с `client_id`; password reset и revoke-all больше не оставляют внешний token действующим.
 - 2026-09-17: MFA activate/disable lifecycle выровнен с Go-контрактом, включая ошибки повторных операций, успешный статус `mfa_disabled` и сохранение текущего Bearer JWT; устранена также секундная гонка revoke-all с немедленным повторным login.
 - 2026-09-17: MFA login verification выровнен с Go-контрактом: invalid token и invalid code различаются, неверные коды участвуют в login/IP lockout, успешная MFA-проверка сбрасывает попытки; поведение закреплено PostgreSQL PHPUnit и HTTP smoke-тестами.
 - 2026-09-17: Session API выровнен с Go-сервисом: список показывает только активные неистёкшие сессии и включает `user_id`, невалидный session UUID возвращает 400, а list/revoke/revoke-all и инвалидизация Bearer JWT закреплены PHPUnit и HTTP smoke-проверками.
@@ -202,7 +202,8 @@ docker compose run --rm app php yii help
 - 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
 - 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные first-party Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
-- 2026-09-12: перенесён identity brokering для Google/GitHub/OIDC: CRUD identity providers, signed state, callback, безопасная линковка по verified email, JIT-provisioning federated users и кнопки external sign-in в Vue UI.
+- 2026-09-26: identity brokering усилен: token исключён из redirect URL и `localStorage`, `continue` ограничен локальными путями, исходящие token/userinfo/back-channel запросы защищены от SSRF, а совпадение verified email не вызывает автоматическую привязку существующего аккаунта.
+- 2026-09-26: OAuth access tokens используют `SSO_API_AUDIENCE`; admin API требует соответствующий permission scope поверх RBAC. OIDC private keys шифруются `SSO_ENCRYPTION_KEY`, включая миграцию существующих ключей и их последующую ротацию.
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
 - 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.

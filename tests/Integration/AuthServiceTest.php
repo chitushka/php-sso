@@ -209,6 +209,22 @@ class AuthServiceTest extends TestCase
         $this->assertNull($jwt->verify($paddedHeader . '.' . $parts[1] . '.' . $paddedSignature));
     }
 
+    public function testOAuthScopesRestrictAdministrativePermissions(): void
+    {
+        $service = new AuthService();
+        $firstParty = ['sub' => $this->userId];
+        $oauth = [
+            'sub' => $this->userId,
+            'client_id' => 'scope-test-client',
+            'scope' => 'openid profile users:read',
+        ];
+
+        $this->assertTrue($service->tokenAllowsPermission($firstParty, 'users', 'delete'));
+        $this->assertTrue($service->tokenAllowsPermission($oauth, 'users', 'read'));
+        $this->assertFalse($service->tokenAllowsPermission($oauth, 'users', 'delete'));
+        $this->assertFalse($service->tokenAllowsPermission($oauth, 'roles', 'read'));
+    }
+
     public function testMfaVerificationDistinguishesTokenCodeAndLockout(): void
     {
         $mfa = new MfaService();
