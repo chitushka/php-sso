@@ -158,7 +158,30 @@ class AuthService
         }
 
         $claims = (new JwtService())->verify(trim(substr($header, 7)));
-        if (!$claims || empty($claims['sub']) || !empty($claims['purpose'])) {
+        if (!$claims || empty($claims['sub']) || empty($claims['jti'])) {
+            return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
+        }
+
+        if ((bool)Yii::$app->db->createCommand(
+            'SELECT EXISTS(SELECT 1 FROM revoked_access_tokens WHERE jti = :jti AND expires_at > now())',
+            [':jti' => (string)$claims['jti']]
+        )->queryScalar()) {
+            return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
+        }
+
+        if (($claims['purpose'] ?? '') === 'client_credentials') {
+            $client = OAuthClient::findOne([
+                'id' => (string)$claims['sub'],
+                'client_id' => (string)($claims['client_id'] ?? ''),
+                'enabled' => true,
+            ]);
+            if (!$client || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']) {
+                return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
+            }
+            return ['user' => null, 'client' => $client, 'claims' => $claims, 'error' => null];
+        }
+
+        if (!empty($claims['purpose'])) {
             return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
         }
 
@@ -185,7 +208,23 @@ class AuthService
             return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
         }
 
-        return ['user' => $user, 'claims' => $claims, 'error' => null];
+        return ['user' => $user, 'client' => null, 'claims' => $claims, 'error' => null];
+    }
+
+    public function revokeAccessToken(Request $request): void
+    {
+        $header = (string)$request->headers->get('Authorization', '');
+        if (stripos($header, 'Bearer ') !== 0) {
+            return;
+        }
+        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        if (!$claims || empty($claims['jti']) || empty($claims['exp'])) {
+            return;
+        }
+        Yii::$app->db->createCommand(
+            'INSERT INTO revoked_access_tokens(jti, expires_at) VALUES (:jti, to_timestamp(:exp)) ON CONFLICT (jti) DO NOTHING',
+            [':jti' => (string)$claims['jti'], ':exp' => (int)$claims['exp']]
+        )->execute();
     }
 
     public function currentClaims(Request $request): ?array

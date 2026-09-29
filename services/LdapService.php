@@ -53,7 +53,7 @@ class LdapService
         }
         $provider->refresh();
 
-        AuditService::record(null, 'ldap_provider_updated', 'ldap_provider', $provider->id);
+        AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
         return ['status' => 200, 'data' => $this->publicProvider($provider)];
     }
 
@@ -61,7 +61,7 @@ class LdapService
     {
         // Go repository не различает удаление существующего и уже отсутствующего провайдера.
         Yii::$app->db->createCommand()->delete('ldap_providers', ['id' => $id])->execute();
-        AuditService::record(null, 'ldap_provider_deleted', 'ldap_provider', $id);
+        AuditService::record($actorId, 'ldap_provider_deleted', 'ldap_provider', $id);
         return true;
     }
 
@@ -81,6 +81,12 @@ class LdapService
         if ($host === '' || $bindDn === '' || $bindPassword === '') {
             return ['ok' => false, 'error' => 'host, bind_dn and bind_password are required'];
         }
+
+        if (!$this->ldapEndpointAllowed($host, $useTls, $startTls)) {
+            return ['ok' => false, 'error' => 'LDAP host or transport is not allowed'];
+        }
+
+        $this->configureTls();
 
         $uri = ($useTls ? 'ldaps://' : 'ldap://') . $host . ':' . $port;
         $conn = @ldap_connect($uri);
@@ -153,7 +159,7 @@ class LdapService
         }
         $mapping->refresh();
 
-        AuditService::record(null, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
+        AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
         return ['status' => 201, 'data' => $this->publicGroupMapping($mapping)];
     }
 
@@ -165,7 +171,7 @@ class LdapService
         }
 
         $mapping->delete();
-        AuditService::record(null, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
+        AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
         return true;
     }
 
@@ -221,6 +227,10 @@ class LdapService
 
     private function connect(LdapProvider $provider)
     {
+        if (!$this->ldapEndpointAllowed((string)$provider->host, (bool)$provider->use_tls, (bool)$provider->start_tls)) {
+            return null;
+        }
+        $this->configureTls();
         $uri = ($provider->use_tls ? 'ldaps://' : 'ldap://') . $provider->host . ':' . $provider->port;
         $conn = @ldap_connect($uri);
         if (!$conn) {
@@ -236,6 +246,38 @@ class LdapService
         }
 
         return $conn;
+    }
+
+    private function ldapEndpointAllowed(string $host, bool $useTls, bool $startTls): bool
+    {
+        $host = strtolower(rtrim(trim($host), '.'));
+        if ($host === '' || preg_match('/[\x00-\x20\\\/]/', $host)) {
+            return false;
+        }
+        $allowed = array_filter(array_map(static function (string $value): string {
+            return strtolower(rtrim(trim($value), '.'));
+        }, explode(',', (string)(Yii::$app->params['ldapAllowedHosts'] ?? ''))));
+        if ($allowed === [] && strtolower((string)getenv('SSO_ENV')) === 'prod') {
+            return false;
+        }
+        if ($allowed !== [] && !in_array($host, $allowed, true)) {
+            return false;
+        }
+        if (!(bool)(Yii::$app->params['ldapAllowInsecure'] ?? false) && !$useTls && !$startTls) {
+            return false;
+        }
+        return true;
+    }
+
+    private function configureTls(): void
+    {
+        if (defined('LDAP_OPT_X_TLS_REQUIRE_CERT') && defined('LDAP_OPT_X_TLS_DEMAND')) {
+            @ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_DEMAND);
+        }
+        $ca = (string)(Yii::$app->params['ldapCaCertificate'] ?? '');
+        if ($ca !== '' && defined('LDAP_OPT_X_TLS_CACERTFILE')) {
+            @ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, $ca);
+        }
     }
 
     private function upsertLdapUser(LdapProvider $provider, array $entry, string $userDn, string $login): ?User

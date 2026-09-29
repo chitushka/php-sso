@@ -107,6 +107,7 @@ class AuthServiceTest extends TestCase
         $this->assertSame($this->username, $claims['username']);
         $this->assertSame($this->email, $claims['email']);
         $this->assertSame(User::SOURCE_LOCAL, $claims['source']);
+        $this->assertNotEmpty($claims['jti']);
         $this->assertArrayNotHasKey('iss', $claims);
 
         $this->assertSame(1, $this->auditCount('login_success'));
@@ -114,6 +115,10 @@ class AuthServiceTest extends TestCase
         $service->logout($sessionToken);
         $this->assertNull($service->userBySession($sessionToken));
         $this->assertSame(0, $this->activeSessionCount());
+
+        $service->revokeAccessToken($jwtRequest);
+        $this->assertNull($service->currentUser($jwtRequest));
+        Yii::$app->db->createCommand()->delete('revoked_access_tokens', ['jti' => $claims['jti']])->execute();
     }
 
     public function testSessionManagementListsOnlyActiveSessionsAndRevokesOwnedSessions(): void

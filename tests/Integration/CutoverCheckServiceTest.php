@@ -29,7 +29,7 @@ class CutoverCheckServiceTest extends TestCase
         }
 
         $this->transaction = Yii::$app->db->beginTransaction();
-        Yii::$app->db->createCommand()->update('ldap_providers', ['bind_password' => ''])->execute();
+        Yii::$app->db->createCommand()->update('ldap_providers', ['bind_password' => '', 'enabled' => false])->execute();
         Yii::$app->db->createCommand()->update('identity_providers', ['client_secret' => ''])->execute();
         Yii::$app->db->createCommand()->update('users', ['mfa_secret' => ''])->execute();
         Yii::$app->db->createCommand()->delete('oidc_signing_keys')->execute();

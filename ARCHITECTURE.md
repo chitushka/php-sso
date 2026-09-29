@@ -134,7 +134,11 @@ OAuth token/revoke/introspection разбирают HTTP Basic credentials по 
 
 Успешный `client_credentials` grant возвращает `access_token`, `token_type`, `expires_in` и подтверждённый непустой `scope`, но не выдаёт refresh или ID Token. Для пустого scope поле не сериализуется, повторяя Go `json:"scope,omitempty"`.
 
-HS256 access tokens повторяют Go `auth.Claims`: общие identity claims — `sub`, `username`, `email`, `source`, `iat`, `exp`; OAuth user token дополнительно несёт `client_id` и непустой `scope`, а service-account token — `source=client` и `purpose=client_credentials`. Claim `iss` отсутствует, поскольку Go issuer заполняет его только в RS256 OIDC ID/logout tokens.
+HS256 access tokens содержат `sub`, уникальный `jti`, identity claims, `iat` и `exp`; OAuth user token дополнительно несёт `client_id`/`scope`, а service-account token — `source=client` и `purpose=client_credentials`. Logout помещает текущий Bearer `jti` в `revoked_access_tokens`, а password reset/change и revoke-all применяют общий user cutoff. OAuth client state и audience проверяются при каждом обращении.
+
+Password reset и change выполняются одной PostgreSQL-транзакцией с отзывом sessions/refresh tokens и записью audit. Authorization code блокируется и помечается использованным только после успешной проверки client/redirect/PKCE; refresh rotation блокирует старую запись до создания следующей. Introspection возвращает active только для токенов вызывающего клиента. MFA login challenge хранится как hashed `one_time_tokens`, потребляется compare-and-set, TOTP counter обновляется атомарно, recovery codes заменяются транзакционно. Bootstrap использует PostgreSQL advisory transaction lock и требует существующую admin role.
+
+SMTP fallback не пишет message body или секретные URL в лог, валидирует адреса/заголовки, выполняет dot-stuffing и запрещает AUTH без STARTTLS. LDAP production transport задаётся `SSO_LDAP_ALLOW_INSECURE=false`, доверенные хосты — `SSO_LDAP_ALLOWED_HOSTS`, CA — `SSO_LDAP_CA_CERT`; TLS требует проверку сертификата.
 
 `JwtService::verify()` не выбирает алгоритм из недоверенного token header: verifier принимает только `alg=HS256`, строго декодирует все три compact JWT-сегмента как unpadded base64url, сравнивает raw HMAC-SHA256 и требует числовой `exp`, находящийся строго в будущем. Необязательный `nbf` также должен быть числовым и не превышать текущее время. Это повторяет проверку signing method, encoding и NumericDate в Go JWT library и закрывает algorithm-confusion и преждевременное принятие токена в PHP-порте.
 

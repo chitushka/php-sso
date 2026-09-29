@@ -3,6 +3,7 @@
 namespace app\services;
 
 use app\models\MfaRecoveryCode;
+use app\models\OneTimeToken;
 use app\models\User;
 use Yii;
 use yii\db\Expression;
@@ -65,18 +66,28 @@ class MfaService
             return ['status' => 409, 'data' => ['error' => 'enroll first']];
         }
 
-        $counter = null;
-        if (!$this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
-            return ['status' => 400, 'data' => ['error' => 'invalid code']];
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $counter = null;
+            if (!$this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid code']];
+            }
+            $user->mfa_secret = (new CryptoService())->encrypt($secret);
+            $user->mfa_enabled = true;
+            $user->mfa_last_used_counter = $counter;
+            if (!$user->save(false, ['mfa_secret', 'mfa_enabled', 'mfa_last_used_counter'])) {
+                throw new \RuntimeException('failed to enable MFA');
+            }
+            $codes = $this->replaceRecoveryCodes($user);
+            AuditService::record($user->id, 'mfa_enabled', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to enable mfa']];
         }
-
-        $user->mfa_secret = (new CryptoService())->encrypt($secret);
-        $user->mfa_enabled = true;
-        $user->mfa_last_used_counter = $counter;
-        $user->save(false, ['mfa_secret', 'mfa_enabled', 'mfa_last_used_counter']);
-
-        $codes = $this->replaceRecoveryCodes($user);
-        AuditService::record($user->id, 'mfa_enabled', 'user', $user->id);
 
         return ['status' => 200, 'data' => ['status' => 'mfa_enabled', 'recovery_codes' => $codes]];
     }
@@ -87,40 +98,63 @@ class MfaService
             return ['status' => 400, 'data' => ['error' => 'mfa is not in the required state']];
         }
 
-        if (!$this->verifyUserCode($user, $code)) {
-            return ['status' => 400, 'data' => ['error' => 'invalid code']];
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            if (!$this->verifyUserCode($user, $code)) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid code']];
+            }
+            $user->mfa_enabled = false;
+            $user->mfa_secret = '';
+            $user->mfa_last_used_counter = 0;
+            if (!$user->save(false, ['mfa_enabled', 'mfa_secret', 'mfa_last_used_counter'])) {
+                throw new \RuntimeException('failed to disable MFA');
+            }
+            MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
+            AuditService::record($user->id, 'mfa_disabled', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to disable mfa']];
         }
-
-        $user->mfa_enabled = false;
-        $user->mfa_secret = '';
-        $user->mfa_last_used_counter = 0;
-        $user->save(false, ['mfa_enabled', 'mfa_secret', 'mfa_last_used_counter']);
-        MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
-        AuditService::record($user->id, 'mfa_disabled', 'user', $user->id);
 
         return ['status' => 200, 'data' => ['status' => 'mfa_disabled']];
     }
 
     public function regenerateRecoveryCodes(User $user, string $code): array
     {
-        if (!$this->verifyUserCode($user, $code)) {
-            return ['status' => 400, 'data' => ['error' => 'invalid mfa code']];
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            if (!$this->verifyUserCode($user, $code)) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid mfa code']];
+            }
+            $codes = $this->replaceRecoveryCodes($user);
+            AuditService::record($user->id, 'mfa_recovery_codes_regenerated', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to regenerate recovery codes']];
         }
-
-        $codes = $this->replaceRecoveryCodes($user);
-        AuditService::record($user->id, 'mfa_recovery_codes_regenerated', 'user', $user->id);
 
         return ['status' => 200, 'data' => ['recovery_codes' => $codes]];
     }
 
     public function createLoginChallenge(User $user): array
     {
-        $token = (new JwtService())->issue($user->id, [
-            'username' => $user->username,
-            'email' => '',
-            'source' => '',
-            'purpose' => 'mfa',
-        ], self::CHALLENGE_TTL);
+        $token = JwtService::base64url(random_bytes(32));
+        $challenge = new OneTimeToken();
+        $challenge->user_id = $user->id;
+        $challenge->purpose = OneTimeToken::PURPOSE_MFA_LOGIN;
+        $challenge->token_hash = hash('sha256', $token);
+        $challenge->expires_at = gmdate('Y-m-d H:i:sP', time() + self::CHALLENGE_TTL);
+        if (!$challenge->save(false)) {
+            throw new \RuntimeException('failed to create MFA challenge');
+        }
 
         return [
             'user' => [
@@ -156,26 +190,51 @@ class MfaService
 
     public function loginChallengeUser(string $challengeToken): ?User
     {
-        $claims = (new JwtService())->verify($challengeToken);
-        if (!$claims || ($claims['purpose'] ?? '') !== 'mfa' || empty($claims['sub'])) {
+        if ($challengeToken === '') {
             return null;
         }
-
-        return User::findOne([
-            'id' => $claims['sub'],
-            'status' => User::STATUS_ACTIVE,
-            'mfa_enabled' => true,
-        ]);
+        return User::find()
+            ->innerJoin('one_time_tokens ott', 'ott.user_id = users.id')
+            ->where([
+                'ott.purpose' => OneTimeToken::PURPOSE_MFA_LOGIN,
+                'ott.token_hash' => hash('sha256', $challengeToken),
+                'ott.used_at' => null,
+                'users.status' => User::STATUS_ACTIVE,
+                'users.mfa_enabled' => true,
+            ])
+            ->andWhere(['>', 'ott.expires_at', new Expression('now()')])
+            ->one();
     }
 
     public function completeLoginChallenge(string $challengeToken, User $user, string $code): bool
     {
-        $challengeUser = $this->loginChallengeUser($challengeToken);
-        if (!$challengeUser || $challengeUser->id !== $user->id || !$this->verifyUserCode($user, $code)) {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $challengeUser = $this->loginChallengeUser($challengeToken);
+            if (!$challengeUser || $challengeUser->id !== $user->id || !$this->verifyUserCode($user, $code)) {
+                $transaction->rollBack();
+                return false;
+            }
+            $consumed = OneTimeToken::updateAll(
+                ['used_at' => new Expression('now()')],
+                [
+                    'and',
+                    ['purpose' => OneTimeToken::PURPOSE_MFA_LOGIN, 'token_hash' => hash('sha256', $challengeToken), 'used_at' => null],
+                    ['>', 'expires_at', new Expression('now()')],
+                ]
+            );
+            if ($consumed !== 1) {
+                $transaction->rollBack();
+                return false;
+            }
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return false;
         }
-
-        return true;
     }
 
     private function verifyUserCode(User $user, string $code): bool
@@ -183,9 +242,15 @@ class MfaService
         $secret = (new CryptoService())->decrypt((string)$user->mfa_secret);
         $counter = null;
         if ($secret !== '' && $this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
-            $user->mfa_last_used_counter = $counter;
-            $user->save(false, ['mfa_last_used_counter']);
-            return true;
+            $updated = User::updateAll(
+                ['mfa_last_used_counter' => $counter],
+                ['and', ['id' => $user->id], ['<', 'mfa_last_used_counter', $counter]]
+            );
+            if ($updated === 1) {
+                $user->mfa_last_used_counter = $counter;
+                return true;
+            }
+            return false;
         }
 
         return $this->verifyRecoveryCode($user, $code);
@@ -231,20 +296,33 @@ class MfaService
 
     private function replaceRecoveryCodes(User $user): array
     {
-        MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
+        $ownsTransaction = Yii::$app->db->getTransaction() === null;
+        $transaction = $ownsTransaction ? Yii::$app->db->beginTransaction() : null;
 
-        $codes = [];
-        for ($index = 0; $index < self::RECOVERY_CODES_COUNT; $index++) {
-            $plain = bin2hex(random_bytes(5));
-            $codes[] = $plain;
+        try {
+            MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
+            $codes = [];
+            for ($index = 0; $index < self::RECOVERY_CODES_COUNT; $index++) {
+                $plain = bin2hex(random_bytes(5));
+                $codes[] = $plain;
 
-            $model = new MfaRecoveryCode();
-            $model->user_id = $user->id;
-            $model->code_hash = hash('sha256', $plain);
-            $model->save(false);
+                $model = new MfaRecoveryCode();
+                $model->user_id = $user->id;
+                $model->code_hash = hash('sha256', $plain);
+                if (!$model->save(false)) {
+                    throw new \RuntimeException('failed to create recovery code');
+                }
+            }
+            if ($transaction) {
+                $transaction->commit();
+            }
+            return $codes;
+        } catch (\Throwable $exception) {
+            if ($transaction && $transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
-
-        return $codes;
     }
 
     private function totp(string $secretBytes, int $counter): string

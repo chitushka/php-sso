@@ -44,7 +44,7 @@ class CutoverCheckService
             return $results;
         }
 
-        return array_merge($results, $this->checkSeedData(), $this->checkEncryptedSecrets());
+        return array_merge($results, $this->checkLdapSecurity(), $this->checkSeedData(), $this->checkEncryptedSecrets());
     }
 
     public static function hasFailures(array $results): bool
@@ -168,6 +168,7 @@ class CutoverCheckService
             'user_roles' => ['user_id', 'role_id'],
             'user_consents' => ['user_id', 'client_id', 'scopes'],
             'one_time_tokens' => ['id', 'user_id', 'purpose', 'token_hash'],
+            'revoked_access_tokens' => ['jti', 'expires_at', 'revoked_at'],
             'mfa_recovery_codes' => ['id', 'user_id', 'code_hash', 'used_at'],
             'groups' => ['id', 'code'],
             'group_roles' => ['group_id', 'role_id'],
@@ -229,6 +230,32 @@ class CutoverCheckService
                 $permissions > 0 ? 'permission seed data is present' : 'permission seed data is missing'
             ),
         ];
+    }
+
+    private function checkLdapSecurity(): array
+    {
+        $enabled = (int)$this->db->createCommand('SELECT COUNT(*) FROM ldap_providers WHERE enabled = true')->queryScalar();
+        if ($enabled === 0) {
+            return [$this->result(self::PASS, 'config.ldap_security', 'no enabled LDAP providers')];
+        }
+
+        $allowlist = trim((string)($this->environment['SSO_LDAP_ALLOWED_HOSTS'] ?? ''));
+        $allowInsecure = filter_var(
+            $this->environment['SSO_LDAP_ALLOW_INSECURE'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $insecure = (int)$this->db->createCommand(
+            'SELECT COUNT(*) FROM ldap_providers WHERE enabled = true AND use_tls = false AND start_tls = false'
+        )->queryScalar();
+        $valid = $allowlist !== '' && !$allowInsecure && $insecure === 0;
+
+        return [$this->result(
+            $valid ? self::PASS : self::FAIL,
+            'config.ldap_security',
+            $valid
+                ? 'enabled LDAP providers use TLS and an explicit host allowlist'
+                : 'enabled LDAP providers require TLS, SSO_LDAP_ALLOWED_HOSTS and SSO_LDAP_ALLOW_INSECURE=false'
+        )];
     }
 
     private function checkEncryptedSecrets(): array

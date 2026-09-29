@@ -41,6 +41,7 @@ SELECT concat_ws('|',
     (SELECT count(*) FROM federated_identities),
     (SELECT count(*) FROM user_consents),
     (SELECT count(*) FROM one_time_tokens),
+    (SELECT count(*) FROM revoked_access_tokens),
     (SELECT count(*) FROM mfa_recovery_codes)
 );"
 
@@ -77,7 +78,8 @@ WITH required(name) AS (
         ('group_roles'), ('user_groups'), ('ldap_providers'),
         ('ldap_group_mappings'), ('identity_providers'),
         ('federated_identities'), ('user_consents'), ('one_time_tokens'),
-        ('mfa_recovery_codes'), ('login_attempts'), ('audit_logs'), ('cache')
+        ('revoked_access_tokens'), ('mfa_recovery_codes'), ('login_attempts'),
+        ('audit_logs'), ('cache')
 )
 SELECT count(*)
 FROM required

@@ -16,6 +16,9 @@ return [
     'cacheDriver' => getenv('SSO_CACHE_DRIVER') ?: 'file',
     'trustedProxies' => getenv('SSO_TRUSTED_PROXIES') ?: '',
     'outboundHostAllowlist' => getenv('SSO_OUTBOUND_HOST_ALLOWLIST') ?: '',
+    'ldapAllowedHosts' => getenv('SSO_LDAP_ALLOWED_HOSTS') ?: '',
+    'ldapCaCertificate' => getenv('SSO_LDAP_CA_CERT') ?: '',
+    'ldapAllowInsecure' => filter_var(getenv('SSO_LDAP_ALLOW_INSECURE') ?: false, FILTER_VALIDATE_BOOLEAN),
     'rateLimitedRoutes' => [
         'auth/login',
         'auth/verify-mfa',
@@ -33,4 +36,5 @@ return [
     'smtpPassword' => getenv('SSO_SMTP_PASSWORD') ?: '',
     'smtpFrom' => getenv('SSO_SMTP_FROM') ?: '',
     'smtpStartTls' => filter_var(getenv('SSO_SMTP_STARTTLS') ?: false, FILTER_VALIDATE_BOOLEAN),
+    'smtpCaCertificate' => getenv('SSO_SMTP_CA_CERT') ?: '',
 ];

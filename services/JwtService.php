@@ -19,6 +19,7 @@ class JwtService
         $ttl = $ttl ?? Yii::$app->params['accessTokenTtl'];
         $payload = array_merge($claims, [
             'sub' => $subject,
+            'jti' => $claims['jti'] ?? self::base64url(random_bytes(16)),
             'iat' => $now,
             'exp' => $now + $ttl,
         ]);

@@ -41,7 +41,9 @@ class AuthController extends ApiController
     public function actionLogout(): array
     {
         $token = Yii::$app->request->cookies->getValue('sso_session', '');
-        (new AuthService())->logout($token);
+        $auth = new AuthService();
+        $auth->logout($token);
+        $auth->revokeAccessToken(Yii::$app->request);
         Yii::$app->response->cookies->remove('sso_session');
         return ['status' => 'logged_out'];
     }
@@ -154,6 +156,10 @@ class AuthController extends ApiController
             (string)($body['old_password'] ?? ''),
             (string)($body['new_password'] ?? '')
         );
+
+        if ($result['status'] === 200) {
+            Yii::$app->response->cookies->remove('sso_session');
+        }
 
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];

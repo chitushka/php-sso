@@ -135,6 +135,7 @@ class UsersController extends ApiController
             return $this->fail(500, 'failed to update user');
         }
 
+        $previousStatus = (string)$user->status;
         $user->username = trim((string)($body['username'] ?? ''));
         $user->email = trim((string)($body['email'] ?? ''));
         $user->status = trim((string)($body['status'] ?? ''));
@@ -142,7 +143,29 @@ class UsersController extends ApiController
         $user->last_name = trim((string)($body['last_name'] ?? ''));
         $user->attributes = json_encode((array)($body['attributes'] ?? []));
 
-        if (!$user->save()) {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            if ($previousStatus !== (string)$user->status) {
+                $user->tokens_invalid_before = new Expression('now()');
+            }
+            if (!$user->save()) {
+                $transaction->rollBack();
+                return $this->fail(500, 'failed to update user');
+            }
+            if ($previousStatus !== (string)$user->status) {
+                Yii::$app->db->createCommand()->update(
+                    'sessions', ['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]
+                )->execute();
+                Yii::$app->db->createCommand()->update(
+                    'refresh_tokens', ['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]
+                )->execute();
+            }
+            AuditService::record(null, 'user_updated', 'user', $id, true);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return $this->fail(500, 'failed to update user');
         }
 

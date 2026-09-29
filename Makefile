@@ -77,7 +77,7 @@ integration-broker:
 
 integration-ldap:
 	docker compose --profile integration up -d --wait postgres ldap-test
-	docker compose --profile integration run --rm --no-deps -e SSO_TEST_LDAP_HOST=ldap-test -e SSO_TEST_LDAP_PORT=389 -e SSO_TEST_LDAP_BIND_DN=cn=admin,dc=example,dc=org -e SSO_TEST_LDAP_BIND_PASSWORD=admin-password -e SSO_TEST_LDAP_BASE_DN=ou=people,dc=example,dc=org -e SSO_TEST_LDAP_LOGIN=fixture-user -e SSO_TEST_LDAP_PASSWORD=fixture-password -e SSO_TEST_LDAP_GROUP_DN=cn=sso-users,ou=groups,dc=example,dc=org -e SSO_TEST_LDAP_GROUP_ATTRIBUTE=departmentNumber app sh -lc "php yii migrate --interactive=0 && php tests/Integration/ldap_bind_flow.php"
+	docker compose --profile integration run --rm --no-deps -e SSO_LDAP_ALLOW_INSECURE=true -e SSO_LDAP_ALLOWED_HOSTS=ldap-test -e SSO_TEST_LDAP_HOST=ldap-test -e SSO_TEST_LDAP_PORT=389 -e SSO_TEST_LDAP_BIND_DN=cn=admin,dc=example,dc=org -e SSO_TEST_LDAP_BIND_PASSWORD=admin-password -e SSO_TEST_LDAP_BASE_DN=ou=people,dc=example,dc=org -e SSO_TEST_LDAP_LOGIN=fixture-user -e SSO_TEST_LDAP_PASSWORD=fixture-password -e SSO_TEST_LDAP_GROUP_DN=cn=sso-users,ou=groups,dc=example,dc=org -e SSO_TEST_LDAP_GROUP_ATTRIBUTE=departmentNumber app sh -lc "php yii migrate --interactive=0 && php tests/Integration/ldap_bind_flow.php"
 	docker compose --profile integration stop ldap-test
 
 integration-ldap-external:

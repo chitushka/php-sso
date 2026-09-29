@@ -140,14 +140,16 @@ class RbacService
 
     public function assignPermissionToRole(string $roleId, string $permissionId): void
     {
-        $this->insertIgnore('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId]);
-        AuditService::record(null, 'permission_assigned', 'role', $roleId);
+        $this->auditMutation(function () use ($roleId, $permissionId): int {
+            return $this->insertIgnore('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId]);
+        }, 'permission_assigned', 'role', $roleId);
     }
 
     public function removePermissionFromRole(string $roleId, string $permissionId): void
     {
-        Yii::$app->db->createCommand()->delete('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId])->execute();
-        AuditService::record(null, 'permission_removed', 'role', $roleId);
+        $this->auditMutation(function () use ($roleId, $permissionId): int {
+            return Yii::$app->db->createCommand()->delete('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId])->execute();
+        }, 'permission_removed', 'role', $roleId);
     }
 
     public function listUserRoles(string $userId): array
@@ -166,14 +168,16 @@ class RbacService
 
     public function assignRoleToUser(string $userId, string $roleId): void
     {
-        $this->insertIgnore('user_roles', ['user_id' => $userId, 'role_id' => $roleId]);
-        AuditService::record(null, 'role_assigned', 'user', $userId);
+        $this->auditMutation(function () use ($userId, $roleId): int {
+            return $this->insertIgnore('user_roles', ['user_id' => $userId, 'role_id' => $roleId]);
+        }, 'role_assigned', 'user', $userId);
     }
 
     public function removeRoleFromUser(string $userId, string $roleId): void
     {
-        Yii::$app->db->createCommand()->delete('user_roles', ['user_id' => $userId, 'role_id' => $roleId])->execute();
-        AuditService::record(null, 'role_removed', 'user', $userId);
+        $this->auditMutation(function () use ($userId, $roleId): int {
+            return Yii::$app->db->createCommand()->delete('user_roles', ['user_id' => $userId, 'role_id' => $roleId])->execute();
+        }, 'role_removed', 'user', $userId);
     }
 
     public function listGroups(): array
@@ -267,14 +271,16 @@ class RbacService
 
     public function assignRoleToGroup(string $groupId, string $roleId): void
     {
-        $this->insertIgnore('group_roles', ['group_id' => $groupId, 'role_id' => $roleId]);
-        AuditService::record(null, 'group_role_assigned', 'group', $groupId);
+        $this->auditMutation(function () use ($groupId, $roleId): int {
+            return $this->insertIgnore('group_roles', ['group_id' => $groupId, 'role_id' => $roleId]);
+        }, 'group_role_assigned', 'group', $groupId);
     }
 
     public function removeRoleFromGroup(string $groupId, string $roleId): void
     {
-        Yii::$app->db->createCommand()->delete('group_roles', ['group_id' => $groupId, 'role_id' => $roleId])->execute();
-        AuditService::record(null, 'group_role_removed', 'group', $groupId);
+        $this->auditMutation(function () use ($groupId, $roleId): int {
+            return Yii::$app->db->createCommand()->delete('group_roles', ['group_id' => $groupId, 'role_id' => $roleId])->execute();
+        }, 'group_role_removed', 'group', $groupId);
     }
 
     public function listUserGroups(string $userId): array
@@ -293,17 +299,19 @@ class RbacService
 
     public function assignGroupToUser(string $userId, string $groupId): void
     {
-        $this->insertIgnore('user_groups', ['user_id' => $userId, 'group_id' => $groupId, 'source' => 'manual']);
-        AuditService::record(null, 'group_assigned', 'user', $userId);
+        $this->auditMutation(function () use ($userId, $groupId): int {
+            return $this->insertIgnore('user_groups', ['user_id' => $userId, 'group_id' => $groupId, 'source' => 'manual']);
+        }, 'group_assigned', 'user', $userId);
     }
 
     public function removeGroupFromUser(string $userId, string $groupId): void
     {
-        Yii::$app->db->createCommand()->delete('user_groups', ['user_id' => $userId, 'group_id' => $groupId])->execute();
-        AuditService::record(null, 'group_removed', 'user', $userId);
+        $this->auditMutation(function () use ($userId, $groupId): int {
+            return Yii::$app->db->createCommand()->delete('user_groups', ['user_id' => $userId, 'group_id' => $groupId])->execute();
+        }, 'group_removed', 'user', $userId);
     }
 
-    private function insertIgnore(string $table, array $data): void
+    private function insertIgnore(string $table, array $data): int
     {
         // Yii2 не имеет кросс-DB метода ON CONFLICT, поэтому для PostgreSQL используем явный SQL.
         $columns = array_keys($data);
@@ -312,9 +320,25 @@ class RbacService
             $params[':' . $column] = $data[$column];
         }
 
-        Yii::$app->db->createCommand(
+        return Yii::$app->db->createCommand(
             'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_keys($params)) . ') ON CONFLICT DO NOTHING',
             $params
         )->execute();
+    }
+
+    private function auditMutation(callable $mutation, string $action, string $targetType, string $targetId): void
+    {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            if ((int)$mutation() > 0) {
+                AuditService::record(null, $action, $targetType, $targetId);
+            }
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 }

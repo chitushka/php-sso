@@ -226,13 +226,17 @@ class OAuthService
 
     public function introspect(Request $request): array
     {
-        if (!$this->clientFromRequest($request)) {
+        $caller = $this->clientFromRequest($request);
+        if (!$caller) {
             return ['ok' => false];
         }
 
         $rawToken = (string)$request->post('token');
         $refreshToken = RefreshToken::findOne(['token_hash' => hash('sha256', $rawToken)]);
         if ($refreshToken) {
+            if ($refreshToken->client_id !== $caller->client_id) {
+                return ['ok' => true, 'data' => ['active' => false]];
+            }
             if ($refreshToken->revoked_at
                 || $refreshToken->rotated_at
                 || strtotime((string)$refreshToken->expires_at) <= time()) {
@@ -251,7 +255,14 @@ class OAuthService
         }
 
         $claims = (new JwtService())->verify($rawToken);
-        if (!$claims) {
+        if (!$claims
+            || ($claims['client_id'] ?? '') !== $caller->client_id
+            || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']) {
+            return ['ok' => true, 'data' => ['active' => false]];
+        }
+
+        $authentication = $this->authenticateRawAccessToken($rawToken);
+        if (!$authentication) {
             return ['ok' => true, 'data' => ['active' => false]];
         }
 
@@ -454,30 +465,37 @@ class OAuthService
 
     private function authorizationCodeToken(Request $request, OAuthClient $client): array
     {
-        $code = Yii::$app->db->createCommand(
-            'UPDATE oauth_authorization_codes
-             SET used_at = now()
-             WHERE code_hash = :code_hash AND used_at IS NULL AND expires_at > now()
-             RETURNING client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, created_at',
-            [':code_hash' => hash('sha256', (string)$request->post('code'))]
-        )->queryOne();
-
-        if (!$code || $code['client_id'] !== $client->client_id || $code['redirect_uri'] !== $request->post('redirect_uri')) {
-            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $code = Yii::$app->db->createCommand(
+                'SELECT id, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, created_at
+                 FROM oauth_authorization_codes
+                 WHERE code_hash = :code_hash AND used_at IS NULL AND expires_at > now()
+                 FOR UPDATE',
+                [':code_hash' => hash('sha256', (string)$request->post('code'))]
+            )->queryOne();
+            if (!$code || $code['client_id'] !== $client->client_id || $code['redirect_uri'] !== $request->post('redirect_uri')
+                || !$this->verifyPkce($code, (string)$request->post('code_verifier', ''))) {
+                $transaction->rollBack();
+                return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+            }
+            Yii::$app->db->createCommand()->update(
+                'oauth_authorization_codes',
+                ['used_at' => new Expression('now()')],
+                ['id' => $code['id'], 'used_at' => null]
+            )->execute();
+            $result = $this->tokenResponse(
+                (string)$code['user_id'], $client, (string)$code['scope'], (string)$code['nonce'], null,
+                strtotime((string)$code['created_at'])
+            );
+            $transaction->commit();
+            return $result;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->oauthFail(500, 'server_error', 'token exchange failed');
         }
-
-        if (!$this->verifyPkce($code, (string)$request->post('code_verifier', ''))) {
-            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
-        }
-
-        return $this->tokenResponse(
-            (string)$code['user_id'],
-            $client,
-            (string)$code['scope'],
-            (string)$code['nonce'],
-            null,
-            strtotime((string)$code['created_at'])
-        );
     }
 
     private function refreshToken(Request $request, OAuthClient $client): array
@@ -487,26 +505,33 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        $old = RefreshToken::find()
-            ->where(['token_hash' => hash('sha256', $refreshToken), 'client_id' => $client->client_id])
-            ->one();
+        $transaction = Yii::$app->db->beginTransaction();
+        $oldId = Yii::$app->db->createCommand(
+            'SELECT id FROM refresh_tokens WHERE token_hash = :hash AND client_id = :client_id FOR UPDATE',
+            [':hash' => hash('sha256', $refreshToken), ':client_id' => $client->client_id]
+        )->queryScalar();
+        $old = $oldId ? RefreshToken::findOne(['id' => $oldId]) : null;
 
         if (!$old) {
+            $transaction->rollBack();
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
         if ($old->revoked_at || strtotime($old->expires_at) <= time()) {
+            $transaction->rollBack();
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
         if ($old->rotated_at) {
             $this->revokeRefreshFamily((string)$old->family_id, $client);
+            $transaction->commit();
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
         $user = User::findOne(['id' => $old->user_id, 'status' => User::STATUS_ACTIVE]);
         if (!$user) {
             $this->revokeRefreshFamily((string)$old->family_id, $client);
+            $transaction->commit();
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
@@ -521,17 +546,27 @@ class OAuthService
         );
         if ($rotated === 0) {
             $this->revokeRefreshFamily((string)$old->family_id, $client);
+            $transaction->commit();
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        return $this->tokenResponse(
+        try {
+            $result = $this->tokenResponse(
             $old->user_id,
             $client,
             $old->scope,
             '',
             (string)$old->family_id,
             strtotime((string)$old->created_at)
-        );
+            );
+            $transaction->commit();
+            return $result;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->oauthFail(500, 'server_error', 'token rotation failed');
+        }
     }
 
     private function clientCredentialsToken(Request $request, OAuthClient $client): array
@@ -714,5 +749,13 @@ class OAuthService
     private function oauthFail(int $status, string $error, string $description): array
     {
         return ['ok' => false, 'status' => $status, 'error' => $error, 'description' => $description];
+    }
+
+    private function authenticateRawAccessToken(string $token): bool
+    {
+        $request = new Request();
+        $request->headers->set('Authorization', 'Bearer ' . $token);
+        $authentication = (new AuthService())->authenticate($request);
+        return !empty($authentication['user']) || !empty($authentication['client']);
     }
 }

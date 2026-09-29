@@ -15,6 +15,7 @@ class CleanupController extends Controller
             "DELETE FROM refresh_tokens WHERE expires_at < now() - interval '7 days' OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days')",
             "DELETE FROM one_time_tokens WHERE expires_at < now() - interval '7 days' OR (used_at IS NOT NULL AND used_at < now() - interval '7 days')",
             "DELETE FROM login_attempts WHERE updated_at < now() - interval '24 hours'",
+            'DELETE FROM revoked_access_tokens WHERE expires_at <= now()',
         ];
 
         foreach ($statements as $statement) {

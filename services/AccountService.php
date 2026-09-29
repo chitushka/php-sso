@@ -47,19 +47,31 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => $passwordError]];
         }
 
-        $user = $this->consumeToken(OneTimeToken::PURPOSE_PASSWORD_RESET, $token);
-        if (!$user || $user->source !== User::SOURCE_LOCAL) {
-            return ['status' => 400, 'data' => ['error' => 'invalid or expired token']];
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $user = $this->consumeToken(OneTimeToken::PURPOSE_PASSWORD_RESET, $token);
+            if (!$user || $user->source !== User::SOURCE_LOCAL) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid or expired token']];
+            }
+
+            $user->password_hash = PasswordHasher::hash($password);
+            $user->tokens_invalid_before = new Expression('now()');
+            if (!$user->save(false, ['password_hash', 'tokens_invalid_before'])) {
+                throw new \RuntimeException('failed to update password');
+            }
+
+            // Reset считается компрометацией старых credentials: отзываем все сессии и refresh tokens.
+            Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
+            RefreshToken::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
+            AuditService::record($user->id, 'password_reset_completed', 'user', $user->id, true);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to reset password']];
         }
-
-        $user->password_hash = PasswordHasher::hash($password);
-        $user->tokens_invalid_before = new Expression('now()');
-        $user->save(false, ['password_hash', 'tokens_invalid_before']);
-
-        // Reset считается компрометацией старых credentials: отзываем все сессии и refresh tokens.
-        Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
-        RefreshToken::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
-        AuditService::record($user->id, 'password_reset_completed', 'user', $user->id, true);
 
         return ['status' => 200, 'data' => ['status' => 'password_reset']];
     }
@@ -79,9 +91,23 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'current password is incorrect']];
         }
 
-        $user->password_hash = PasswordHasher::hash($newPassword);
-        $user->save(false, ['password_hash']);
-        AuditService::record($user->id, 'password_changed', 'user', $user->id);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $user->password_hash = PasswordHasher::hash($newPassword);
+            $user->tokens_invalid_before = new Expression('now()');
+            if (!$user->save(false, ['password_hash', 'tokens_invalid_before'])) {
+                throw new \RuntimeException('failed to update password');
+            }
+            Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
+            RefreshToken::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
+            AuditService::record($user->id, 'password_changed', 'user', $user->id, true);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to change password']];
+        }
 
         return ['status' => 200, 'data' => ['status' => 'password_changed']];
     }

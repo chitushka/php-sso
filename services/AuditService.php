@@ -7,6 +7,14 @@ use Yii;
 
 class AuditService
 {
+    /** @var string|null */
+    private static $currentActorUserId;
+
+    public static function setCurrentActor(?string $actorUserId): void
+    {
+        self::$currentActorUserId = $actorUserId;
+    }
+
     public static function record(
         ?string $actorUserId,
         string $action,
@@ -16,7 +24,7 @@ class AuditService
     ): void
     {
         $log = new AuditLog();
-        $log->actor_user_id = $actorUserId;
+        $log->actor_user_id = $actorUserId ?? self::$currentActorUserId;
         $log->action = $action;
         $log->target_type = $targetType;
         $log->target_id = $targetId;

@@ -4,6 +4,7 @@ namespace app\controllers;
 
 use app\components\GoJson;
 use app\services\RateLimitService;
+use app\services\AuditService;
 use app\services\AuthService;
 use app\services\RbacService;
 use Yii;
@@ -17,6 +18,7 @@ class ApiController extends Controller
 
     public function beforeAction($action)
     {
+        AuditService::setCurrentActor(null);
         Yii::$app->response->format = Response::FORMAT_JSON;
         $maxBodyBytes = (int)(Yii::$app->params['maxBodyBytes'] ?? 1048576);
 
@@ -206,20 +208,21 @@ class ApiController extends Controller
     {
         $authService = new AuthService();
         $authentication = $authService->authenticate(Yii::$app->request);
-        if (!$authentication['user']) {
+        if (!$authentication['user'] && empty($authentication['client'])) {
             return $this->fail(401, $authentication['error']);
         }
-        $user = $authentication['user'];
+        $principal = $authentication['user'] ?: $authentication['client'];
+        AuditService::setCurrentActor($authentication['user'] ? (string)$authentication['user']->id : null);
 
         if (!$authService->tokenAllowsPermission($authentication['claims'] ?? [], $resource, $action)) {
             return $this->fail(403, 'insufficient scope');
         }
 
-        if (!(new RbacService())->userHasPermission($user, $resource, $action)) {
+        if ($authentication['user'] && !(new RbacService())->userHasPermission($authentication['user'], $resource, $action)) {
             return $this->fail(403, 'permission denied');
         }
 
-        return $user;
+        return $principal;
     }
 
     protected function requireUser()

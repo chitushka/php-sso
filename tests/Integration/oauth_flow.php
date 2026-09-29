@@ -716,7 +716,7 @@ try {
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => $burnVerifier,
     ]);
-    assertOAuthError($correctAfterWrongPkce, 400, 'invalid_grant', 'authorization code consumed by failed PKCE exchange');
+    assertTrue($correctAfterWrongPkce['status'] === 200, 'authorization code must remain usable after failed PKCE validation');
 
     $plainVerifier = 'plain-verifier-' . $suffix;
     $plainAuthorize = httpRequest('GET', $baseUrl . '/oauth2/authorize?' . http_build_query([
@@ -1790,10 +1790,10 @@ try {
         'LDAP provider update must advance updated_at'
     );
     $ldapUpdateAuditCount = (int)$db->createCommand(
-        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_updated' AND target_id = :id AND actor_user_id IS NULL",
-        [':id' => $ldapProvider['json']['id']]
+        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_updated' AND target_id = :id AND actor_user_id = :actor_id",
+        [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
     )->queryScalar();
-    assertTrue($ldapUpdateAuditCount === 1, 'LDAP provider update audit must use Go-compatible empty actor');
+    assertTrue($ldapUpdateAuditCount === 1, 'LDAP provider update audit must preserve authenticated actor');
 
     $ldapMapping = jsonRequest(
         'POST',
@@ -1861,8 +1861,8 @@ try {
         );
         assertTrue($deletedLdapMapping['status'] === 200, 'delete LDAP mapping must return 200');
         $mappingDeleteAuditCount = (int)$db->createCommand(
-            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id IS NULL",
-            [':id' => $mappingToDelete['json']['id']]
+            "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id = :actor_id",
+            [':id' => $mappingToDelete['json']['id'], ':actor_id' => $adminId]
         )->queryScalar();
         assertTrue($mappingDeleteAuditCount === 1, 'LDAP mapping delete audit must target the mapping with empty actor');
     }
@@ -1877,8 +1877,8 @@ try {
         assertTrue($deletedLdapProvider['status'] === 200, 'LDAP provider delete attempt ' . $deleteAttempt . ' must return 200');
     }
     $ldapDeleteAuditCount = (int)$db->createCommand(
-        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id IS NULL",
-        [':id' => $ldapProvider['json']['id']]
+        "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id = :actor_id",
+        [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
     )->queryScalar();
     assertTrue($ldapDeleteAuditCount === 2, 'each idempotent LDAP provider delete must write the Go-compatible audit event');
 

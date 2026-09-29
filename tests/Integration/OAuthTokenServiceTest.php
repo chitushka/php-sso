@@ -106,7 +106,7 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame('invalid_grant', $reuse['error']);
     }
 
-    public function testFailedPkceExchangeConsumesAuthorizationCode(): void
+    public function testFailedPkceExchangeDoesNotConsumeAuthorizationCode(): void
     {
         $flow = $this->issueAuthorizationCodeToken(false);
         $service = new OAuthService();
@@ -123,14 +123,14 @@ class OAuthTokenServiceTest extends TestCase
         ])));
         $this->assertFalse($invalid['ok']);
         $this->assertSame('invalid_grant', $invalid['error']);
-        $this->assertSame(1, $this->usedAuthorizationCodeCount($flow['client_id']));
+        $this->assertSame(0, $this->usedAuthorizationCodeCount($flow['client_id']));
 
         $retry = $service->token($this->postRequest(array_merge($request, [
             'code_verifier' => $flow['verifier'],
         ])));
-        $this->assertFalse($retry['ok']);
-        $this->assertSame('invalid_grant', $retry['error']);
-        $this->assertSame(0, $this->refreshTokenCount($flow['client_id']));
+        $this->assertTrue($retry['ok']);
+        $this->assertSame(1, $this->usedAuthorizationCodeCount($flow['client_id']));
+        $this->assertSame(1, $this->refreshTokenCount($flow['client_id']));
     }
 
     public function testIdTokenCarriesNonceAndGrantAuthenticationTime(): void

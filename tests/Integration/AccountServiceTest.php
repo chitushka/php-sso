@@ -128,6 +128,35 @@ class AccountServiceTest extends TestCase
         $this->assertSame(1, $this->auditCount('email_verified'));
     }
 
+    public function testChangePasswordRevokesSessionsRefreshTokensAndJwt(): void
+    {
+        $auth = new AuthService();
+        $login = $auth->login([
+            'username' => $this->username,
+            'password' => 'old-password-123',
+        ], $this->request());
+        Yii::$app->db->createCommand(
+            "INSERT INTO refresh_tokens(token_hash,family_id,user_id,client_id,scope,expires_at)
+             VALUES (:hash, gen_random_uuid(), :user_id, 'change-password-client', '', now() + interval '1 hour')",
+            [':hash' => hash('sha256', 'change-password-refresh'), ':user_id' => $this->userId]
+        )->execute();
+
+        $result = (new AccountService())->changePassword(
+            User::findOne(['id' => $this->userId]),
+            'old-password-123',
+            'changed-password-123'
+        );
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame(0, $this->activeSessionCount());
+        $this->assertSame(0, $this->activeRefreshTokenCount());
+        $this->assertNull($auth->currentUser($this->bearerRequest($login['data']['access_token'])));
+        $this->assertTrue(password_verify(
+            'changed-password-123',
+            (string)User::findOne(['id' => $this->userId])->password_hash
+        ));
+    }
+
     public function testUpdateProfileNormalizesScalarAttributesAndRejectsNestedValues(): void
     {
         $service = new AccountService();

@@ -80,18 +80,17 @@ class MfaServiceTest extends TestCase
         $this->assertArrayNotHasKey('challenge_token', $challenge);
         $this->assertSame('0001-01-01T00:00:00Z', $challenge['session_expires_at']);
         $this->assertSame('00000000-0000-0000-0000-000000000000', $challenge['user']['id']);
-        $this->assertSame(0, $this->activeChallengeCount());
+        $this->assertSame(1, $this->activeChallengeCount());
 
         $verified = $service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][0]);
         $this->assertSame($this->userId, $verified->id);
         $this->assertSame(0, $this->activeChallengeCount());
         $this->assertSame(7, $this->activeRecoveryCodeCount());
         $this->assertSame(0, $this->auditCount('mfa_login_verified'));
-        $this->assertSame(
-            $this->userId,
-            $service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][1])->id
+        $this->assertNull(
+            $service->verifyLoginChallenge($challenge['mfa_token'], $enabled['data']['recovery_codes'][1])
         );
-        $this->assertSame(6, $this->activeRecoveryCodeCount());
+        $this->assertSame(7, $this->activeRecoveryCodeCount());
 
         $invalidDisable = $service->disable(User::findOne(['id' => $this->userId]), 'not-a-code');
         $this->assertSame(400, $invalidDisable['status']);

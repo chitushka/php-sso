@@ -12,25 +12,33 @@ class MailService
         $from = (string)(Yii::$app->params['smtpFrom'] ?? '');
 
         if ($host === '' || $from === '') {
-            // В dev-режиме повторяем Go-сервис: письмо с ссылкой пишется в лог.
-            Yii::info([
-                'to' => $to,
-                'subject' => $subject,
-                'body' => $body,
-            ], 'mail');
-            return true;
+            // Секретная ссылка никогда не должна попадать в журнал.
+            Yii::warning('mail delivery is not configured', 'mail');
+            return false;
+        }
+
+        if (!$this->validHost($host) || !$this->validAddress($to) || !$this->validAddress($from) || $this->hasHeaderBreak($subject)) {
+            Yii::warning('mail address or subject is invalid', 'mail');
+            return false;
+        }
+
+        $username = (string)(Yii::$app->params['smtpUsername'] ?? '');
+        $startTls = (bool)(Yii::$app->params['smtpStartTls'] ?? false);
+        if ($username !== '' && !$startTls) {
+            Yii::warning('smtp credentials require STARTTLS', 'mail');
+            return false;
         }
 
         return $this->sendSmtp(
             $host,
             (int)(Yii::$app->params['smtpPort'] ?? 25),
-            (string)(Yii::$app->params['smtpUsername'] ?? ''),
+            $username,
             (string)(Yii::$app->params['smtpPassword'] ?? ''),
             $from,
             $to,
             $subject,
             $body,
-            (bool)(Yii::$app->params['smtpStartTls'] ?? false)
+            $startTls
         );
     }
 
@@ -45,7 +53,25 @@ class MailService
         string $body,
         bool $startTls
     ): bool {
-        $socket = @stream_socket_client($host . ':' . $port, $errno, $errstr, 10);
+        $ssl = [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'peer_name' => $host,
+            'SNI_enabled' => true,
+        ];
+        $ca = (string)(Yii::$app->params['smtpCaCertificate'] ?? '');
+        if ($ca !== '') {
+            $ssl['cafile'] = $ca;
+        }
+        $context = stream_context_create(['ssl' => $ssl]);
+        $socket = @stream_socket_client(
+            'tcp://' . $host . ':' . $port,
+            $errno,
+            $errstr,
+            10,
+            STREAM_CLIENT_CONNECT,
+            $context
+        );
         if (!$socket) {
             Yii::warning('smtp connection failed: ' . $errstr, 'mail');
             return false;
@@ -75,6 +101,8 @@ class MailService
                 }
             }
 
+            $safeBody = preg_replace('/(?m)^\./', '..', str_replace(["\r\n", "\r"], "\n", $body));
+            $safeBody = str_replace("\n", "\r\n", (string)$safeBody);
             $message = implode("\r\n", [
                 'From: ' . $from,
                 'To: ' . $to,
@@ -82,7 +110,7 @@ class MailService
                 'MIME-Version: 1.0',
                 'Content-Type: text/plain; charset=utf-8',
                 '',
-                $body,
+                $safeBody,
             ]);
 
             return $this->command($socket, 'MAIL FROM:<' . $from . '>', 250)
@@ -93,6 +121,21 @@ class MailService
         } finally {
             fclose($socket);
         }
+    }
+
+    private function validAddress(string $address): bool
+    {
+        return !$this->hasHeaderBreak($address) && filter_var($address, FILTER_VALIDATE_EMAIL) !== false;
+    }
+
+    private function validHost(string $host): bool
+    {
+        return preg_match('/^(?:[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])$/D', $host) === 1;
+    }
+
+    private function hasHeaderBreak(string $value): bool
+    {
+        return strpos($value, "\r") !== false || strpos($value, "\n") !== false;
     }
 
     private function command($socket, string $command, int $expectedCode): bool

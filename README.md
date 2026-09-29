@@ -59,6 +59,7 @@ docker compose run --rm app php yii help
 - `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
 - `SSO_CACHE_DRIVER` — `file` по умолчанию или `db` для PostgreSQL-backed Yii cache/rate limit при нескольких app-инстансах.
 - `SSO_TRUSTED_PROXIES` — comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
+- `SSO_LDAP_ALLOWED_HOSTS`, `SSO_LDAP_CA_CERT`, `SSO_LDAP_ALLOW_INSECURE` — allowlist LDAP-хостов, доверенный CA и явное test-only разрешение plaintext LDAP.
 - `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
 - `SSO_SMTP_HOST`, `SSO_SMTP_PORT`, `SSO_SMTP_USERNAME`, `SSO_SMTP_PASSWORD`, `SSO_SMTP_FROM`, `SSO_SMTP_STARTTLS` — SMTP для reset/verification писем. Если `SSO_SMTP_HOST` или `SSO_SMTP_FROM` пустые, письмо пишется в лог приложения.
 
@@ -204,6 +205,7 @@ docker compose run --rm app php yii help
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные first-party Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
 - 2026-09-29: identity brokering усилен: token исключён из redirect URL и `localStorage`, `continue` ограничен локальными путями, исходящие token/userinfo/back-channel запросы защищены от SSRF (включая IPv4-mapped IPv6), а совпадение verified email не вызывает автоматическую привязку существующего аккаунта.
 - 2026-09-26: OAuth access tokens используют `SSO_API_AUDIENCE`; admin API требует соответствующий permission scope поверх RBAC. OIDC private keys шифруются `SSO_ENCRYPTION_KEY`, включая миграцию существующих ключей и их последующую ротацию.
+- 2026-09-29: auth lifecycle усилен `jti` revocation, транзакционными password/OAuth/MFA операциями, одноразовыми MFA challenges и сериализованным bootstrap; SMTP больше не логирует секретные ссылки, LDAP требует TLS/allowlist, административный audit сохраняет actor.
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
 - 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.
