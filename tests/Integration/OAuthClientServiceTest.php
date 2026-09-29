@@ -57,7 +57,7 @@ class OAuthClientServiceTest extends TestCase
             'enabled' => true,
         ]);
 
-        $this->assertSame(201, $result['status']);
+        $this->assertSame(201, $result['status'], json_encode($result));
         $this->assertNotEmpty($result['data']['client_secret']);
         $this->assertSame(['openid', 'profile'], $result['data']['allowed_scopes']);
         $this->assertSame(['https://rp.example.test/logout'], $result['data']['post_logout_redirect_uris']);

@@ -2,7 +2,9 @@
 
 ## Цель
 
-Перенести функционал рабочего Go-сервиса `D:\workspace\GolandProjects\sso` в PHP 7.4 на Yii2, сохранив single-tenant модель, PostgreSQL-схему, публичные OAuth2/OIDC-контракты и административный UI.
+Перенести функционал рабочего Go-сервиса `D:\workspace\GolandProjects\sso` в PHP 8.4 на Yii2, сохранив single-tenant модель, PostgreSQL-схему, публичные OAuth2/OIDC-контракты и административный UI.
+
+Дополнение 2026-09-29: закрыты production findings 16–26. Добавлены общие schema-aware ActiveRecord rules и DB CHECK/FK, атомарные rate-limit/Prometheus counters, proxy и streaming body limits, строгий API 404, fail-closed production config, immutable PHP-FPM/nginx images и отдельный migration job. Runtime обновлён до PHP 8.4/PostgreSQL 17; Vue 3.5.43 self-hosted под CSP; cleanup выполняется индексированными батчами под advisory lock; plaintext secrets по умолчанию отклоняются после cutover.
 
 ## Этап 1. Инициализация проекта
 
@@ -42,7 +44,7 @@ Health-check контракт завершён: live/version сохраняют 
 
 Дополнение 2026-09-25: storage-контракт AES-256-GCM выровнен с Go `secrets.AESGCM` для LDAP bind passwords, MFA secrets и identity provider client secrets: `enc:v1:`, unpadded standard Base64 и порядок `nonce || ciphertext || tag`. PHP читает как Go ciphertext, так и ранний PHP `v1:` формат, а новые записи создаёт только в Go-формате для rolling migration и безопасного rollback.
 
-Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit перенесён через Yii2 cache-backed token bucket для bootstrap/auth/OAuth endpoint-ов.
+Статус: выполнено. Bootstrap первого администратора выровнен с Go по порядку валидации, zero value `email_verified=false`, назначению admin-роли и событию `bootstrap_completed`; сценарий проверяется PostgreSQL-тестом в откатываемой транзакции. Brute-force lockout перенесён через таблицу `login_attempts`; rate limit использует атомарный PostgreSQL token bucket для bootstrap/auth/OAuth endpoint-ов.
 
 ## Этап 3. OAuth2 и OIDC
 

@@ -1,11 +1,11 @@
 {
   "name": "local/sso-php",
-  "description": "Single-tenant SSO service ported from the Go implementation to PHP 7.4 and Yii2.",
+  "description": "Single-tenant SSO service implemented on PHP 8.4 and Yii2.",
   "license": "BSD-3-Clause",
   "type": "project",
   "minimum-stability": "stable",
   "require": {
-    "php": ">=7.4 <8.0",
+    "php": "^8.4",
     "yiisoft/yii2": "^2.0"
   },
   "repositories": [

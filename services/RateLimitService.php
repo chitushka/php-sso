@@ -14,22 +14,27 @@ class RateLimitService
             return ['allowed' => true];
         }
 
-        $capacity = (float)(Yii::$app->params['rateLimitBurst'] ?? 10);
-        $refillPerSecond = ((float)(Yii::$app->params['rateLimitPerMinute'] ?? 30)) / 60.0;
-        $key = 'rate_limit:' . sha1($route . '|' . $request->userIP);
+        $capacity = max(1.0, (float)(Yii::$app->params['rateLimitBurst'] ?? 10));
+        $refillPerSecond = max(1.0 / 3600.0, ((float)(Yii::$app->params['rateLimitPerMinute'] ?? 30)) / 60.0);
+        $key = sha1($route . '|' . $request->userIP);
         $now = microtime(true);
-        $state = Yii::$app->cache->get($key);
+        $state = Yii::$app->db->createCommand(<<<'SQL'
+INSERT INTO rate_limit_buckets(bucket_key, tokens, updated_at, expires_at, last_allowed)
+VALUES (:key, :capacity - 1, :now, now() + interval '2 minutes', true)
+ON CONFLICT (bucket_key) DO UPDATE SET
+    tokens = CASE
+        WHEN LEAST(:capacity, rate_limit_buckets.tokens + GREATEST(0, :now - rate_limit_buckets.updated_at) * :refill) >= 1
+        THEN LEAST(:capacity, rate_limit_buckets.tokens + GREATEST(0, :now - rate_limit_buckets.updated_at) * :refill) - 1
+        ELSE LEAST(:capacity, rate_limit_buckets.tokens + GREATEST(0, :now - rate_limit_buckets.updated_at) * :refill)
+    END,
+    updated_at = :now,
+    expires_at = now() + interval '2 minutes',
+    last_allowed = LEAST(:capacity, rate_limit_buckets.tokens + GREATEST(0, :now - rate_limit_buckets.updated_at) * :refill) >= 1
+RETURNING last_allowed AS allowed, tokens AS available
+SQL, [':key' => $key, ':capacity' => $capacity, ':now' => $now, ':refill' => $refillPerSecond])->queryOne();
 
-        if (!is_array($state)) {
-            $state = ['tokens' => $capacity, 'updated_at' => $now];
-        }
-
-        $elapsed = max(0.0, $now - (float)$state['updated_at']);
-        $tokens = min($capacity, (float)$state['tokens'] + $elapsed * $refillPerSecond);
-
-        if ($tokens < 1.0) {
-            Yii::$app->cache->set($key, ['tokens' => $tokens, 'updated_at' => $now], 120);
-            $retryAfter = (int)ceil((1.0 - $tokens) / $refillPerSecond);
+        if (!filter_var($state['allowed'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $retryAfter = (int)ceil((1.0 - (float)$state['available']) / $refillPerSecond);
 
             return [
                 'allowed' => false,
@@ -37,7 +42,6 @@ class RateLimitService
             ];
         }
 
-        Yii::$app->cache->set($key, ['tokens' => $tokens - 1.0, 'updated_at' => $now], 120);
         return ['allowed' => true];
     }
 }

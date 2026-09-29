@@ -41,6 +41,14 @@ class AccountServiceTest extends TestCase
                 ':password_hash' => password_hash('old-password-123', PASSWORD_DEFAULT),
             ]
         )->queryScalar();
+        Yii::$app->db->createCommand()->batchInsert(
+            'oauth_clients',
+            ['client_id', 'name', 'type', 'enabled'],
+            [
+                ['account-test-client', 'Account test client', 'confidential', true],
+                ['change-password-client', 'Change password test client', 'confidential', true],
+            ]
+        )->execute();
     }
 
     protected function tearDown(): void
@@ -52,6 +60,10 @@ class AccountServiceTest extends TestCase
             Yii::$app->db->createCommand()->delete('audit_logs', ['or', ['actor_user_id' => $this->userId], ['target_id' => $this->userId]])->execute();
             Yii::$app->db->createCommand()->delete('users', ['id' => $this->userId])->execute();
         }
+        Yii::$app->db->createCommand()->delete(
+            'oauth_clients',
+            ['client_id' => ['account-test-client', 'change-password-client']]
+        )->execute();
 
         parent::tearDown();
     }

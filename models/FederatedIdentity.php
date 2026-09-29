@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class FederatedIdentity extends ActiveRecord
+class FederatedIdentity extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

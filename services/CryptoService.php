@@ -12,9 +12,16 @@ class CryptoService
     /** @var string */
     private $encryptionKey;
 
-    public function __construct(?string $encryptionKey = null)
+    /** @var bool */
+    private $allowPlaintext;
+
+    public function __construct(?string $encryptionKey = null, ?bool $allowPlaintext = null)
     {
         $this->encryptionKey = $encryptionKey ?? (string)Yii::$app->params['encryptionKey'];
+        $this->allowPlaintext = $allowPlaintext ?? filter_var(
+            getenv('SSO_ALLOW_PLAINTEXT_SECRETS') ?: false,
+            FILTER_VALIDATE_BOOLEAN
+        );
     }
 
     public function encrypt(string $plain): string
@@ -41,7 +48,10 @@ class CryptoService
             strpos($value, self::GO_PREFIX) !== 0
             && strpos($value, self::LEGACY_PHP_PREFIX) !== 0
         )) {
-            return $value;
+            if ($value === '' || $this->allowPlaintext) {
+                return $value;
+            }
+            throw new \RuntimeException('plaintext secret is not allowed');
         }
 
         if (strpos($value, self::GO_PREFIX) === 0) {

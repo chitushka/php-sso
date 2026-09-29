@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class LdapProvider extends ActiveRecord
+class LdapProvider extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

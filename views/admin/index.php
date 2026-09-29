@@ -509,8 +509,9 @@ $this->title = 'SSO Admin';
   </main>
 </div>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<script>
+<script src="/js/vue.global.prod.js"></script>
+<script src="/js/admin-api.js"></script>
+<script nonce="<?= htmlspecialchars((string)(Yii::$app->params['_cspNonce'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 const app = Vue.createApp({
   data() {
     return {
@@ -627,14 +628,8 @@ const app = Vue.createApp({
   methods: {
     async restoreSession() {
       try {
-        const response = await fetch('/api/v1/auth/session-token', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}'
-        });
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await AdminApi.restoreSession();
+        if (!data) return;
         this.accessToken = data.access_token || '';
         this.user = data.user || null;
       } catch (error) {
@@ -642,15 +637,10 @@ const app = Vue.createApp({
       }
     },
     headers() {
-      return this.accessToken ? { 'Authorization': 'Bearer ' + this.accessToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+      return AdminApi.headers(this.accessToken);
     },
     async api(url, options = {}) {
-      const response = await fetch(url, Object.assign({ headers: this.headers(), credentials: 'same-origin' }, options));
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || data.error_description || 'request failed');
-      }
-      return data;
+      return AdminApi.request(this.accessToken, url, options);
     },
     async refresh() {
       this.bootstrap = await this.api('/api/v1/bootstrap/status');

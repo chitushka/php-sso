@@ -8,6 +8,7 @@ use Yii;
 use yii\web\Application;
 use yii\web\BadRequestHttpException;
 use yii\web\Request;
+use yii\base\Action;
 
 class JsonBodyContractTest extends TestCase
 {
@@ -90,6 +91,18 @@ class JsonBodyContractTest extends TestCase
         );
         $this->assertSame(['openid', ''], $collectionNulls['items']);
         $this->assertSame(['department' => ''], $collectionNulls['attributes']);
+    }
+
+    public function testRejectsOversizedBodyWithoutContentLength(): void
+    {
+        Yii::$app->params['maxBodyBytes'] = 8;
+        Yii::$app->request->raw = '123456789';
+        Yii::$app->request->headers->remove('Content-Length');
+        $controller = new ExposedApiController('contract', Yii::$app);
+
+        $this->assertFalse($controller->beforeAction(new Action('oversized', $controller)));
+        $this->assertSame(413, Yii::$app->response->statusCode);
+        $this->assertSame(['error' => 'request body is too large'], Yii::$app->response->data);
     }
 
     private function decode(string $raw, array $schema): array

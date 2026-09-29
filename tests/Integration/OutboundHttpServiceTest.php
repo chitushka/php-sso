@@ -47,7 +47,6 @@ class OutboundHttpServiceTest extends TestCase
     {
         $service = new OutboundHttpService();
         $method = new \ReflectionMethod($service, 'isPublicAddress');
-        $method->setAccessible(true);
 
         $this->assertFalse($method->invoke($service, '127.0.0.1'));
         $this->assertFalse($method->invoke($service, '169.254.169.254'));

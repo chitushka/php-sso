@@ -2,17 +2,23 @@
 
 ## Назначение
 
-Проект является PHP/Yii2 переносом single-tenant SSO/IdP сервиса из Go. Multi-tenancy/realms не входят в область задачи. Основная цель архитектуры — сохранить доменные границы исходного сервиса и постепенно заменить Go-модули эквивалентами на PHP 7.4.
+Проект является PHP/Yii2 переносом single-tenant SSO/IdP сервиса из Go. Multi-tenancy/realms не входят в область задачи. Основная цель архитектуры — сохранить доменные границы исходного сервиса и заменить Go-модули эквивалентами на поддерживаемом PHP 8.4.
 
 ## Технологический стек
 
-- PHP 7.4
+- PHP 8.4 + PHP-FPM
 - Yii2
-- PostgreSQL
-- Docker Compose
-- VueJS в Yii2 layout без отдельной frontend-сборки
+- PostgreSQL 17 с TLS
+- nginx + Docker Compose
+- self-hosted VueJS 3.5.43 в Yii2 layout
 
 Локальное окружение разработчика не обязано содержать PHP или Composer: запуск, миграции и проверки выполняются внутри Docker-контейнера `app`.
+
+Production image собирается multi-stage: Composer выполняется только при сборке, PHP-FPM не запускает миграции и не изменяет зависимости. nginx ограничивает request body до 1 MiB до передачи в PHP; `TrustedRequest` дополнительно читает не более лимита плюс один байт, поэтому запрос без `Content-Length` не может заставить Yii загрузить неограниченное тело. Миграция вынесена в Compose profile `operations`.
+
+Rate limit реализован одним атомарным PostgreSQL UPSERT на bucket. Prometheus-счётчики хранятся атомарно в `metric_counters`, а завершение запроса обновляет все серии одним UPSERT. Это сохраняет корректность при нескольких PHP-FPM workers без read-modify-write через Yii cache.
+
+ActiveRecord-модели наследуют `ValidatedActiveRecord`: схема БД формирует правила required/UUID/type/length, а доменные модели добавляют email, status, source, OAuth client type и one-time-token purpose. Миграция дублирует критические инварианты CHECK/FK constraints. Cleanup использует advisory lock, индексированные timestamp-поля и ограниченные батчи; audit retention задаётся `SSO_AUDIT_RETENTION_DAYS`.
 
 ## Слои
 
@@ -46,8 +52,8 @@ HTTP Controller -> Service -> ActiveRecord Model -> PostgreSQL
 - `AuditController` — чтение журнала аудита с Go-compatible валидацией фильтров `actor`, `from`, `to`.
 - `AuditService` — запись важных событий.
 - `CryptoService` — Go-compatible AES-256-GCM шифрование секретов без Composer-зависимостей и reader раннего PHP-формата для безопасного обновления.
-- `RateLimitService` — token bucket на Yii2 cache для чувствительных auth/OAuth/bootstrap маршрутов.
-- `MetricsService` + `MetricRoute` — dependency-free Prometheus text метрики HTTP-запросов на `/metrics`, сохранённые через Yii2 cache. Route labels преобразуются из внутренних Yii routes в публичные chi-совместимые шаблоны Go; path UUID не создают высокую кардинальность.
+- `RateLimitService` — атомарный PostgreSQL token bucket для чувствительных auth/OAuth/bootstrap маршрутов.
+- `MetricsService` + `MetricRoute` — Prometheus text метрики HTTP-запросов на `/metrics`, атомарно сохранённые в PostgreSQL. Route labels преобразуются из внутренних Yii routes в публичные chi-совместимые шаблоны Go; path UUID не создают высокую кардинальность.
 - `TrustedRequest` — безопасное разрешение client IP: `X-Forwarded-For` учитывается только от `SSO_TRUSTED_PROXIES`.
 - `CleanupController` — console-команда удаления истёкших auth/OAuth артефактов.
 - `CutoverController` + `CutoverCheckService` — read-only production preflight. Команда агрегирует PASS/WARN/FAIL для runtime-конфигурации, PostgreSQL-схемы и seed data, затем пробует расшифровать каждое непустое LDAP/MFA/broker secret без вывода значения. FAIL приводит к ненулевому exit code, поэтому проверку можно использовать как deployment gate.
@@ -72,7 +78,7 @@ UUID генерируются PostgreSQL через `pgcrypto/gen_random_uuid()`
 
 Все runtime-настройки используют namespace `SSO_*`. Основные переменные: `SSO_DATABASE_URL`, `SSO_ISSUER`, `SSO_JWT_SECRET`, `SSO_ENCRYPTION_KEY`, `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL`.
 
-Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`. По умолчанию token bucket хранится в `FileCache`; для нескольких app-инстансов можно задать `SSO_CACHE_DRIVER=db`, тогда Yii2 cache использует таблицу `cache` в PostgreSQL. Максимальный размер тела запроса задаёт `SSO_MAX_BODY_BYTES`. `SSO_TRUSTED_PROXIES` содержит comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
+Rate limiting настраивается через `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`; token bucket хранится в PostgreSQL и изменяется одним UPSERT. Максимальный размер тела запроса задаёт `SSO_MAX_BODY_BYTES`. `SSO_TRUSTED_PROXIES` содержит comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
 
 ## Защитные механизмы
 
@@ -144,9 +150,9 @@ SMTP fallback не пишет message body или секретные URL в ло
 
 `TrustedRequest` возвращает `Yii::$app->request->userIP` из прямого peer address, если peer не входит в `SSO_TRUSTED_PROXIES`. Для trusted proxy берётся правый самый не-trusted IP из `X-Forwarded-For`, что сохраняет per-IP brute-force lockout и rate limit за reverse proxy без доверия к spoofed headers.
 
-`php yii cleanup/run` удаляет истёкшие/отозванные `sessions`, `oauth_authorization_codes`, `refresh_tokens`, `one_time_tokens` и старые `login_attempts`. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час.
+`php yii cleanup/run` под advisory lock удаляет индексированными батчами истёкшие/отозванные auth-записи, rate-limit buckets и audit старше retention. В production команду нужно запускать cron-ом или аналогичным scheduler-ом примерно раз в час; autovacuum остаётся обязательной настройкой PostgreSQL.
 
-`GET /metrics` отдаёт Go-compatible Prometheus text exposition с `sso_http_requests_total`, `sso_http_inflight`, `sso_http_request_duration_seconds_sum` и `sso_http_requests_processed_total`. Labels `route` используют публичные chi-шаблоны (`{id}`, `{userID}`, `{roleID}` и другие), а SPA fallback получает `other`. В PHP-порте counters хранятся через Yii2 cache, поэтому для нескольких app-инстансов рекомендуется `SSO_CACHE_DRIVER=db`.
+`GET /metrics` отдаёт Go-compatible Prometheus text exposition с `sso_http_requests_total`, `sso_http_inflight`, `sso_http_request_duration_seconds_sum` и `sso_http_requests_processed_total`. Labels `route` используют публичные chi-шаблоны (`{id}`, `{userID}`, `{roleID}` и другие), а SPA fallback получает `other`. Counters атомарно хранятся в PostgreSQL и общие для всех app-инстансов.
 
 `tests/Integration/oauth_flow.php` — dependency-free HTTP smoke test, который поднимается через `make integration`, создаёт временных пользователей/клиенты в PostgreSQL, проверяет OIDC Discovery/JWKS, login, строгие JSON-контракты, admin CRUD, session list/revoke/revoke-all, отзыв first-party и OAuth access tokens, OAuth2 Authorization Code + PKCE, `client_secret_post`/`client_secret_basic`, RS256 tokens, UserInfo scope filtering, introspection/revocation, consent, RP logout, защищённый back-channel logout, refresh rotation/reuse detection и RBAC. Локальный mock RP разрешается только через test-only `SSO_OUTBOUND_HOST_ALLOWLIST`.
 

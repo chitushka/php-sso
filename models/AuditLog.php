@@ -3,9 +3,7 @@
 namespace app\models;
 
 use app\components\Rfc3339;
-use yii\db\ActiveRecord;
-
-class AuditLog extends ActiveRecord
+class AuditLog extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

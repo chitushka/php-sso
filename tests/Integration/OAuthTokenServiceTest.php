@@ -337,6 +337,38 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertFalse($revoked['data']['active']);
     }
 
+    public function testIntrospectionCannotObserveAnotherClientsTokens(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $otherId = 'phpunit-introspector-' . bin2hex(random_bytes(4));
+        $this->clientIds[] = $otherId;
+        $other = (new OAuthService())->createClient([
+            'client_id' => $otherId,
+            'name' => 'Isolated introspection client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+            'allowed_scopes' => ['profile'],
+            'enabled' => true,
+        ]);
+        $this->clientDbIds[] = (string)$other['data']['id'];
+        $credentials = [
+            'client_id' => $otherId,
+            'client_secret' => $other['data']['client_secret'],
+        ];
+        $service = new OAuthService();
+
+        $access = $service->introspect($this->postRequest(array_merge($credentials, [
+            'token' => $flow['token']['data']['access_token'],
+        ])));
+        $refresh = $service->introspect($this->postRequest(array_merge($credentials, [
+            'token' => $flow['token']['data']['refresh_token'],
+        ])));
+
+        $this->assertTrue($access['ok']);
+        $this->assertFalse($access['data']['active']);
+        $this->assertTrue($refresh['ok']);
+        $this->assertFalse($refresh['data']['active']);
+    }
+
     private function issueAuthorizationCodeToken(
         bool $exchange = true,
         string $scope = 'profile',
@@ -356,7 +388,7 @@ class OAuthTokenServiceTest extends TestCase
             'skip_consent' => true,
             'enabled' => true,
         ]);
-        $this->assertSame(201, $created['status']);
+        $this->assertSame(201, $created['status'], json_encode($created));
         $this->clientDbIds[] = (string)$created['data']['id'];
 
         $verifier = 'verifier-' . bin2hex(random_bytes(24));

@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class RefreshToken extends ActiveRecord
+class RefreshToken extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

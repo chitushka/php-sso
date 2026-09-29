@@ -4,6 +4,8 @@ namespace tests\Unit;
 
 use app\components\MaintenanceMode;
 use PHPUnit\Framework\TestCase;
+use Yii;
+use yii\web\Application;
 use yii\web\Request;
 use yii\web\Response;
 
@@ -12,9 +14,21 @@ class MaintenanceModeTest extends TestCase
     /** @var string|false */
     private $previousFlagPath;
 
+    /** @var mixed */
+    private $previousApplication;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->previousApplication = Yii::$app;
+        new Application([
+            'id' => 'maintenance-unit',
+            'basePath' => dirname(__DIR__, 2),
+            'components' => [
+                'request' => Request::class,
+                'response' => Response::class,
+            ],
+        ]);
         $this->previousFlagPath = getenv('SSO_MAINTENANCE_FILE');
     }
 
@@ -25,6 +39,7 @@ class MaintenanceModeTest extends TestCase
         } else {
             putenv('SSO_MAINTENANCE_FILE=' . $this->previousFlagPath);
         }
+        Yii::$app = $this->previousApplication;
         parent::tearDown();
     }
 

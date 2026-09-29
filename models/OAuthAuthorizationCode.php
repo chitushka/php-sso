@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class OAuthAuthorizationCode extends ActiveRecord
+class OAuthAuthorizationCode extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

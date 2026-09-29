@@ -105,7 +105,7 @@ class SecretKeyRotationServiceTest extends TestCase
     {
         return new SecretKeyRotationService(
             Yii::$app->db,
-            new CryptoService(self::OLD_KEY),
+            new CryptoService(self::OLD_KEY, true),
             new CryptoService(self::NEW_KEY)
         );
     }

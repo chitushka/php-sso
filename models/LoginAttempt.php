@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class LoginAttempt extends ActiveRecord
+class LoginAttempt extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

@@ -79,7 +79,7 @@ WITH required(name) AS (
         ('ldap_group_mappings'), ('identity_providers'),
         ('federated_identities'), ('user_consents'), ('one_time_tokens'),
         ('revoked_access_tokens'), ('mfa_recovery_codes'), ('login_attempts'),
-        ('audit_logs'), ('cache')
+        ('audit_logs'), ('cache'), ('rate_limit_buckets'), ('metric_counters')
 )
 SELECT count(*)
 FROM required

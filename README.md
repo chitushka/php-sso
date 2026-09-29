@@ -1,14 +1,19 @@
 # SSO PHP
 
-PHP 7.4/Yii2 перенос рабочего Go SSO сервиса из `D:\workspace\GolandProjects\sso`. Проект сохраняет single-tenant подход, PostgreSQL, OAuth2/OIDC контракты и административный UI на VueJS.
+PHP 8.4/Yii2 SSO сервис. Проект сохраняет single-tenant подход, PostgreSQL 17, OAuth2/OIDC контракты и административный UI на VueJS 3.5.43.
 
 ## Быстрый старт
 
 ```bash
 cp .env.example .env
 docker compose build
+docker compose --profile operations run --rm migrate
 docker compose up
 ```
+
+Production-запуск fail-closed: до старта замените placeholder-секреты и стандартный пароль БД, задайте HTTPS issuer и `SSO_DATABASE_URL` с `sslmode=require`, `verify-ca` или `verify-full`. Миграции выполняются отдельным job и никогда не запускаются entrypoint-ом приложения. HTTP обслуживают nginx и PHP-FPM; зависимости Composer уже находятся в неизменяемом image.
+
+Vue хранится локально в `web/js/vue.global.prod.js`, а HTTP-клиент admin UI вынесен в `web/js/admin-api.js`; сеть CDN во время работы не используется. Ответы защищены CSP, а неизвестные маршруты `/api`, `/oauth2` и `/.well-known` всегда возвращают JSON 404, не HTML SPA.
 
 Локальные PHP и Composer для разработки не требуются: проект запускается и проверяется в Docker-контейнере `app`.
 
@@ -57,7 +62,7 @@ docker compose run --rm app php yii help
 - `SSO_ENCRYPTION_KEY` — ключ для будущего шифрования секретов, минимум 32 символа.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
 - `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
-- `SSO_CACHE_DRIVER` — `file` по умолчанию или `db` для PostgreSQL-backed Yii cache/rate limit при нескольких app-инстансах.
+- `SSO_CACHE_DRIVER` — backend общего Yii cache; rate limit и HTTP-метрики всегда используют отдельные атомарные PostgreSQL-таблицы.
 - `SSO_TRUSTED_PROXIES` — comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
 - `SSO_LDAP_ALLOWED_HOSTS`, `SSO_LDAP_CA_CERT`, `SSO_LDAP_ALLOW_INSECURE` — allowlist LDAP-хостов, доверенный CA и явное test-only разрешение plaintext LDAP.
 - `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
@@ -87,7 +92,7 @@ docker compose run --rm app php yii help
 - LDAP Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `bind_password` при PUT сохраняет текущий секрет.
 - LDAP persistence errors используют Go-compatible generic 500 ответы, а duplicate group mapping возвращает 409.
 - LDAP provider DELETE идемпотентен; group mappings и LDAP audit side effects повторяют фактический порядок и target semantics Go repository.
-- Go-compatible AES-256-GCM формат `enc:v1:` для LDAP, MFA и identity provider secrets; ранний PHP-формат остаётся доступен только для чтения.
+- Go-compatible AES-256-GCM формат `enc:v1:` для LDAP, MFA и identity provider secrets; plaintext после cutover отклоняется. Временный `SSO_ALLOW_PLAINTEXT_SECRETS=true` допустим только для контролируемой миграции.
 - LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
 - Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
 - MFA TOTP setup/enable/disable с Go-compatible `enroll`/`activate` алиасами, MFA challenge при login и одноразовые recovery codes.
@@ -100,12 +105,12 @@ docker compose run --rm app php yii help
 - Identity Providers API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT как Go-сервис.
 - Broker authorize redirects заменяют OAuth query-параметры, сохраняют provider query/fragment, а callback errors возвращаются на `/login`.
 - Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
-- `php yii cleanup/run` для удаления истёкших sessions, authorization codes, refresh tokens, one-time tokens и login attempts.
+- `php yii cleanup/run` удаляет истёкшие записи и audit retention ограниченными батчами под PostgreSQL advisory lock; после крупных исторических чисток планируйте штатный autovacuum/VACUUM.
 - `php yii cutover/check` — read-only preflight конфигурации, PostgreSQL-схемы, seed data и расшифровки LDAP/MFA/broker secrets; возвращает ненулевой exit code при блокерах.
 - `php yii cutover/rewrap-secrets` выполняет read-only dry-run старых PHP `v1:` secrets, а `--apply=1` атомарно перепаковывает их в общий Go `enc:v1:` формат без изменения plaintext.
 - `php yii cutover/rotate-encryption-key` проверяет maintenance-ротацию через `SSO_OLD_ENCRYPTION_KEY`/`SSO_NEW_ENCRYPTION_KEY`; `--apply=1` атомарно перешифровывает все непустые LDAP/MFA/broker secrets и распознаёт уже переключённые строки при повторном запуске.
 - `php yii cutover/generate-local-encryption-key` доступна только вне `SSO_ENV=prod`: генерирует ключ без вывода, ротирует локальные secrets и обновляет игнорируемый `.env`; production keys должны поступать из secret manager.
-- Опциональный PostgreSQL-backed Yii cache через `SSO_CACHE_DRIVER=db` для shared rate limit.
+- Атомарные PostgreSQL token buckets и Prometheus counters безопасны для нескольких PHP-FPM-инстансов и не используют cache get/set.
 - Локальный production-like профиль поднимается на `https://localhost:8443`: nginx завершает TLS, имеет фиксированный IP `172.31.250.10`, а приложение доверяет forwarded-заголовкам только от него. Однократная команда `make cutover-configure-local-secure-runtime` генерирует 256-битный JWT secret без вывода и атомарно включает HTTPS issuer, secure cookies и DB cache в игнорируемом `.env`.
 - `make cutover-rehearse-rollback` создаёт ephemeral custom-format dump, восстанавливает его в изолированную временную БД и сверяет критическую схему, `pgcrypto`, seed data, business row counts и инвентарь пяти `enc:v1` secrets. Исходная БД не изменяется, временная БД и архив удаляются даже при ошибке.
 - После переключения reverse proxy `make cutover-smoke` выполняет HTTPS-only проверку health/readiness, public bootstrap/broker endpoints, точного OIDC issuer, Discovery и пригодного RS256 JWKS. TLS проверяется строго; `make cutover-smoke-local` разрешает self-signed сертификат только для loopback issuer.

@@ -1,11 +1,29 @@
 <?php
 
+$environment = strtolower((string)getenv('SSO_ENV'));
+$issuer = rtrim(getenv('SSO_ISSUER') ?: 'http://localhost:8080', '/');
+$jwtSecret = getenv('SSO_JWT_SECRET') ?: 'change-me-please-change-me-please-change-me';
+$encryptionKey = getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me';
+if ($environment === 'prod') {
+    foreach (['SSO_JWT_SECRET' => $jwtSecret, 'SSO_ENCRYPTION_KEY' => $encryptionKey] as $name => $value) {
+        if (strlen($value) < 32 || stripos($value, 'change-me') !== false) {
+            throw new RuntimeException($name . ' must be a production secret');
+        }
+    }
+    if (parse_url($issuer, PHP_URL_SCHEME) !== 'https') {
+        throw new RuntimeException('SSO_ISSUER must use HTTPS in production');
+    }
+    if (!getenv('SSO_DATABASE_URL')) {
+        throw new RuntimeException('SSO_DATABASE_URL is required in production');
+    }
+}
+
 return [
     'version' => '0.1.0-port',
-    'issuer' => rtrim(getenv('SSO_ISSUER') ?: 'http://localhost:8080', '/'),
+    'issuer' => $issuer,
     'apiAudience' => getenv('SSO_API_AUDIENCE') ?: rtrim(getenv('SSO_ISSUER') ?: 'http://localhost:8080', '/') . '/api',
-    'jwtSecret' => getenv('SSO_JWT_SECRET') ?: 'change-me-please-change-me-please-change-me',
-    'encryptionKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
+    'jwtSecret' => $jwtSecret,
+    'encryptionKey' => $encryptionKey,
     'accessTokenTtl' => (int)(getenv('SSO_ACCESS_TOKEN_TTL') ?: 900),
     'sessionTtl' => (int)(getenv('SSO_SESSION_TTL') ?: 2592000),
     'refreshTokenTtl' => (int)(getenv('SSO_REFRESH_TOKEN_TTL') ?: 2592000),
@@ -37,4 +55,6 @@ return [
     'smtpFrom' => getenv('SSO_SMTP_FROM') ?: '',
     'smtpStartTls' => filter_var(getenv('SSO_SMTP_STARTTLS') ?: false, FILTER_VALIDATE_BOOLEAN),
     'smtpCaCertificate' => getenv('SSO_SMTP_CA_CERT') ?: '',
+    'auditRetentionDays' => (int)(getenv('SSO_AUDIT_RETENTION_DAYS') ?: 365),
+    'cleanupBatchSize' => (int)(getenv('SSO_CLEANUP_BATCH_SIZE') ?: 1000),
 ];

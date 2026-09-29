@@ -6,6 +6,33 @@ use yii\web\Request;
 
 class TrustedRequest extends Request
 {
+    private $limitedRawBody;
+
+    public function getRawBody()
+    {
+        if ($this->limitedRawBody === null) {
+            $limit = max(1, (int)(\Yii::$app->params['maxBodyBytes'] ?? 1048576));
+            $stream = fopen('php://input', 'rb');
+            if ($stream === false) {
+                return '';
+            }
+            try {
+                $body = stream_get_contents($stream, $limit + 1);
+                $this->limitedRawBody = $body === false ? '' : $body;
+            } finally {
+                fclose($stream);
+            }
+        }
+
+        return $this->limitedRawBody;
+    }
+
+    public function setRawBody($rawBody)
+    {
+        $this->limitedRawBody = (string)$rawBody;
+        parent::setRawBody($rawBody);
+    }
+
     public function getUserIP()
     {
         $peer = $this->hostOnly((string)($_SERVER['REMOTE_ADDR'] ?? parent::getUserIP()));

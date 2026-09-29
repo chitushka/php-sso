@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class MfaRecoveryCode extends ActiveRecord
+class MfaRecoveryCode extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

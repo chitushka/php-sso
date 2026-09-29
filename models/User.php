@@ -3,9 +3,7 @@
 namespace app\models;
 
 use app\components\Rfc3339;
-use yii\db\ActiveRecord;
-
-class User extends ActiveRecord
+class User extends ValidatedActiveRecord
 {
     public const STATUS_ACTIVE = 'active';
     public const STATUS_BLOCKED = 'blocked';
@@ -50,6 +48,15 @@ class User extends ActiveRecord
         }
 
         return $data;
+    }
+
+    public function rules(): array
+    {
+        return array_merge(parent::rules(), [
+            [['email'], 'email'],
+            [['status'], 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_PENDING, self::STATUS_BLOCKED, self::STATUS_DELETED]],
+            [['source'], 'in', 'range' => [self::SOURCE_LOCAL, self::SOURCE_LDAP, self::SOURCE_FEDERATED]],
+        ]);
     }
 
     private function decodeJson($value): array

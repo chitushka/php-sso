@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class IdentityProvider extends ActiveRecord
+class IdentityProvider extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

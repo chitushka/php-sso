@@ -3,9 +3,7 @@
 namespace app\models;
 
 use app\components\Rfc3339;
-use yii\db\ActiveRecord;
-
-class Group extends ActiveRecord
+class Group extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

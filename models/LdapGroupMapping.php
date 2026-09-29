@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class LdapGroupMapping extends ActiveRecord
+class LdapGroupMapping extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

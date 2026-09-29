@@ -3,10 +3,9 @@
 namespace app\models;
 
 use app\components\Rfc3339;
-use yii\db\ActiveRecord;
 use yii\db\ArrayExpression;
 
-class OAuthClient extends ActiveRecord
+class OAuthClient extends ValidatedActiveRecord
 {
     public const TYPE_CONFIDENTIAL = 'confidential';
     public const TYPE_PUBLIC = 'public';
@@ -14,6 +13,14 @@ class OAuthClient extends ActiveRecord
     public static function tableName(): string
     {
         return 'oauth_clients';
+    }
+
+    public function rules(): array
+    {
+        return array_merge(parent::rules(), [
+            [['type'], 'in', 'range' => [self::TYPE_CONFIDENTIAL, self::TYPE_PUBLIC]],
+            [['backchannel_logout_uri'], 'url', 'validSchemes' => ['https'], 'skipOnEmpty' => true],
+        ]);
     }
 
     public function publicData(): array

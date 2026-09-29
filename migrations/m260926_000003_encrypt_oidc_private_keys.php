@@ -7,7 +7,7 @@ class m260926_000003_encrypt_oidc_private_keys extends Migration
 {
     public function safeUp()
     {
-        $crypto = new CryptoService();
+        $crypto = new CryptoService(null, true);
         $rows = $this->db->createCommand(
             "SELECT id, private_key_pem FROM oidc_signing_keys WHERE private_key_pem NOT LIKE 'enc:v1:%' FOR UPDATE"
         )->queryAll();

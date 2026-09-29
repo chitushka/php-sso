@@ -169,6 +169,8 @@ class CutoverCheckService
             'user_consents' => ['user_id', 'client_id', 'scopes'],
             'one_time_tokens' => ['id', 'user_id', 'purpose', 'token_hash'],
             'revoked_access_tokens' => ['jti', 'expires_at', 'revoked_at'],
+            'rate_limit_buckets' => ['bucket_key', 'tokens', 'updated_at', 'expires_at', 'last_allowed'],
+            'metric_counters' => ['metric_key', 'metric_value', 'updated_at'],
             'mfa_recovery_codes' => ['id', 'user_id', 'code_hash', 'used_at'],
             'groups' => ['id', 'code'],
             'group_roles' => ['group_id', 'role_id'],

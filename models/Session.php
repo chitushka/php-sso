@@ -2,9 +2,7 @@
 
 namespace app\models;
 
-use yii\db\ActiveRecord;
-
-class Session extends ActiveRecord
+class Session extends ValidatedActiveRecord
 {
     public static function tableName(): string
     {

@@ -41,13 +41,13 @@ class BootstrapServiceTest extends TestCase
     {
         $result = (new BootstrapService())->createAdmin([
             'username' => ' bootstrap-admin ',
-            'email' => ' bootstrap@example.test ',
+            'email' => 'bootstrap@example.test',
             'password' => 'bootstrap-password-123',
         ]);
 
         $this->assertSame(201, $result['status']);
         $this->assertSame(' bootstrap-admin ', $result['data']['username']);
-        $this->assertSame(' bootstrap@example.test ', $result['data']['email']);
+        $this->assertSame('bootstrap@example.test', $result['data']['email']);
         $this->assertFalse($result['data']['email_verified']);
 
         $userId = $result['data']['id'];

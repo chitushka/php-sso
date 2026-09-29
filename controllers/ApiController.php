@@ -27,6 +27,11 @@ class ApiController extends Controller
             Yii::$app->response->data = ['error' => 'request body is too large'];
             return false;
         }
+        if (strlen(Yii::$app->request->rawBody) > $maxBodyBytes) {
+            Yii::$app->response->statusCode = 413;
+            Yii::$app->response->data = ['error' => 'request body is too large'];
+            return false;
+        }
 
         $limit = (new RateLimitService())->check($this->route, Yii::$app->request);
         if (!$limit['allowed']) {
@@ -223,6 +228,11 @@ class ApiController extends Controller
         }
 
         return $principal;
+    }
+
+    public function actionNotFound(): array
+    {
+        return $this->fail(404, 'not found');
     }
 
     protected function requireUser()

@@ -28,33 +28,28 @@ class MetricsService
         $status = (string)$response->statusCode;
         $method = $request->method;
 
-        $requests = Yii::$app->cache->get(self::KEY_REQUESTS);
-        if (!is_array($requests)) {
-            $requests = [];
-        }
-
         $key = $method . ' ' . $route . ' ' . $status;
-        $requests[$key] = (int)($requests[$key] ?? 0) + 1;
-        Yii::$app->cache->set(self::KEY_REQUESTS, $requests, 0);
-
-        $this->increment(self::KEY_TOTAL, 1);
-        $this->increment(self::KEY_DURATION_SUM, $duration);
-        $this->increment(self::KEY_INFLIGHT, -1);
+        $this->incrementMany([
+            self::KEY_REQUESTS . ':' . $key => 1,
+            self::KEY_TOTAL => 1,
+            self::KEY_DURATION_SUM => $duration,
+            self::KEY_INFLIGHT => -1,
+        ]);
     }
 
     public function expose(): string
     {
-        $requests = Yii::$app->cache->get(self::KEY_REQUESTS);
-        if (!is_array($requests)) {
-            $requests = [];
-        }
-
-        ksort($requests);
+        $requests = Yii::$app->db->createCommand(
+            'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
+            [':prefix' => self::KEY_REQUESTS . ':%']
+        )->queryAll();
         $lines = [
             '# TYPE sso_http_requests_total counter',
         ];
 
-        foreach ($requests as $key => $count) {
+        foreach ($requests as $row) {
+            $key = substr((string)$row['metric_key'], strlen(self::KEY_REQUESTS) + 1);
+            $count = $row['metric_value'];
             $parts = explode(' ', (string)$key, 3);
             if (count($parts) !== 3) {
                 continue;
@@ -71,23 +66,50 @@ class MetricsService
         }
 
         $lines[] = '# TYPE sso_http_inflight gauge';
-        $lines[] = 'sso_http_inflight ' . max(0, (int)Yii::$app->cache->get(self::KEY_INFLIGHT));
+        $lines[] = 'sso_http_inflight ' . max(0, (int)$this->value(self::KEY_INFLIGHT));
         $lines[] = '# TYPE sso_http_request_duration_seconds_sum counter';
-        $lines[] = 'sso_http_request_duration_seconds_sum ' . sprintf('%.6F', (float)Yii::$app->cache->get(self::KEY_DURATION_SUM));
+        $lines[] = 'sso_http_request_duration_seconds_sum ' . sprintf('%.6F', $this->value(self::KEY_DURATION_SUM));
         $lines[] = '# TYPE sso_http_requests_processed_total counter';
-        $lines[] = 'sso_http_requests_processed_total ' . (int)Yii::$app->cache->get(self::KEY_TOTAL);
+        $lines[] = 'sso_http_requests_processed_total ' . (int)$this->value(self::KEY_TOTAL);
 
         return implode("\n", $lines) . "\n";
     }
 
     private function increment(string $key, $delta): void
     {
-        $value = Yii::$app->cache->get($key);
-        if (!is_numeric($value)) {
-            $value = 0;
-        }
+        Yii::$app->db->createCommand(
+            'INSERT INTO metric_counters(metric_key, metric_value) VALUES (:key, :delta)
+             ON CONFLICT (metric_key) DO UPDATE SET metric_value = metric_counters.metric_value + :delta, updated_at = now()',
+            [':key' => $key, ':delta' => $delta]
+        )->execute();
+    }
 
-        Yii::$app->cache->set($key, $value + $delta, 0);
+    private function incrementMany(array $deltas): void
+    {
+        $values = [];
+        $params = [];
+        $index = 0;
+        foreach ($deltas as $key => $delta) {
+            $values[] = "(:key{$index}, :delta{$index})";
+            $params[":key{$index}"] = $key;
+            $params[":delta{$index}"] = $delta;
+            $index++;
+        }
+        Yii::$app->db->createCommand(
+            'INSERT INTO metric_counters(metric_key, metric_value) VALUES ' . implode(', ', $values)
+            . ' ON CONFLICT (metric_key) DO UPDATE SET '
+            . 'metric_value = metric_counters.metric_value + EXCLUDED.metric_value, updated_at = now()',
+            $params
+        )->execute();
+    }
+
+    private function value(string $key): float
+    {
+        $value = Yii::$app->db->createCommand(
+            'SELECT metric_value FROM metric_counters WHERE metric_key = :key',
+            [':key' => $key]
+        )->queryScalar();
+        return $value === false ? 0.0 : (float)$value;
     }
 
     private function routeLabel(): string

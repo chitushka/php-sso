@@ -8,6 +8,7 @@ return [
     'language' => 'ru-RU',
     'bootstrap' => ['log'],
     'on beforeRequest' => static function (): void {
+        Yii::$app->params['_cspNonce'] = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
         if (app\components\MaintenanceMode::apply(Yii::$app->request, Yii::$app->response)) {
             Yii::$app->end(0, Yii::$app->response);
         }
@@ -45,6 +46,15 @@ return [
         ],
         'response' => [
             'on beforeSend' => static function ($event): void {
+                $nonce = (string)(Yii::$app->params['_cspNonce'] ?? '');
+                $event->sender->headers->set(
+                    'Content-Security-Policy',
+                    "default-src 'self'; script-src 'self' 'nonce-{$nonce}'; style-src 'self'; "
+                    . "img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; "
+                    . "base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+                );
+                $event->sender->headers->set('X-Content-Type-Options', 'nosniff');
+                $event->sender->headers->set('Referrer-Policy', 'same-origin');
                 $exception = Yii::$app->errorHandler->exception;
                 if ($exception instanceof yii\web\BadRequestHttpException
                     && $exception->getMessage() === 'invalid json body') {
@@ -169,6 +179,10 @@ return [
                 'GET oauth2/userinfo' => 'oidc/userinfo',
                 'GET .well-known/openid-configuration' => 'oidc/configuration',
                 'GET .well-known/jwks.json' => 'oidc/jwks',
+                'api' => 'api/not-found',
+                'api/<path:.*>' => 'api/not-found',
+                'oauth2/<path:.*>' => 'api/not-found',
+                '.well-known/<path:.*>' => 'api/not-found',
                 '' => 'admin/index',
                 'GET <path:.+>' => 'admin/index',
             ],

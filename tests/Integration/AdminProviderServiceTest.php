@@ -94,11 +94,9 @@ class AdminProviderServiceTest extends TestCase
         $loginParts = parse_url($loginUrl);
         parse_str($loginParts['query'] ?? '', $loginQuery);
         $verifyState = new \ReflectionMethod($service, 'verifyState');
-        $verifyState->setAccessible(true);
         $this->assertSame('/', $verifyState->invoke($service, $loginQuery['state'])['c']);
 
         $localContinue = new \ReflectionMethod($service, 'localContinueUrl');
-        $localContinue->setAccessible(true);
         $this->assertSame('/', $localContinue->invoke($service, '//evil.example.test/path'));
         $this->assertSame('/', $localContinue->invoke($service, '/\\evil.example.test/path'));
         $this->assertSame('/', $localContinue->invoke($service, '/%2f%2fevil.example.test/path'));
@@ -128,7 +126,7 @@ class AdminProviderServiceTest extends TestCase
             'name' => 'PHPUnit IdP Updated',
             'client_secret' => '',
         ]);
-        $this->assertSame(200, $updated['status']);
+        $this->assertSame(200, $updated['status'], json_encode($updated));
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
         $this->assertSame('', $updated['data']['type']);
         $this->assertSame('', $updated['data']['client_id']);
@@ -157,9 +155,7 @@ class AdminProviderServiceTest extends TestCase
         try {
             $service = new BrokerService();
             $signState = new \ReflectionMethod($service, 'signState');
-            $signState->setAccessible(true);
             $verifyState = new \ReflectionMethod($service, 'verifyState');
-            $verifyState->setAccessible(true);
 
             $state = [
                 'p' => 'google',
@@ -254,7 +250,7 @@ class AdminProviderServiceTest extends TestCase
             'port' => 389,
             'bind_password' => '',
         ], null);
-        $this->assertSame(200, $updated['status']);
+        $this->assertSame(200, $updated['status'], json_encode($updated));
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
         foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $field) {
             $this->assertSame('', $updated['data'][$field]);

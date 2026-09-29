@@ -37,9 +37,19 @@ class CryptoServiceTest extends TestCase
         );
     }
 
-    public function testKeepsPreEncryptionPlaintextCompatible(): void
+    public function testRejectsPreEncryptionPlaintextAfterCutover(): void
     {
-        $this->assertSame('legacy-plaintext', (new CryptoService(self::KEY))->decrypt('legacy-plaintext'));
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('plaintext secret is not allowed');
+        (new CryptoService(self::KEY))->decrypt('legacy-plaintext');
+    }
+
+    public function testAllowsPlaintextOnlyForExplicitMigration(): void
+    {
+        $this->assertSame(
+            'legacy-plaintext',
+            (new CryptoService(self::KEY, true))->decrypt('legacy-plaintext')
+        );
     }
 
     public function testRejectsGoCiphertextWithPadding(): void
