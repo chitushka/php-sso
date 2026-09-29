@@ -202,7 +202,7 @@ docker compose run --rm app php yii help
 - 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
 - 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
 - 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные first-party Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
-- 2026-09-26: identity brokering усилен: token исключён из redirect URL и `localStorage`, `continue` ограничен локальными путями, исходящие token/userinfo/back-channel запросы защищены от SSRF, а совпадение verified email не вызывает автоматическую привязку существующего аккаунта.
+- 2026-09-29: identity brokering усилен: token исключён из redirect URL и `localStorage`, `continue` ограничен локальными путями, исходящие token/userinfo/back-channel запросы защищены от SSRF (включая IPv4-mapped IPv6), а совпадение verified email не вызывает автоматическую привязку существующего аккаунта.
 - 2026-09-26: OAuth access tokens используют `SSO_API_AUDIENCE`; admin API требует соответствующий permission scope поверх RBAC. OIDC private keys шифруются `SSO_ENCRYPTION_KEY`, включая миграцию существующих ключей и их последующую ротацию.
 - 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
 - 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.

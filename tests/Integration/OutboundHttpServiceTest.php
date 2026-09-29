@@ -52,6 +52,10 @@ class OutboundHttpServiceTest extends TestCase
         $this->assertFalse($method->invoke($service, '127.0.0.1'));
         $this->assertFalse($method->invoke($service, '169.254.169.254'));
         $this->assertFalse($method->invoke($service, '::1'));
+        $this->assertFalse($method->invoke($service, '::ffff:127.0.0.1'));
+        $this->assertFalse($method->invoke($service, '::ffff:169.254.169.254'));
+        $this->assertFalse($method->invoke($service, '::ffff:10.0.0.1'));
         $this->assertTrue($method->invoke($service, '93.184.216.34'));
+        $this->assertTrue($method->invoke($service, '::ffff:93.184.216.34'));
     }
 }

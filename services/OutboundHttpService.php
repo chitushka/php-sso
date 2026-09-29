@@ -130,6 +130,20 @@ class OutboundHttpService
 
     private function isPublicAddress(string $address): bool
     {
+        $packed = @inet_pton($address);
+        if ($packed === false) {
+            return false;
+        }
+
+        // PHP 7.4 считает IPv4-mapped IPv6 публичным по IPv6-диапазону,
+        // поэтому отдельно проверяем вложенный IPv4 и не пропускаем loopback/private адреса.
+        if (strlen($packed) === 16
+            && substr($packed, 0, 10) === str_repeat("\0", 10)
+            && substr($packed, 10, 2) === "\xff\xff") {
+            $mappedAddress = inet_ntop(substr($packed, 12));
+            return is_string($mappedAddress) && $this->isPublicAddress($mappedAddress);
+        }
+
         return filter_var(
             $address,
             FILTER_VALIDATE_IP,
