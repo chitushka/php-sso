@@ -2,6 +2,8 @@
 
 namespace tests\Integration;
 
+require_once __DIR__ . '/ConcurrentProcessTrait.php';
+
 use app\models\User;
 use app\services\AuthService;
 use app\services\JwtService;
@@ -13,6 +15,7 @@ use yii\web\Request;
 
 class AuthServiceTest extends TestCase
 {
+    use ConcurrentProcessTrait;
     private string $username;
     private string $email;
     private ?string $userId = null;
@@ -50,6 +53,7 @@ class AuthServiceTest extends TestCase
         if ($this->userId !== null) {
             Yii::$app->db->createCommand()->delete('sessions', ['user_id' => $this->userId])->execute();
             Yii::$app->db->createCommand()->delete('audit_logs', ['or', ['actor_user_id' => $this->userId], ['target_id' => $this->userId]])->execute();
+            Yii::$app->db->createCommand()->delete('audit_logs', ['target_id' => $this->username])->execute();
             Yii::$app->db->createCommand()->delete('users', ['id' => $this->userId])->execute();
         }
         Yii::$app->db->createCommand()->delete('login_attempts', ['username' => $this->username])->execute();
@@ -78,7 +82,10 @@ class AuthServiceTest extends TestCase
         $this->assertTrue($login['ok']);
         $this->assertArrayNotHasKey('token_type', $login['data']);
         $this->assertArrayNotHasKey('expires_in', $login['data']);
-        $this->assertSame($login['cookie']->value, $login['data']['session_token']);
+        $this->assertArrayNotHasKey('session_token', $login['data']);
+        $this->assertSame($login['csrf_cookie']->value, $login['data']['csrf_token']);
+        $this->assertTrue($login['cookie']->httpOnly);
+        $this->assertFalse($login['csrf_cookie']->httpOnly);
         $this->assertNotFalse(strtotime($login['data']['access_token_expires_at']));
         $this->assertNotFalse(strtotime($login['data']['session_expires_at']));
         $this->assertSame($this->userId, $login['data']['user']['id']);
@@ -119,6 +126,72 @@ class AuthServiceTest extends TestCase
         $service->revokeAccessToken($jwtRequest);
         $this->assertNull($service->currentUser($jwtRequest));
         Yii::$app->db->createCommand()->delete('revoked_access_tokens', ['jti' => $claims['jti']])->execute();
+    }
+
+    public function testAuditFailureRollsBackSessionIssuance(): void
+    {
+        $function = 'reject_login_audit_' . bin2hex(random_bytes(4));
+        $trigger = $function . '_trigger';
+        $quotedUserId = Yii::$app->db->quoteValue($this->userId);
+
+        Yii::$app->db->createCommand(
+            "CREATE FUNCTION {$function}() RETURNS trigger LANGUAGE plpgsql AS $$
+             BEGIN
+                 IF NEW.action = 'login_success' AND NEW.target_id = {$quotedUserId} THEN
+                     RAISE EXCEPTION 'forced audit failure';
+                 END IF;
+                 RETURN NEW;
+             END
+             $$"
+        )->execute();
+        Yii::$app->db->createCommand(
+            "CREATE TRIGGER {$trigger} BEFORE INSERT ON audit_logs
+             FOR EACH ROW EXECUTE FUNCTION {$function}()"
+        )->execute();
+
+        try {
+            $result = (new AuthService())->login([
+                'username' => $this->username,
+                'password' => 'correct-password-123',
+            ], $this->request());
+
+            $this->assertFalse($result['ok']);
+            $this->assertSame(500, $result['status']);
+            $this->assertSame(0, $this->activeSessionCount());
+            $this->assertSame(0, $this->auditCount('login_success'));
+        } finally {
+            Yii::$app->db->createCommand("DROP TRIGGER IF EXISTS {$trigger} ON audit_logs")->execute();
+            Yii::$app->db->createCommand("DROP FUNCTION IF EXISTS {$function}()")->execute();
+        }
+    }
+
+    public function testConcurrentLoginFailuresDoNotLoseAttempts(): void
+    {
+        $workers = [];
+        $workerCount = 12;
+        $script = dirname(__DIR__) . '/Fixtures/login_failure_worker.php';
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        for ($index = 0; $index < $workerCount; $index++) {
+            $process = proc_open([PHP_BINARY, $script, $this->username, $this->ip], $descriptorSpec, $pipes);
+            $this->assertIsResource($process);
+            fclose($pipes[0]);
+            $workers[] = [$process, $pipes[1], $pipes[2]];
+        }
+
+        foreach ($workers as [$process, $stdout, $stderr]) {
+            $output = stream_get_contents($stdout) . stream_get_contents($stderr);
+            fclose($stdout);
+            fclose($stderr);
+            $this->assertSame(0, proc_close($process), $output);
+        }
+
+        $this->assertSame($workerCount, $this->loginAttemptValue());
+        $this->assertSame($workerCount - 4, $this->auditCountByTarget('login_locked', $this->username));
     }
 
     public function testSessionManagementListsOnlyActiveSessionsAndRevokesOwnedSessions(): void
@@ -310,6 +383,34 @@ class AuthServiceTest extends TestCase
         $this->assertGreaterThan($cutoff, $claims['iat']);
     }
 
+    public function testConcurrentLogoutAndRevokeAllAreIdempotent(): void
+    {
+        $service = new AuthService();
+        $first = $service->login([
+            'username' => $this->username,
+            'password' => 'correct-password-123',
+        ], $this->request());
+        $second = $service->login([
+            'username' => $this->username,
+            'password' => 'correct-password-123',
+        ], $this->request());
+
+        $logoutResults = $this->runConcurrentWorkers([
+            ['logout', $first['cookie']->value],
+            ['logout', $first['cookie']->value],
+        ]);
+        $this->assertSame(['success', 'success'], $logoutResults);
+        $this->assertSame(1, $this->activeSessionCount());
+
+        $revokeResults = $this->runConcurrentWorkers([
+            ['revoke-all', $this->userId],
+            ['revoke-all', $this->userId],
+        ]);
+        $this->assertSame(['success', 'success'], $revokeResults);
+        $this->assertSame(0, $this->activeSessionCount());
+        $this->assertNotNull(User::findOne(['id' => $this->userId])->tokens_invalid_before);
+    }
+
     private function request(): Request
     {
         $_SERVER['REMOTE_ADDR'] = $this->ip;
@@ -371,6 +472,14 @@ class AuthServiceTest extends TestCase
         )->queryScalar();
     }
 
+    private function loginAttemptValue(): int
+    {
+        return (int)Yii::$app->db->createCommand(
+            'SELECT attempts FROM login_attempts WHERE username = :username AND ip = :ip',
+            [':username' => $this->username, ':ip' => $this->ip]
+        )->queryScalar();
+    }
+
     private function activeSessionCount(): int
     {
         return (int)Yii::$app->db->createCommand(
@@ -384,6 +493,14 @@ class AuthServiceTest extends TestCase
         return (int)Yii::$app->db->createCommand(
             'SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :user_id AND action = :action',
             [':user_id' => $this->userId, ':action' => $action]
+        )->queryScalar();
+    }
+
+    private function auditCountByTarget(string $action, string $targetId): int
+    {
+        return (int)Yii::$app->db->createCommand(
+            'SELECT COUNT(*) FROM audit_logs WHERE action = :action AND target_id = :target_id',
+            [':action' => $action, ':target_id' => $targetId]
         )->queryScalar();
     }
 }

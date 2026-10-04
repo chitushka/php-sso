@@ -2,6 +2,7 @@
 
 namespace app\commands;
 
+use app\components\Environment;
 use app\services\CryptoService;
 use app\services\CutoverCheckService;
 use app\services\SecretKeyRotationService;
@@ -70,7 +71,7 @@ class CutoverController extends Controller
     public function actionRewrapSecrets(): int
     {
         $apply = filter_var($this->apply, FILTER_VALIDATE_BOOLEAN);
-        $key = (string)(getenv('SSO_ENCRYPTION_KEY') ?: '');
+        $key = (string)Environment::value('SSO_ENCRYPTION_KEY', '');
         $insecureKey = strlen($key) < 32 || stripos($key, 'change-me') !== false;
         if ($apply && $insecureKey) {
             $this->stderr("SSO_ENCRYPTION_KEY must be at least 32 characters and not a placeholder\n");
@@ -104,9 +105,9 @@ class CutoverController extends Controller
     public function actionRotateEncryptionKey(): int
     {
         $apply = filter_var($this->apply, FILTER_VALIDATE_BOOLEAN);
-        $activeKey = (string)(getenv('SSO_ENCRYPTION_KEY') ?: '');
-        $oldKey = (string)(getenv('SSO_OLD_ENCRYPTION_KEY') ?: '');
-        $newKey = (string)(getenv('SSO_NEW_ENCRYPTION_KEY') ?: '');
+        $activeKey = (string)Environment::value('SSO_ENCRYPTION_KEY', '');
+        $oldKey = (string)Environment::value('SSO_OLD_ENCRYPTION_KEY', '');
+        $newKey = (string)Environment::value('SSO_NEW_ENCRYPTION_KEY', '');
 
         if ($oldKey === '' || $newKey === '') {
             $this->stderr("SSO_OLD_ENCRYPTION_KEY and SSO_NEW_ENCRYPTION_KEY are required\n");
@@ -164,7 +165,7 @@ class CutoverController extends Controller
             return self::EXIT_CODE_ERROR;
         }
 
-        $oldKey = (string)(getenv('SSO_ENCRYPTION_KEY') ?: '');
+        $oldKey = (string)Environment::value('SSO_ENCRYPTION_KEY', '');
         if ($oldKey === '') {
             $this->stderr("active SSO_ENCRYPTION_KEY is required\n");
             return self::EXIT_CODE_ERROR;

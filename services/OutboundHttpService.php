@@ -6,10 +6,13 @@ use Yii;
 
 class OutboundHttpService
 {
-    private const MAX_RESPONSE_BYTES = 1048576;
+    private const DEFAULT_MAX_RESPONSE_BYTES = 1048576;
 
     public function isValidEndpoint(string $url, bool $allowFragment = false): bool
     {
+        if ($url === '' || preg_match('/[\x00-\x20\x7F]/', $url) || strpos($url, '\\') !== false) {
+            return false;
+        }
         $parts = parse_url($url);
         if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
             return false;
@@ -60,54 +63,71 @@ class OutboundHttpService
             }
         }
 
-        // Соединяемся с уже проверенным IP, чтобы повторный DNS lookup не позволил обойти SSRF-проверку.
-        $address = $addresses[0];
         $scheme = strtolower((string)$parts['scheme']);
         $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
-        $authority = strpos($address, ':') !== false ? '[' . $address . ']' : $address;
-        if (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) {
-            $authority .= ':' . $port;
-        }
         $path = (string)($parts['path'] ?? '/');
         if ($path === '') {
             $path = '/';
         }
-        $resolvedUrl = $scheme . '://' . $authority . $path;
-        if (isset($parts['query'])) {
-            $resolvedUrl .= '?' . $parts['query'];
-        }
-
-        $hostHeader = $host;
+        $hostHeader = strpos($host, ':') !== false ? '[' . $host . ']' : $host;
         if (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) {
             $hostHeader .= ':' . $port;
         }
         $headers[] = 'Host: ' . $hostHeader;
 
-        $context = stream_context_create([
-            'http' => [
-                'method' => strtoupper($method),
-                'header' => implode("\r\n", $headers),
-                'content' => $body ?? '',
-                'timeout' => 10,
-                'ignore_errors' => true,
-                'follow_location' => 0,
-                'max_redirects' => 0,
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'peer_name' => $host,
-                'SNI_enabled' => true,
-            ],
-        ]);
+        foreach ($addresses as $address) {
+            // Адрес повторно проверяется непосредственно перед каждым соединением.
+            if (!$this->isAllowlisted($host) && !$this->isPublicAddress($address)) {
+                return null;
+            }
 
-        $raw = @file_get_contents($resolvedUrl, false, $context);
-        if ($raw === false || strlen($raw) > self::MAX_RESPONSE_BYTES) {
-            return null;
+            $authority = strpos($address, ':') !== false ? '[' . $address . ']' : $address;
+            if (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) {
+                $authority .= ':' . $port;
+            }
+            $resolvedUrl = $scheme . '://' . $authority . $path;
+            if (isset($parts['query'])) {
+                $resolvedUrl .= '?' . $parts['query'];
+            }
+
+            $context = stream_context_create([
+                'http' => [
+                    'method' => strtoupper($method),
+                    'header' => implode("\r\n", $headers),
+                    'content' => $body ?? '',
+                    'timeout' => max(1, (int)(Yii::$app->params['outboundConnectTimeout'] ?? 5)),
+                    'ignore_errors' => true,
+                    'follow_location' => 0,
+                    'max_redirects' => 0,
+                ],
+                'ssl' => [
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                    'peer_name' => $host,
+                    'SNI_enabled' => true,
+                ],
+            ]);
+
+            $stream = @fopen($resolvedUrl, 'rb', false, $context);
+            if ($stream === false) {
+                continue;
+            }
+            try {
+                stream_set_timeout($stream, max(1, (int)(Yii::$app->params['outboundReadTimeout'] ?? 10)));
+                $limit = max(1, (int)(Yii::$app->params['outboundMaxResponseBytes'] ?? self::DEFAULT_MAX_RESPONSE_BYTES));
+                $raw = stream_get_contents($stream, $limit + 1);
+                $metadata = stream_get_meta_data($stream);
+                if ($raw === false || strlen($raw) > $limit || !empty($metadata['timed_out'])) {
+                    return null;
+                }
+                $status = $this->responseStatus($http_response_header ?? []);
+                return $status >= 200 && $status < 300 ? $raw : null;
+            } finally {
+                fclose($stream);
+            }
         }
 
-        $status = $this->responseStatus($http_response_header ?? []);
-        return $status >= 200 && $status < 300 ? $raw : null;
+        return null;
     }
 
     private function resolveAddresses(string $host): array
@@ -137,9 +157,11 @@ class OutboundHttpService
 
         // PHP 7.4 считает IPv4-mapped IPv6 публичным по IPv6-диапазону,
         // поэтому отдельно проверяем вложенный IPv4 и не пропускаем loopback/private адреса.
-        if (strlen($packed) === 16
+        if (
+            strlen($packed) === 16
             && substr($packed, 0, 10) === str_repeat("\0", 10)
-            && substr($packed, 10, 2) === "\xff\xff") {
+            && substr($packed, 10, 2) === "\xff\xff"
+        ) {
             $mappedAddress = inet_ntop(substr($packed, 12));
             return is_string($mappedAddress) && $this->isPublicAddress($mappedAddress);
         }

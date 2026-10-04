@@ -1,6 +1,7 @@
 <?php
 
 $db = require __DIR__ . '/db.php';
+$params = require __DIR__ . '/params.php';
 
 return [
     'id' => 'sso-php',
@@ -8,6 +9,7 @@ return [
     'language' => 'ru-RU',
     'bootstrap' => ['log'],
     'on beforeRequest' => static function (): void {
+        app\components\CorrelationId::begin(Yii::$app->request);
         Yii::$app->params['_cspNonce'] = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
         if (app\components\MaintenanceMode::apply(Yii::$app->request, Yii::$app->response)) {
             Yii::$app->end(0, Yii::$app->response);
@@ -39,7 +41,7 @@ return [
         'request' => [
             'class' => app\components\TrustedRequest::class,
             'enableCookieValidation' => false,
-            'cookieValidationKey' => getenv('SSO_ENCRYPTION_KEY') ?: 'change-me-please-change-me-please-change-me',
+            'cookieValidationKey' => $params['encryptionKey'],
             'parsers' => [
                 'application/json' => app\components\JsonParser::class,
             ],
@@ -54,10 +56,44 @@ return [
                     . "base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
                 );
                 $event->sender->headers->set('X-Content-Type-Options', 'nosniff');
+                $event->sender->headers->set(
+                    'X-Request-ID',
+                    (string)(Yii::$app->params['_requestId'] ?? '')
+                );
                 $event->sender->headers->set('Referrer-Policy', 'same-origin');
+                $event->sender->headers->set(
+                    'Permissions-Policy',
+                    'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+                );
+                if (
+                    strtolower((string)getenv('SSO_ENV')) === 'prod'
+                    && Yii::$app->request->isSecureConnection
+                ) {
+                    $event->sender->headers->set(
+                        'Strict-Transport-Security',
+                        'max-age=31536000; includeSubDomains'
+                    );
+                }
+                $path = '/' . ltrim((string)Yii::$app->request->pathInfo, '/');
+                if (
+                    strpos($path, '/api/v1/auth/') === 0
+                    || in_array($path, [
+                        '/oauth2/authorize',
+                        '/oauth2/token',
+                        '/oauth2/revoke',
+                        '/oauth2/introspect',
+                        '/oauth2/consent',
+                        '/oauth2/logout',
+                    ], true)
+                ) {
+                    $event->sender->headers->set('Cache-Control', 'no-store');
+                    $event->sender->headers->set('Pragma', 'no-cache');
+                }
                 $exception = Yii::$app->errorHandler->exception;
-                if ($exception instanceof yii\web\BadRequestHttpException
-                    && $exception->getMessage() === 'invalid json body') {
+                if (
+                    $exception instanceof yii\web\BadRequestHttpException
+                    && $exception->getMessage() === 'invalid json body'
+                ) {
                     $event->sender->format = yii\web\Response::FORMAT_JSON;
                     $event->sender->data = ['error' => 'invalid json body'];
                 }
@@ -67,7 +103,7 @@ return [
             ],
         ],
         'db' => $db,
-        'cache' => (getenv('SSO_CACHE_DRIVER') === 'db')
+        'cache' => ($params['cacheDriver'] === 'db')
             ? [
                 'class' => yii\caching\DbCache::class,
                 'db' => 'db',
@@ -79,14 +115,10 @@ return [
         'log' => [
             'targets' => [
                 [
-                    'class' => yii\log\FileTarget::class,
-                    'levels' => ['error', 'warning'],
-                ],
-                [
-                    'class' => yii\log\FileTarget::class,
-                    'levels' => ['info'],
-                    'categories' => ['mail'],
-                    'logFile' => '@runtime/logs/mail.log',
+                    'class' => app\components\JsonLogTarget::class,
+                    'levels' => ['error', 'warning', 'info'],
+                    'except' => ['yii\\db\\Command*', 'yii\\db\\Connection*'],
+                    'logVars' => [],
                 ],
             ],
         ],
@@ -172,6 +204,8 @@ return [
                 'POST oauth2/introspect' => 'oauth/introspect',
                 'GET oauth2/consent' => 'oauth/consent',
                 'POST oauth2/consent' => 'oauth/grant-consent',
+                'GET api/v1/auth/consents' => 'oauth/list-user-consents',
+                'DELETE api/v1/auth/consents/<clientId:[^/]+>' => 'oauth/revoke-user-consent',
                 'GET oauth2/logout' => 'oauth/logout',
                 'POST oauth2/logout' => 'oauth/logout',
                 'GET oauth2/broker/<providerCode:[A-Za-z0-9_.-]+>/login' => 'broker/login',
@@ -188,5 +222,5 @@ return [
             ],
         ],
     ],
-    'params' => require __DIR__ . '/params.php',
+    'params' => $params,
 ];

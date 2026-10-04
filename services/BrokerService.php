@@ -111,23 +111,31 @@ class BrokerService
         $provider = $this->applyPreset($provider);
         $identity = $this->fetchIdentity($provider, $code);
         if (!$identity) {
+            Yii::warning('broker identity fetch failed', 'broker');
             AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
             return ['ok' => false, 'error' => 'external authentication failed'];
         }
 
         $user = $this->resolveUser($provider, $identity);
         if (!$user) {
+            Yii::warning('broker user resolution failed', 'broker');
             AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
             return ['ok' => false, 'error' => 'external authentication failed'];
         }
 
         $auth = (new AuthService())->issueFederatedLogin($user, Yii::$app->request);
+        if (!$auth['ok']) {
+            Yii::warning('broker session issuance failed', 'broker');
+            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
+            return ['ok' => false, 'error' => 'external authentication failed'];
+        }
         AuditService::record($user->id, 'broker_login_success', 'identity_provider', $providerCode, true);
 
         return [
             'ok' => true,
             'continue' => $this->localContinueUrl((string)($state['c'] ?? '')),
             'cookie' => $auth['cookie'],
+            'csrf_cookie' => $auth['csrf_cookie'],
         ];
     }
 
@@ -292,6 +300,7 @@ class BrokerService
             'Accept: application/json',
         ]);
         if (!$token || empty($token['access_token'])) {
+            Yii::warning('broker token exchange failed', 'broker');
             return null;
         }
 
@@ -301,11 +310,13 @@ class BrokerService
             'User-Agent: sso-php',
         ]);
         if (!$info) {
+            Yii::warning('broker userinfo request failed', 'broker');
             return null;
         }
 
         $subject = isset($info['sub']) ? (string)$info['sub'] : (isset($info['id']) ? (string)$info['id'] : '');
         if ($subject === '') {
+            Yii::warning('broker userinfo subject is missing', 'broker');
             return null;
         }
 
@@ -424,10 +435,12 @@ class BrokerService
 
     private function providerEndpointsAreSafe(IdentityProvider $provider): bool
     {
-        if (!(bool)$provider->enabled
+        if (
+            !(bool)$provider->enabled
             && (string)$provider->authorize_url === ''
             && (string)$provider->token_url === ''
-            && (string)$provider->userinfo_url === '') {
+            && (string)$provider->userinfo_url === ''
+        ) {
             return true;
         }
 
@@ -464,8 +477,10 @@ class BrokerService
         }
 
         $state = json_decode($payload, true);
-        if (!is_array($state) || !is_string($state['e'] ?? null)
-            || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/D', $state['e']) !== 1) {
+        if (
+            !is_array($state) || !is_string($state['e'] ?? null)
+            || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/D', $state['e']) !== 1
+        ) {
             return null;
         }
 

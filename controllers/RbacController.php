@@ -121,8 +121,9 @@ class RbacController extends ApiController
         }
         $permissionID = $this->canonicalUuid($permissionID);
 
-        $this->service()->removePermissionFromRole($roleID, $permissionID);
-        return ['status' => 'removed'];
+        return $this->service()->removePermissionFromRole($roleID, $permissionID)
+            ? ['status' => 'removed']
+            : $this->fail(409, 'built-in admin permissions cannot be removed');
     }
 
     public function actionListUserRoles(string $userID): array
@@ -174,7 +175,8 @@ class RbacController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        $this->service()->removeRoleFromUser($userID, $roleID);
-        return ['status' => 'removed'];
+        return $this->service()->removeRoleFromUser($userID, $roleID)
+            ? ['status' => 'removed']
+            : $this->fail(409, 'at least one active administrator is required');
     }
 }

@@ -3,6 +3,7 @@
 namespace app\models;
 
 use app\components\Rfc3339;
+
 class User extends ValidatedActiveRecord
 {
     public const STATUS_ACTIVE = 'active';
@@ -36,7 +37,6 @@ class User extends ValidatedActiveRecord
             'created_at' => Rfc3339::format($this->created_at),
             'updated_at' => Rfc3339::format($this->updated_at),
         ];
-
         if ($this->ldap_provider_id !== null) {
             $data['ldap_provider_id'] = $this->ldap_provider_id;
         }
@@ -50,15 +50,32 @@ class User extends ValidatedActiveRecord
         return $data;
     }
 
+    public static function normalizeEmail(string $email): string
+    {
+        return strtolower(trim($email));
+    }
+
+    public function beforeValidate(): bool
+    {
+        $this->email = self::normalizeEmail((string)$this->email);
+        return parent::beforeValidate();
+    }
+
+    public function beforeSave($insert): bool
+    {
+        $this->email = self::normalizeEmail((string)$this->email);
+        return parent::beforeSave($insert);
+    }
+
     public function rules(): array
     {
         return array_merge(parent::rules(), [
             [['email'], 'email'],
+            [['email'], 'unique'],
             [['status'], 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_PENDING, self::STATUS_BLOCKED, self::STATUS_DELETED]],
             [['source'], 'in', 'range' => [self::SOURCE_LOCAL, self::SOURCE_LDAP, self::SOURCE_FEDERATED]],
         ]);
     }
-
     private function decodeJson($value): array
     {
         if (is_array($value)) {

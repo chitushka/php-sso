@@ -61,11 +61,13 @@ class AuditController extends ApiController
 
     private function parseRfc3339(string $value): ?DateTimeImmutable
     {
-        if (!preg_match(
-            '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/D',
-            $value,
-            $matches
-        )) {
+        if (
+            !preg_match(
+                '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/D',
+                $value,
+                $matches
+            )
+        ) {
             return null;
         }
 
@@ -86,5 +88,4 @@ class AuditController extends ApiController
 
         return $parsed;
     }
-
 }

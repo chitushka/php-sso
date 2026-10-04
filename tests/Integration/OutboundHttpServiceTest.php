@@ -30,6 +30,8 @@ class OutboundHttpServiceTest extends TestCase
         $this->assertFalse($service->isValidEndpoint('http://idp.example.test/token'));
         $this->assertFalse($service->isValidEndpoint('https://user:pass@idp.example.test/token'));
         $this->assertFalse($service->isValidEndpoint('https://idp.example.test/token#fragment'));
+        $this->assertFalse($service->isValidEndpoint("https://idp.example.test/token\r\nHost: attacker.test"));
+        $this->assertFalse($service->isValidEndpoint('https://idp.example.test\\@attacker.test/token'));
         $this->assertFalse($service->isValidEndpoint('file:///etc/passwd'));
     }
 
@@ -56,5 +58,39 @@ class OutboundHttpServiceTest extends TestCase
         $this->assertFalse($method->invoke($service, '::ffff:10.0.0.1'));
         $this->assertTrue($method->invoke($service, '93.184.216.34'));
         $this->assertTrue($method->invoke($service, '::ffff:93.184.216.34'));
+    }
+
+    /**
+     * @dataProvider oversizedResponseProvider
+     */
+    public function testResponseLimitAppliesWhileReadingLengthAndChunkedBodies(string $mode): void
+    {
+        Yii::$app->params['outboundHostAllowlist'] = '127.0.0.1';
+        Yii::$app->params['outboundMaxResponseBytes'] = 64;
+        $command = [PHP_BINARY, dirname(__DIR__) . '/Fixtures/http_response_server.php', $mode];
+        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertIsResource($process);
+        fclose($pipes[0]);
+        $port = trim((string)fgets($pipes[1]));
+
+        try {
+            $this->assertMatchesRegularExpression('/^\d+$/D', $port);
+            $this->assertNull((new OutboundHttpService())->request(
+                'http://127.0.0.1:' . $port . '/response',
+                'GET',
+                null,
+                []
+            ));
+        } finally {
+            fclose($pipes[1]);
+            $error = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+            $this->assertSame(0, proc_close($process), $error);
+        }
+    }
+
+    public function oversizedResponseProvider(): array
+    {
+        return [['length'], ['chunked']];
     }
 }

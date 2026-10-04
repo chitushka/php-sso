@@ -42,6 +42,9 @@ function httpRequest(string $method, string $url, array $cookies = []): array
             $pairs[] = $name . '=' . $value;
         }
         $headers[] = 'Cookie: ' . implode('; ', $pairs);
+        if (isset($cookies['sso_csrf'])) {
+            $headers[] = 'X-CSRF-Token: ' . $cookies['sso_csrf'];
+        }
     }
     $context = stream_context_create([
         'http' => [
@@ -142,10 +145,40 @@ try {
     assertTrue(($authorizeQuery['redirect_uri'] ?? '') === $baseUrl . '/oauth2/broker/' . $providerCode . '/callback', 'authorize redirect must include callback URL');
     assertTrue(!empty($authorizeQuery['state']), 'authorize redirect must include signed state');
 
-    $callback = httpRequest(
+    $collisionCallback = httpRequest(
         'GET',
         $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
             'state' => $authorizeQuery['state'],
+            'code' => $externalCode,
+        ])
+    );
+    assertTrue($collisionCallback['status'] === 302, 'email collision must redirect');
+    assertTrue(
+        $collisionCallback['location'] === '/login?broker_error=failed'
+            || $collisionCallback['location'] === $baseUrl . '/login?broker_error=failed',
+        'email collision must fail without linking the local account'
+    );
+    $unexpectedLink = (int)$db->createCommand(
+        'SELECT COUNT(*) FROM federated_identities WHERE provider_id = :provider_id AND external_subject = :subject',
+        [':provider_id' => $providerId, ':subject' => $externalCode]
+    )->queryScalar();
+    assertTrue($unexpectedLink === 0, 'email collision must not create a federated identity link');
+
+    $db->createCommand()->delete('users', ['id' => $localUserId])->execute();
+    $localUserId = null;
+
+    $retryLogin = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/login?continue=' . rawurlencode('/broker-finished')
+    );
+    assertTrue($retryLogin['status'] >= 300 && $retryLogin['status'] < 400, 'broker retry must redirect to provider');
+    $retryAuthorizeParts = parse_url($retryLogin['location']);
+    parse_str($retryAuthorizeParts['query'] ?? '', $retryAuthorizeQuery);
+
+    $callback = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
+            'state' => $retryAuthorizeQuery['state'] ?? '',
             'code' => $externalCode,
         ])
     );
@@ -165,7 +198,11 @@ try {
 
     $sessionToken = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', $callback['cookies']);
     $sessionPayload = json_decode((string)$sessionToken['body'], true);
-    assertTrue($sessionToken['status'] === 200, 'broker session cookie must mint an in-memory access token');
+    assertTrue(
+        $sessionToken['status'] === 200,
+        'broker session cookie must mint an in-memory access token, got '
+            . $sessionToken['status'] . ': ' . substr((string)$sessionToken['body'], 0, 500)
+    );
     assertTrue(!empty($sessionPayload['access_token']), 'session-token response must include access_token');
 
     $user = $db->createCommand(
@@ -174,7 +211,6 @@ try {
     )->queryOne();
     assertTrue((bool)$user, 'broker callback must provision federated user');
     assertTrue($user['source'] === 'federated', 'broker user must be federated');
-    assertTrue($user['id'] !== $localUserId, 'verified email must not auto-link an existing local account');
     assertTrue((bool)$user['email_verified'] === false, 'broker provision must preserve Go email_verified zero value');
     $userId = $user['id'];
 

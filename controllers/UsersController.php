@@ -6,8 +6,9 @@ use app\models\User;
 use app\services\AuditService;
 use app\services\PasswordPolicy;
 use app\services\PasswordHasher;
+use app\services\UserService;
 use Yii;
-use yii\db\Expression;
+use yii\db\IntegrityException;
 
 class UsersController extends ApiController
 {
@@ -74,7 +75,11 @@ class UsersController extends ApiController
             return $this->fail(400, 'username and email are required');
         }
 
-        if (User::find()->where(['username' => trim((string)$body['username'])])->exists()) {
+        $normalizedEmail = User::normalizeEmail((string)$body['email']);
+        if (
+            User::find()->where(['username' => trim((string)$body['username'])])->exists()
+            || User::find()->where(['email' => $normalizedEmail])->exists()
+        ) {
             return $this->fail(409, 'user already exists');
         }
 
@@ -89,11 +94,12 @@ class UsersController extends ApiController
         $user->password_hash = PasswordHasher::hash($password);
         $user->source = User::SOURCE_LOCAL;
 
-        if (!$user->save()) {
-            if ($user->hasErrors('username')) {
-                return $this->fail(409, 'user already exists');
-            }
-
+        try {
+            $saved = $user->save();
+        } catch (IntegrityException $exception) {
+            return $this->fail(409, 'user already exists');
+        }
+        if (!$saved) {
             return $this->fail(400, 'invalid user payload', ['details' => $user->errors]);
         }
 
@@ -130,46 +136,9 @@ class UsersController extends ApiController
             'last_name' => 'string',
             'attributes' => 'string_map',
         ]);
-        $user = User::findOne(['id' => $id]);
-        if (!$user) {
-            return $this->fail(500, 'failed to update user');
-        }
-
-        $previousStatus = (string)$user->status;
-        $user->username = trim((string)($body['username'] ?? ''));
-        $user->email = trim((string)($body['email'] ?? ''));
-        $user->status = trim((string)($body['status'] ?? ''));
-        $user->first_name = trim((string)($body['first_name'] ?? ''));
-        $user->last_name = trim((string)($body['last_name'] ?? ''));
-        $user->attributes = json_encode((array)($body['attributes'] ?? []));
-
-        $transaction = Yii::$app->db->beginTransaction();
-        try {
-            if ($previousStatus !== (string)$user->status) {
-                $user->tokens_invalid_before = new Expression('now()');
-            }
-            if (!$user->save()) {
-                $transaction->rollBack();
-                return $this->fail(500, 'failed to update user');
-            }
-            if ($previousStatus !== (string)$user->status) {
-                Yii::$app->db->createCommand()->update(
-                    'sessions', ['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]
-                )->execute();
-                Yii::$app->db->createCommand()->update(
-                    'refresh_tokens', ['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]
-                )->execute();
-            }
-            AuditService::record(null, 'user_updated', 'user', $id, true);
-            $transaction->commit();
-        } catch (\Throwable $exception) {
-            if ($transaction->isActive) {
-                $transaction->rollBack();
-            }
-            return $this->fail(500, 'failed to update user');
-        }
-
-        return $user->publicData();
+        $result = (new UserService())->update($id, $body);
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
     }
 
     public function actionDelete(string $id): array
@@ -184,17 +153,9 @@ class UsersController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $user = User::findOne(['id' => $id]);
-        if (!$user) {
-            return $this->fail(404, 'user not found');
-        }
-
-        $user->status = User::STATUS_DELETED;
-        $user->tokens_invalid_before = new Expression('now()');
-        $user->save(false, ['status', 'tokens_invalid_before']);
-        AuditService::record(null, 'user_deleted', 'user', $id, true);
-
-        return ['status' => 'deleted'];
+        $result = (new UserService())->delete($id);
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
     }
 
     private function fillUser(User $user, array $body): void

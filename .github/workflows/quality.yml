@@ -1,0 +1,43 @@
+name: Quality gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production and test images
+        run: make build build-test runtime-check
+      - name: Static quality and repository checks
+        run: make quality
+      - name: Database migrations
+        run: make migration-check
+      - name: Automated tests and coverage
+        run: make unit phpunit-integration coverage
+      - name: Protocol smoke tests
+        run: make integration integration-client integration-broker integration-ldap
+      - name: Composer security audit
+        run: make audit
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: sso-php-app:latest
+          artifact-name: sso-php-app.spdx.json
+          format: spdx-json
+      - name: Scan production image
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: sso-php-app:latest
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL

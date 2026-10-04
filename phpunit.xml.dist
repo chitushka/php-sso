@@ -4,6 +4,7 @@
     xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.6/phpunit.xsd"
     bootstrap="tests/bootstrap.php"
     colors="true"
+    cacheResult="false"
 >
     <testsuites>
         <testsuite name="Unit">
@@ -13,4 +14,11 @@
             <directory suffix="Test.php">tests/Integration</directory>
         </testsuite>
     </testsuites>
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">services</directory>
+            <directory suffix=".php">components</directory>
+            <directory suffix=".php">controllers</directory>
+        </include>
+    </coverage>
 </phpunit>

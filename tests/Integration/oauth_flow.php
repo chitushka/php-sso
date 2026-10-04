@@ -56,6 +56,9 @@ function httpRequest(string $method, string $url, array $options = []): array
             $pairs[] = $name . '=' . $value;
         }
         $headers[] = 'Cookie: ' . implode('; ', $pairs);
+        if (strtoupper($method) !== 'GET' && isset($cookies['sso_csrf']) && !($options['omit_csrf'] ?? false)) {
+            $headers[] = 'X-CSRF-Token: ' . $cookies['sso_csrf'];
+        }
     }
 
     $context = stream_context_create([
@@ -261,10 +264,14 @@ try {
     ]);
     assertTrue($login['status'] === 200, 'admin login must return 200');
     assertTrue(!empty($login['json']['access_token']), 'admin login must return access_token');
-    assertTrue(!empty($login['json']['session_token']), 'admin login must return Go-compatible session_token');
+    assertTrue(strpos((string)responseHeader($login, 'Cache-Control'), 'no-store') !== false, 'login response must not be cached');
+    assertTrue(responseHeader($login, 'Pragma') === 'no-cache', 'login response must disable legacy caches');
+    assertTrue(responseHeader($login, 'Permissions-Policy') !== null, 'login response must include Permissions-Policy');
+    assertTrue(!array_key_exists('session_token', $login['json']), 'login must not expose session_token to JavaScript');
+    assertTrue(!empty($login['json']['csrf_token']), 'login must return csrf_token');
     assertTrue(
-        ($login['json']['session_token'] ?? '') === ($login['cookies']['sso_session'] ?? ''),
-        'login session_token must match sso_session cookie'
+        ($login['json']['csrf_token'] ?? '') === ($login['cookies']['sso_csrf'] ?? ''),
+        'login csrf_token must match sso_csrf cookie'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string)($login['json']['access_token_expires_at'] ?? '')) === 1,
@@ -297,7 +304,10 @@ try {
     }
 
     $adminToken = $login['json']['access_token'];
-    $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
+    $sessionCookie = [
+        'sso_session' => $login['cookies']['sso_session'],
+        'sso_csrf' => $login['cookies']['sso_csrf'],
+    ];
 
     $missingBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', []);
     assertTrue($missingBearer['status'] === 401, 'protected endpoint without bearer token must return 401');
@@ -371,7 +381,10 @@ try {
     ]);
     assertTrue($caseInsensitiveLogin['status'] === 200, 'Go decoder must match JSON field names case-insensitively');
     $caseInsensitiveLogout = httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
-        'cookies' => ['sso_session' => $caseInsensitiveLogin['cookies']['sso_session']],
+        'cookies' => [
+            'sso_session' => $caseInsensitiveLogin['cookies']['sso_session'],
+            'sso_csrf' => $caseInsensitiveLogin['cookies']['sso_csrf'],
+        ],
         'headers' => ['Accept: application/json'],
     ]);
     assertTrue($caseInsensitiveLogout['status'] === 200, 'case-insensitive login session cleanup must return 200');
@@ -382,7 +395,10 @@ try {
     ]);
     assertTrue($contentTypeIndependentLogin['status'] === 200, 'Go JSON decoding must not depend on Content-Type');
     httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
-        'cookies' => ['sso_session' => $contentTypeIndependentLogin['cookies']['sso_session']],
+        'cookies' => [
+            'sso_session' => $contentTypeIndependentLogin['cookies']['sso_session'],
+            'sso_csrf' => $contentTypeIndependentLogin['cookies']['sso_csrf'],
+        ],
         'headers' => ['Accept: application/json'],
     ]);
 
@@ -458,7 +474,10 @@ try {
     ]);
     assertTrue($login['status'] === 200, 'admin relogin after revoke all must return 200');
     $adminToken = $login['json']['access_token'];
-    $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
+    $sessionCookie = [
+        'sso_session' => $login['cookies']['sso_session'],
+        'sso_csrf' => $login['cookies']['sso_csrf'],
+    ];
 
     $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
     assertTrue($backchannelReset['status'] === 204, 'back-channel logout fixture must be available');
@@ -467,14 +486,17 @@ try {
         'name' => 'Integration test client ' . $suffix,
         'client_id' => 'itest-client-' . $suffix,
         'type' => 'confidential',
-        'redirect_uris' => ['http://localhost/cb'],
+        'redirect_uris' => ['https://rp.example.test/cb'],
         'allowed_scopes' => ['openid', 'profile', 'email'],
-        'post_logout_redirect_uris' => ['http://localhost/logout-cb'],
+        'post_logout_redirect_uris' => ['https://rp.example.test/logout-cb'],
         'backchannel_logout_uri' => $backchannelUrl . '/logout',
         'skip_consent' => true,
         'enabled' => true,
     ], $adminToken);
-    assertTrue($client['status'] === 201, 'create oauth client must return 201');
+    assertTrue(
+        $client['status'] === 201,
+        'create oauth client must return 201: ' . json_encode($client, JSON_UNESCAPED_SLASHES)
+    );
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
     assertTrue(isset($client['json']['client']), 'create oauth client must return Go-compatible nested client');
     $clientSecret = $client['json']['client_secret'];
@@ -524,7 +546,7 @@ try {
         'name' => 'Unknown field client ' . $suffix,
         'client_id' => 'unknown-field-client-' . $suffix,
         'type' => 'confidential',
-        'redirect_uris' => ['http://localhost/unknown-field-cb'],
+        'redirect_uris' => ['https://rp.example.test/unknown-field-cb'],
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownOAuthClientField['status'] === 400, 'OAuth client JSON with unknown field must return 400');
@@ -533,7 +555,7 @@ try {
     $typedOAuthClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'client_id' => 'typed-client-' . $suffix,
         'name' => 'Typed client',
-        'redirect_uris' => ['http://localhost/typed', 7],
+        'redirect_uris' => ['https://rp.example.test/typed', 7],
         'enabled' => 'false',
     ], $adminToken);
     assertTrue($typedOAuthClient['status'] === 400, 'OAuth client with invalid slice/bool types must return 400');
@@ -609,20 +631,29 @@ try {
     assertTrue(($jwks['json']['keys'][0]['kty'] ?? '') === 'RSA', 'JWKS key must be RSA');
     assertTrue(($jwks['json']['keys'][0]['alg'] ?? '') === 'RS256', 'JWKS key must use RS256');
 
+    $preflightChallenge = rtrim(strtr(base64_encode(hash('sha256', 'preflight-verifier-' . $suffix, true)), '+/', '-_'), '=');
     $loginRequiredUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'openid',
+        'state' => 'login-required-' . $suffix,
+        'nonce' => 'login-required-' . $suffix,
+        'code_challenge' => $preflightChallenge,
+        'code_challenge_method' => 'S256',
     ]);
     $loginRequired = httpRequest('GET', $loginRequiredUrl, ['headers' => ['Accept: application/json']]);
-    assertOAuthError($loginRequired, 401, 'login_required', 'authorize without SSO session');
+    assertTrue($loginRequired['status'] >= 300 && $loginRequired['status'] < 400, 'authorize without SSO session must redirect');
+    $loginRequiredParts = parse_url($loginRequired['location']);
+    parse_str($loginRequiredParts['query'] ?? '', $loginRequiredQuery);
+    assertTrue(($loginRequiredQuery['error'] ?? '') === 'login_required', 'authorize without SSO session must return login_required');
 
     $badRedirectUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/not-registered',
+        'redirect_uri' => 'https://evil.example.test/not-registered',
         'scope' => 'openid',
+        'state' => 'bad-redirect-' . $suffix,
     ]);
     $badRedirect = httpRequest('GET', $badRedirectUrl, ['cookies' => $sessionCookie]);
     assertOAuthError($badRedirect, 400, 'invalid_request', 'authorize with unregistered redirect_uri');
@@ -632,7 +663,7 @@ try {
     $authorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'openid profile email',
         'state' => 'state-' . $suffix,
         'nonce' => 'nonce-' . $suffix,
@@ -649,11 +680,12 @@ try {
     parse_str($locationParts['query'] ?? '', $query);
     assertTrue(!empty($query['code']), 'authorize redirect must include code');
     assertTrue(($query['state'] ?? '') === 'state-' . $suffix, 'authorize redirect must preserve state');
+    assertTrue(($query['iss'] ?? '') === $configuration['json']['issuer'], 'authorize redirect must identify the issuer');
 
     $token = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'client_id' => $client['json']['client_id'],
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => $verifier,
@@ -670,13 +702,14 @@ try {
     assertTrue(($idTokenPayload['iss'] ?? '') === $configuration['json']['issuer'], 'id_token issuer must match discovery');
     assertTrue(($idTokenPayload['sub'] ?? '') === $adminId, 'id_token subject must match user');
     assertTrue(($idTokenPayload['aud'] ?? '') === $client['json']['client_id'], 'id_token audience must match client');
+    assertTrue(($idTokenPayload['azp'] ?? '') === $client['json']['client_id'], 'id_token authorized party must match client');
     assertTrue(($idTokenPayload['nonce'] ?? '') === 'nonce-' . $suffix, 'id_token nonce must match authorize request');
     assertTrue(is_int($idTokenPayload['auth_time'] ?? null), 'id_token must include integer auth_time');
 
     $codeReuse = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $query['code'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'client_id' => $client['json']['client_id'],
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => $verifier,
@@ -689,8 +722,9 @@ try {
     $burnAuthorize = httpRequest('GET', $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'profile',
+        'state' => 'burn-' . $suffix,
         'code_challenge' => $burnChallenge,
         'code_challenge_method' => 'S256',
     ]), ['cookies' => $sessionCookie]);
@@ -701,7 +735,7 @@ try {
     $wrongPkce = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $burnQuery['code'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'client_id' => $client['json']['client_id'],
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => 'wrong-verifier',
@@ -711,7 +745,7 @@ try {
     $correctAfterWrongPkce = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $burnQuery['code'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'client_id' => $client['json']['client_id'],
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => $burnVerifier,
@@ -722,24 +756,16 @@ try {
     $plainAuthorize = httpRequest('GET', $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'profile',
+        'state' => 'plain-' . $suffix,
         'code_challenge' => $plainVerifier,
         'code_challenge_method' => 'plain',
     ]), ['cookies' => $sessionCookie]);
     $plainLocationParts = parse_url($plainAuthorize['location']);
     parse_str($plainLocationParts['query'] ?? '', $plainQuery);
-    assertTrue(!empty($plainQuery['code']), 'confidential client plain PKCE authorize must match Go behavior');
-
-    $plainExchange = formRequest($baseUrl . '/oauth2/token', [
-        'grant_type' => 'authorization_code',
-        'code' => $plainQuery['code'],
-        'redirect_uri' => 'http://localhost/cb',
-        'client_id' => $client['json']['client_id'],
-        'client_secret' => $client['json']['client_secret'],
-        'code_verifier' => $plainVerifier,
-    ]);
-    assertOAuthError($plainExchange, 400, 'invalid_grant', 'plain PKCE exchange');
+    assertTrue(($plainQuery['error'] ?? '') === 'invalid_request', 'plain PKCE must be rejected');
+    assertTrue(($plainQuery['state'] ?? '') === 'plain-' . $suffix, 'plain PKCE error must preserve state');
 
     $introspection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => $token['json']['access_token'],
@@ -767,7 +793,7 @@ try {
         ($oauthAdminDenied['json']['error'] ?? '') === 'insufficient scope',
         'admin API must report insufficient OAuth scope before RBAC'
     );
-    assertTrue(!array_key_exists('iss', $accessTokenClaims), 'OAuth access token must omit issuer like Go');
+    assertTrue(($accessTokenClaims['iss'] ?? '') === $configuration['json']['issuer'], 'OAuth access token issuer must match discovery');
 
     $refreshIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
         'token' => $token['json']['refresh_token'],
@@ -795,8 +821,10 @@ try {
     $basicAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'openid profile',
+        'state' => 'basic-' . $suffix,
+        'nonce' => 'basic-' . $suffix,
         'code_challenge' => $basicChallenge,
         'code_challenge_method' => 'S256',
     ]);
@@ -807,7 +835,7 @@ try {
     $basicToken = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $basicQuery['code'] ?? '',
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'code_verifier' => $basicVerifier,
     ], [basicAuthHeader($client['json']['client_id'], $client['json']['client_secret'])]);
     assertTrue($basicToken['status'] === 200, 'client_secret_basic token exchange must return 200');
@@ -878,8 +906,10 @@ try {
     $profileOnlyAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'openid profile',
+        'state' => 'profile-only-' . $suffix,
+        'nonce' => 'profile-only-' . $suffix,
         'code_challenge' => $profileOnlyChallenge,
         'code_challenge_method' => 'S256',
     ]);
@@ -890,7 +920,7 @@ try {
     $profileOnlyToken = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'authorization_code',
         'code' => $profileQuery['code'] ?? '',
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'client_id' => $client['json']['client_id'],
         'client_secret' => $client['json']['client_secret'],
         'code_verifier' => $profileOnlyVerifier,
@@ -931,7 +961,7 @@ try {
         'name' => 'Integration consent client ' . $suffix,
         'client_id' => 'itest-consent-' . $suffix,
         'type' => 'confidential',
-        'redirect_uris' => ['http://localhost/consent-cb'],
+        'redirect_uris' => ['https://rp.example.test/consent-cb'],
         'allowed_scopes' => ['openid', 'profile'],
         'skip_consent' => false,
         'enabled' => true,
@@ -945,14 +975,18 @@ try {
     $consentAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $consentClient['json']['client_id'],
-        'redirect_uri' => 'http://localhost/consent-cb',
+        'redirect_uri' => 'https://rp.example.test/consent-cb',
         'scope' => 'openid profile',
+        'state' => 'consent-' . $suffix,
+        'nonce' => 'consent-' . $suffix,
         'code_challenge' => $challenge,
         'code_challenge_method' => 'S256',
     ]);
     $consentRequired = httpRequest('GET', $consentAuthorizeUrl, ['cookies' => $sessionCookie]);
-    assertTrue($consentRequired['status'] === 403, 'client without consent must return 403');
-    assertTrue(($consentRequired['json']['error'] ?? '') === 'consent_required', 'client without consent must return consent_required');
+    assertTrue($consentRequired['status'] >= 300 && $consentRequired['status'] < 400, 'client without consent must redirect');
+    $consentRequiredParts = parse_url($consentRequired['location']);
+    parse_str($consentRequiredParts['query'] ?? '', $consentRequiredQuery);
+    assertTrue(($consentRequiredQuery['error'] ?? '') === 'consent_required', 'client without consent must return consent_required');
 
     $consentInfoUrl = $baseUrl . '/oauth2/consent?' . http_build_query([
         'client_id' => $consentClient['json']['client_id'],
@@ -983,6 +1017,17 @@ try {
     assertTrue(($consentInfo['json']['client_id'] ?? '') === $consentClient['json']['client_id'], 'consent info must include client_id');
     assertTrue(($consentInfo['json']['requested_scopes'] ?? []) === ['openid', 'profile'], 'consent info must include requested scopes');
     assertTrue(($consentInfo['json']['granted_scopes'] ?? null) === [], 'consent info must initially report no granted scopes');
+
+    $missingConsentCsrf = httpRequest('POST', $baseUrl . '/oauth2/consent', [
+        'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+        'body' => json_encode([
+            'client_id' => $consentClient['json']['client_id'],
+            'scope' => 'openid',
+        ]),
+        'cookies' => $sessionCookie,
+        'omit_csrf' => true,
+    ]);
+    assertTrue($missingConsentCsrf['status'] === 403, 'cookie-authenticated consent without CSRF token must return 403');
 
     $malformedConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
@@ -1155,8 +1200,8 @@ try {
         ['username' => 'missing', 'email' => 'missing@example.test', 'status' => 'active'],
         $adminToken
     );
-    assertTrue($missingUserUpdate['status'] === 500, 'missing user update must preserve Go handler status');
-    assertTrue(($missingUserUpdate['json']['error'] ?? '') === 'failed to update user', 'missing user update must match Go error');
+    assertTrue($missingUserUpdate['status'] === 404, 'missing user update must return 404');
+    assertTrue(($missingUserUpdate['json']['error'] ?? '') === 'user not found', 'missing user update must identify the absent user');
 
     $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => '',
@@ -1983,7 +2028,7 @@ try {
     assertTrue(($clientCredentialsClaims['purpose'] ?? '') === 'client_credentials', 'client_credentials token must include purpose');
     assertTrue(($clientCredentialsClaims['email'] ?? null) === '', 'client_credentials token must include empty email');
     assertTrue(($clientCredentialsClaims['source'] ?? '') === 'client', 'client_credentials token must identify client source');
-    assertTrue(!array_key_exists('iss', $clientCredentialsClaims), 'client_credentials token must omit issuer like Go');
+    assertTrue(($clientCredentialsClaims['iss'] ?? '') === $configuration['json']['issuer'], 'client_credentials token issuer must match discovery');
 
     $badClientCredentialsScope = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'client_credentials',
@@ -2012,20 +2057,24 @@ try {
     $badScopeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
         'client_id' => $client['json']['client_id'],
-        'redirect_uri' => 'http://localhost/cb',
+        'redirect_uri' => 'https://rp.example.test/cb',
         'scope' => 'not-allowed',
+        'state' => 'bad-scope-' . $suffix,
         'code_challenge' => $challenge,
         'code_challenge_method' => 'S256',
     ]);
     $badScope = httpRequest('GET', $badScopeUrl, ['cookies' => $sessionCookie]);
-    assertTrue($badScope['status'] === 400, 'invalid authorize scope must return 400');
-    assertTrue(($badScope['json']['error'] ?? '') === 'invalid_scope', 'invalid authorize scope must return invalid_scope');
+    assertTrue($badScope['status'] >= 300 && $badScope['status'] < 400, 'invalid authorize scope must redirect');
+    $badScopeParts = parse_url($badScope['location']);
+    parse_str($badScopeParts['query'] ?? '', $badScopeQuery);
+    assertTrue(($badScopeQuery['error'] ?? '') === 'invalid_scope', 'invalid authorize scope must return invalid_scope');
 
     $publicClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'name' => 'Integration public client ' . $suffix,
         'client_id' => 'itest-public-' . $suffix,
         'type' => 'public',
         'redirect_uris' => ['http://localhost/public-cb'],
+        'allow_loopback_redirects' => true,
         'allowed_scopes' => ['openid', 'profile'],
         'skip_consent' => true,
         'enabled' => true,
@@ -2040,11 +2089,15 @@ try {
         'client_id' => $publicClient['json']['client_id'],
         'redirect_uri' => 'http://localhost/public-cb',
         'scope' => 'openid profile',
+        'state' => 'missing-pkce-' . $suffix,
+        'nonce' => 'missing-pkce-' . $suffix,
     ]);
     $missingPkce = httpRequest('GET', $missingPkceUrl, ['cookies' => $sessionCookie]);
-    assertTrue($missingPkce['status'] === 400, 'public client without PKCE S256 must return 400');
-    assertTrue(($missingPkce['json']['error'] ?? '') === 'invalid_request', 'public client without PKCE must return invalid_request');
-    assertTrue(($missingPkce['json']['error_description'] ?? '') === 'PKCE S256 required', 'public client without PKCE must describe PKCE S256 requirement');
+    assertTrue($missingPkce['status'] >= 300 && $missingPkce['status'] < 400, 'public client without PKCE S256 must redirect');
+    $missingPkceParts = parse_url($missingPkce['location']);
+    parse_str($missingPkceParts['query'] ?? '', $missingPkceQuery);
+    assertTrue(($missingPkceQuery['error'] ?? '') === 'invalid_request', 'public client without PKCE must return invalid_request');
+    assertTrue(($missingPkceQuery['error_description'] ?? '') === 'PKCE S256 required', 'public client without PKCE must describe PKCE S256 requirement');
 
     $publicClientCredentials = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'client_credentials',
@@ -2055,21 +2108,26 @@ try {
 
     $badLogout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
         'id_token_hint' => $token['json']['id_token'],
-        'post_logout_redirect_uri' => 'http://localhost/not-registered',
+        'post_logout_redirect_uri' => 'https://evil.example.test/not-registered',
     ]), ['cookies' => $sessionCookie]);
     assertTrue($badLogout['status'] === 400, 'unregistered post_logout_redirect_uri must return 400');
     assertTrue(($badLogout['json']['error'] ?? '') === 'invalid_request', 'unregistered post_logout_redirect_uri must return invalid_request');
+    assertTrue(!array_key_exists('sso_session', $badLogout['cookies']), 'invalid GET logout must not clear the active session');
+
+    $cookieOnlyLogout = httpRequest('GET', $baseUrl . '/oauth2/logout', ['cookies' => $sessionCookie]);
+    assertTrue($cookieOnlyLogout['status'] === 400, 'cookie-only GET logout must be rejected');
+    assertTrue(!array_key_exists('sso_session', $cookieOnlyLogout['cookies']), 'cookie-only GET logout must not clear the active session');
 
     $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
     assertTrue($backchannelReset['status'] === 204, 'back-channel fixture reset must return 204');
 
     $logout = httpRequest('GET', $baseUrl . '/oauth2/logout?' . http_build_query([
         'id_token_hint' => $token['json']['id_token'],
-        'post_logout_redirect_uri' => 'http://localhost/logout-cb',
+        'post_logout_redirect_uri' => 'https://rp.example.test/logout-cb',
         'state' => 'logout-state-' . $suffix,
-    ]));
+    ]), ['cookies' => $sessionCookie]);
     assertTrue($logout['status'] >= 300 && $logout['status'] < 400, 'registered logout redirect must redirect');
-    assertTrue(strpos($logout['location'], 'http://localhost/logout-cb') === 0, 'logout must redirect to registered uri');
+    assertTrue(strpos($logout['location'], 'https://rp.example.test/logout-cb') === 0, 'logout must redirect to registered uri');
     assertTrue(strpos($logout['location'], 'state=logout-state-' . $suffix) !== false, 'logout redirect must preserve state');
 
     $backchannel = httpRequest('GET', $backchannelUrl . '/last', [

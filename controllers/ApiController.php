@@ -6,6 +6,7 @@ use app\components\GoJson;
 use app\services\RateLimitService;
 use app\services\AuditService;
 use app\services\AuthService;
+use app\services\BrowserSecurityService;
 use app\services\RbacService;
 use Yii;
 use yii\web\BadRequestHttpException;
@@ -33,8 +34,19 @@ class ApiController extends Controller
             return false;
         }
 
+        $browserSecurity = new BrowserSecurityService();
+        if (
+            $browserSecurity->requiresCsrf($this->route, Yii::$app->request)
+            && !$browserSecurity->validateCsrf(Yii::$app->request)
+        ) {
+            Yii::$app->response->statusCode = 403;
+            Yii::$app->response->data = ['error' => 'csrf validation failed'];
+            return false;
+        }
+
         $limit = (new RateLimitService())->check($this->route, Yii::$app->request);
         if (!$limit['allowed']) {
+            (new \app\services\MetricsService())->event('rate_limit', 'blocked');
             Yii::$app->response->statusCode = 429;
             Yii::$app->response->headers->set('Retry-After', (string)$limit['retry_after']);
             Yii::$app->response->data = ['error' => 'rate limit exceeded'];
@@ -163,11 +175,13 @@ class ApiController extends Controller
 
     private function isRfc3339(string $value): bool
     {
-        if (!preg_match(
-            '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/D',
-            $value,
-            $matches
-        )) {
+        if (
+            !preg_match(
+                '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/D',
+                $value,
+                $matches
+            )
+        ) {
             return false;
         }
 
@@ -199,7 +213,8 @@ class ApiController extends Controller
         }
 
         $maximum = (string)PHP_INT_MAX;
-        if (strlen($digits) > strlen($maximum)
+        if (
+            strlen($digits) > strlen($maximum)
             || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)
         ) {
             return 0;

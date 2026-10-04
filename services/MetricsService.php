@@ -12,7 +12,20 @@ class MetricsService
     private const KEY_REQUESTS = 'metrics:v2:http_requests';
     private const KEY_INFLIGHT = 'metrics:http_inflight';
     private const KEY_DURATION_SUM = 'metrics:http_duration_sum';
+    private const KEY_ROUTE_DURATION_SUM = 'metrics:v3:http_duration_sum';
+    private const KEY_ROUTE_DURATION_COUNT = 'metrics:v3:http_duration_count';
     private const KEY_TOTAL = 'metrics:http_total';
+    private const KEY_DURATION_BUCKET = 'metrics:v3:http_duration_bucket';
+    private const KEY_EVENTS = 'metrics:v3:events';
+    private const DURATION_BUCKETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+    private const EVENT_VALUES = [
+        'auth' => ['success', 'failure', 'mfa_required'],
+        'rate_limit' => ['blocked'],
+        'mail' => ['success', 'failure'],
+        'ldap' => ['success', 'failure'],
+        'provider' => ['success', 'failure'],
+        'cleanup' => ['success', 'failure'],
+    ];
 
     public function begin(): void
     {
@@ -29,12 +42,48 @@ class MetricsService
         $method = $request->method;
 
         $key = $method . ' ' . $route . ' ' . $status;
-        $this->incrementMany([
+        $deltas = [
             self::KEY_REQUESTS . ':' . $key => 1,
             self::KEY_TOTAL => 1,
             self::KEY_DURATION_SUM => $duration,
+            self::KEY_ROUTE_DURATION_SUM . ':' . $method . ' ' . $route => $duration,
+            self::KEY_ROUTE_DURATION_COUNT . ':' . $method . ' ' . $route => 1,
             self::KEY_INFLIGHT => -1,
-        ]);
+        ];
+        foreach (self::DURATION_BUCKETS as $bucket) {
+            if ($duration <= $bucket) {
+                $deltas[self::KEY_DURATION_BUCKET . ':' . $method . ' ' . $route . ' ' . $bucket] = 1;
+            }
+        }
+        $deltas[self::KEY_DURATION_BUCKET . ':' . $method . ' ' . $route . ' +Inf'] = 1;
+        $this->incrementMany($deltas);
+    }
+
+    public function event(string $family, string $outcome, float $delta = 1.0): void
+    {
+        if (
+            !isset(self::EVENT_VALUES[$family])
+            || !in_array($outcome, self::EVENT_VALUES[$family], true)
+        ) {
+            throw new \InvalidArgumentException('unsupported metric event');
+        }
+        try {
+            $this->increment(self::KEY_EVENTS . ':' . $family . ':' . $outcome, $delta);
+        } catch (\Throwable $exception) {
+            Yii::warning('metric event could not be persisted', 'metrics');
+        }
+    }
+
+    public function setGauge(string $name, float $value): void
+    {
+        if (preg_match('/^[a-z_]{1,64}$/D', $name) !== 1) {
+            throw new \InvalidArgumentException('invalid gauge name');
+        }
+        Yii::$app->db->createCommand(
+            'INSERT INTO metric_counters(metric_key, metric_value) VALUES (:key, :value)
+             ON CONFLICT (metric_key) DO UPDATE SET metric_value = EXCLUDED.metric_value, updated_at = now()',
+            [':key' => 'operations:' . $name, ':value' => $value]
+        )->execute();
     }
 
     public function expose(): string
@@ -65,12 +114,87 @@ class MetricsService
             );
         }
 
+        $buckets = Yii::$app->db->createCommand(
+            'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
+            [':prefix' => self::KEY_DURATION_BUCKET . ':%']
+        )->queryAll();
+        $lines[] = '# TYPE sso_http_request_duration_seconds histogram';
+        foreach ($buckets as $row) {
+            $key = substr((string)$row['metric_key'], strlen(self::KEY_DURATION_BUCKET) + 1);
+            $parts = explode(' ', $key, 3);
+            if (count($parts) !== 3) {
+                continue;
+            }
+            [$method, $route, $le] = $parts;
+            $lines[] = sprintf(
+                'sso_http_request_duration_seconds_bucket{method="%s",route="%s",le="%s"} %d',
+                $this->escapeLabel($method),
+                $this->escapeLabel($route),
+                $this->escapeLabel($le),
+                (int)$row['metric_value']
+            );
+        }
+
+        foreach (
+            [
+            '_sum' => self::KEY_ROUTE_DURATION_SUM,
+            '_count' => self::KEY_ROUTE_DURATION_COUNT,
+            ] as $suffix => $prefix
+        ) {
+            $values = Yii::$app->db->createCommand(
+                'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
+                [':prefix' => $prefix . ':%']
+            )->queryAll();
+            foreach ($values as $row) {
+                $key = substr((string)$row['metric_key'], strlen($prefix) + 1);
+                $parts = explode(' ', $key, 2);
+                if (count($parts) !== 2) {
+                    continue;
+                }
+                $lines[] = sprintf(
+                    'sso_http_request_duration_seconds%s{method="%s",route="%s"} %s',
+                    $suffix,
+                    $this->escapeLabel($parts[0]),
+                    $this->escapeLabel($parts[1]),
+                    $suffix === '_count' ? (string)(int)$row['metric_value'] : sprintf('%.6F', $row['metric_value'])
+                );
+            }
+        }
+
         $lines[] = '# TYPE sso_http_inflight gauge';
         $lines[] = 'sso_http_inflight ' . max(0, (int)$this->value(self::KEY_INFLIGHT));
-        $lines[] = '# TYPE sso_http_request_duration_seconds_sum counter';
-        $lines[] = 'sso_http_request_duration_seconds_sum ' . sprintf('%.6F', $this->value(self::KEY_DURATION_SUM));
+        $lines[] = '# TYPE sso_http_request_duration_seconds_legacy_sum counter';
+        $lines[] = 'sso_http_request_duration_seconds_legacy_sum '
+            . sprintf('%.6F', $this->value(self::KEY_DURATION_SUM));
         $lines[] = '# TYPE sso_http_requests_processed_total counter';
         $lines[] = 'sso_http_requests_processed_total ' . (int)$this->value(self::KEY_TOTAL);
+
+        $events = Yii::$app->db->createCommand(
+            'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
+            [':prefix' => self::KEY_EVENTS . ':%']
+        )->queryAll();
+        $lines[] = '# TYPE sso_events_total counter';
+        foreach ($events as $row) {
+            $parts = explode(':', substr((string)$row['metric_key'], strlen(self::KEY_EVENTS) + 1), 2);
+            if (count($parts) === 2) {
+                $lines[] = sprintf(
+                    'sso_events_total{family="%s",outcome="%s"} %d',
+                    $this->escapeLabel($parts[0]),
+                    $this->escapeLabel($parts[1]),
+                    (int)$row['metric_value']
+                );
+            }
+        }
+        foreach (
+            [
+            'cleanup_last_success_timestamp_seconds',
+            'cleanup_duration_seconds',
+            'cleanup_rows_deleted',
+            ] as $gauge
+        ) {
+            $lines[] = '# TYPE sso_' . $gauge . ' gauge';
+            $lines[] = 'sso_' . $gauge . ' ' . sprintf('%.6F', $this->value('operations:' . $gauge));
+        }
 
         return implode("\n", $lines) . "\n";
     }

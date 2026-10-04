@@ -2,6 +2,8 @@
 
 namespace tests\Integration;
 
+require_once __DIR__ . '/ConcurrentProcessTrait.php';
+
 use app\models\User;
 use app\services\MfaService;
 use PHPUnit\Framework\TestCase;
@@ -10,6 +12,7 @@ use yii\console\Application;
 
 class MfaServiceTest extends TestCase
 {
+    use ConcurrentProcessTrait;
     private ?string $userId = null;
     private string $username;
 
@@ -108,6 +111,30 @@ class MfaServiceTest extends TestCase
         $alreadyDisabled = $service->disable($disabledUser, 'not-a-code');
         $this->assertSame(400, $alreadyDisabled['status']);
         $this->assertSame('mfa is not in the required state', $alreadyDisabled['data']['error']);
+    }
+
+    public function testConcurrentMfaChallengeConsumesChallengeAndRecoveryCodeOnce(): void
+    {
+        $service = new MfaService();
+        $user = User::findOne(['id' => $this->userId]);
+        $setup = $service->setup($user);
+        $enabled = $service->enable(
+            User::findOne(['id' => $this->userId]),
+            $setup['secret'],
+            $this->totpCode($setup['secret'])
+        );
+        $challenge = $service->createLoginChallenge(User::findOne(['id' => $this->userId]));
+        $recoveryCode = $enabled['data']['recovery_codes'][0];
+
+        $results = $this->runConcurrentWorkers([
+            ['mfa-login', $challenge['mfa_token'], $recoveryCode],
+            ['mfa-login', $challenge['mfa_token'], $recoveryCode],
+        ]);
+        sort($results);
+
+        $this->assertSame(['rejected', 'success'], $results);
+        $this->assertSame(0, $this->activeChallengeCount());
+        $this->assertSame(7, $this->activeRecoveryCodeCount());
     }
 
     private function totpCode(string $secret, ?int $counter = null): string

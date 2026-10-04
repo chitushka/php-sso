@@ -19,7 +19,9 @@ class OAuthClient extends ValidatedActiveRecord
     {
         return array_merge(parent::rules(), [
             [['type'], 'in', 'range' => [self::TYPE_CONFIDENTIAL, self::TYPE_PUBLIC]],
-            [['backchannel_logout_uri'], 'url', 'validSchemes' => ['https'], 'skipOnEmpty' => true],
+            [['allow_loopback_redirects'], 'boolean'],
+            // Политику HTTPS/private networks проверяет OutboundHttpService с учётом явного allowlist.
+            [['backchannel_logout_uri'], 'url', 'validSchemes' => ['http', 'https'], 'skipOnEmpty' => true],
         ]);
     }
 
@@ -35,6 +37,7 @@ class OAuthClient extends ValidatedActiveRecord
             'post_logout_redirect_uris' => self::parsePgArray($this->post_logout_redirect_uris),
             'backchannel_logout_uri' => $this->backchannel_logout_uri,
             'skip_consent' => (bool)$this->skip_consent,
+            'allow_loopback_redirects' => (bool)$this->allow_loopback_redirects,
             'enabled' => (bool)$this->enabled,
             'created_at' => Rfc3339::format($this->created_at),
             'updated_at' => Rfc3339::format($this->updated_at),

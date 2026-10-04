@@ -1,55 +1,50 @@
 # Repository Guidelines
 
+## Project Goal
+
+This repository is an independent single-tenant SSO/Identity Provider implemented in PHP 8.4 on Yii2. Its goal is to provide secure local, LDAP and federated authentication, OAuth 2.0/OpenID Connect, session management, MFA, RBAC, audit and an administrative UI.
+
+Treat the PHP application, its documented API contracts and applicable standards as the only sources of truth. Do not use, inspect or compare against another language implementation when designing, implementing, reviewing or testing changes. Historical migration compatibility is not a product requirement.
+
 ## Project Structure & Module Organization
 
-This repository is a PHP 7.4 Yii2 port of the Go SSO service in `D:\workspace\GolandProjects\sso`. Keep controllers in `controllers/`, business logic in `services/`, ActiveRecord models in `models/`, Yii config in `config/`, migrations in `migrations/`, web entry points in `web/`, and Vue-backed admin views in `views/admin/`.
-
-Current layout:
-
-```text
-controllers/
-services/
-models/
-migrations/
-web/
-config/
-tests/
-vendor/
-```
+Keep controllers in `controllers/`, business logic in `services/`, ActiveRecord models in `models/`, Yii config in `config/`, migrations in `migrations/`, web entry points in `web/`, and Vue-backed admin views in `views/admin/`.
 
 ## Build, Test, and Development Commands
+
+Use Docker for all project checks and development runs. The host machine is not expected to have local PHP or Composer installed.
 
 ```bash
 docker compose build
 docker compose up
-docker compose run --rm app php yii migrate --interactive=0
-docker compose run --rm app composer lint
+docker compose --profile operations run --rm migrate
+docker compose run --rm --no-deps app composer lint
+docker compose run --rm --no-deps app vendor/bin/phpunit --testsuite Unit
+docker compose run --rm app sh -lc "php yii migrate --interactive=0 && vendor/bin/phpunit --testsuite Integration"
 ```
 
-Use Docker for all project checks and development runs. The host machine is not expected to have local PHP or Composer installed. `docker compose build` builds the PHP/Yii2 image, `docker compose up` starts the app and PostgreSQL, `docker compose run --rm app php yii migrate --interactive=0` applies the PostgreSQL schema, and `docker compose run --rm app composer lint` checks PHP syntax inside the container.
+Use an explicit non-production test configuration for automated tests. Production fail-closed checks must never be weakened to make local tests pass.
 
 ## Coding Style & Naming Conventions
 
-Use PSR-12 formatting and 4-space indentation for PHP. Name classes in `PascalCase`, methods and variables in `camelCase`, constants in `UPPER_SNAKE_CASE`, and test classes with a `Test` suffix. Organize namespaces to mirror `src/` paths, for example `App\Auth\TokenValidator` in `src/Auth/TokenValidator.php`.
+Use PSR-12 formatting and 4-space indentation for PHP. Name classes in `PascalCase`, methods and variables in `camelCase`, constants in `UPPER_SNAKE_CASE`, and test classes with a `Test` suffix. Namespaces mirror repository paths under the `app\` namespace.
 
-Keep authentication, token, session, and provider-specific code separated by namespace so SSO flows remain easy to audit.
+Keep authentication, token, session and provider-specific code separated so security-sensitive flows remain auditable. Write code comments in Russian. Prefer Yii2 core features and avoid new dependencies unless the active plan justifies them.
 
 ## Testing Guidelines
 
-Use PHPUnit once test dependencies are added. Put unit tests under `tests/Unit/` and integration or HTTP flow tests under `tests/Integration/`. Test files should match the class or behavior under test, for example `TokenValidatorTest.php`.
+Put unit tests under `tests/Unit/` and database or HTTP tests under `tests/Integration/`. Every security or functional change must cover success, validation failure, authorization failure, replay/concurrency where relevant, and rollback behavior for transactional changes.
 
-Add tests for login redirects, callback handling, token validation, session creation, logout, and error cases such as expired state values or invalid signatures.
+Test behavior against the repository's own API contract and OAuth/OIDC standards. Do not encode behavior solely to match a historical implementation.
 
-## Commit & Pull Request Guidelines
+## Documentation and Planning
 
-No Git history is available in this workspace, so use short imperative commit messages, such as `Add token validation tests` or `Fix OAuth callback error handling`.
+`PLAN.md` is the single active backlog and must contain only incomplete or explicitly deferred work. Update it when a finding is fixed or invalidated. Keep `ARCHITECTURE.md`, `README.md` and `ENDPOINT_CONTRACTS.md` aligned with every important functional change. `MIGRATION_NOTES.md` describes deployment and database upgrade operations only.
 
-Pull requests should include a brief summary, testing performed, linked issue or task reference when available, and screenshots only for UI-facing changes. Call out any configuration, migration, or security-sensitive changes explicitly.
+## Security & Configuration
 
-## Security & Configuration Tips
+Never commit client secrets, private keys, signing certificates, session secrets or production `.env` files. Document settings in `.env.example`. Validate redirect targets, state and nonce values, keep secrets out of logs, and preserve fail-closed production startup.
 
-Never commit client secrets, private keys, signing certificates, session secrets, or production `.env` files. Document required SSO settings in `.env.example`, including redirect URIs, issuer IDs, client IDs, and certificate paths. Validate all redirect targets and state parameters.
+## Commits and Pull Requests
 
-## Agent-Specific Instructions
-
-Maintain `PLAN.md`, `ARCHITECTURE.md`, and `README.md` with every important functional change. Write code comments in Russian. Prefer Yii2 core features and avoid adding external dependencies unless the migration plan explicitly requires them.
+Use short imperative commit messages. Pull requests should include a summary, tests performed, linked task when available, and screenshots only for UI changes. Call out configuration, schema and security changes explicitly.

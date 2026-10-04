@@ -15,8 +15,10 @@ abstract class ValidatedActiveRecord extends ActiveRecord
             if ($column->autoIncrement) {
                 continue;
             }
-            if ((property_exists($column, 'dimension') && $column->dimension > 0)
-                || in_array($column->dbType, ['json', 'jsonb'], true)) {
+            if (
+                (property_exists($column, 'dimension') && $column->dimension > 0)
+                || in_array($column->dbType, ['json', 'jsonb'], true)
+            ) {
                 $rules[] = [[$name], 'safe'];
             } elseif ($column->dbType === 'uuid') {
                 $rules[] = [[$name], 'match', 'pattern' => self::UUID_PATTERN, 'skipOnEmpty' => true];

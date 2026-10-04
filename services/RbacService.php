@@ -145,11 +145,15 @@ class RbacService
         }, 'permission_assigned', 'role', $roleId);
     }
 
-    public function removePermissionFromRole(string $roleId, string $permissionId): void
+    public function removePermissionFromRole(string $roleId, string $permissionId): bool
     {
+        if ($this->roleIsAdmin($roleId)) {
+            return false;
+        }
         $this->auditMutation(function () use ($roleId, $permissionId): int {
             return Yii::$app->db->createCommand()->delete('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId])->execute();
         }, 'permission_removed', 'role', $roleId);
+        return true;
     }
 
     public function listUserRoles(string $userId): array
@@ -173,11 +177,13 @@ class RbacService
         }, 'role_assigned', 'user', $userId);
     }
 
-    public function removeRoleFromUser(string $userId, string $roleId): void
+    public function removeRoleFromUser(string $userId, string $roleId): bool
     {
-        $this->auditMutation(function () use ($userId, $roleId): int {
+        $affectsAdmin = $this->roleIsAdmin($roleId)
+            && (new AdminInvariantService())->userIsActiveAdmin($userId);
+        return $this->guardedAdminMutation(function () use ($userId, $roleId): int {
             return Yii::$app->db->createCommand()->delete('user_roles', ['user_id' => $userId, 'role_id' => $roleId])->execute();
-        }, 'role_removed', 'user', $userId);
+        }, 'role_removed', 'user', $userId, $affectsAdmin);
     }
 
     public function listGroups(): array
@@ -243,16 +249,20 @@ class RbacService
         return ['status' => 200, 'data' => $group->publicData()];
     }
 
-    public function deleteGroup(string $id): bool
+    public function deleteGroup(string $id): array
     {
         $group = Group::findOne(['id' => $id]);
         if (!$group) {
-            return false;
+            return ['status' => 404, 'data' => ['error' => 'group not found']];
         }
 
-        $group->delete();
-        AuditService::record(null, 'group_deleted', 'group', $id);
-        return true;
+        $affectsAdmin = $this->groupHasActiveAdminMembers($id);
+        $deleted = $this->guardedAdminMutation(function () use ($group): int {
+            return (int)$group->delete();
+        }, 'group_deleted', 'group', $id, $affectsAdmin);
+        return $deleted
+            ? ['status' => 200, 'data' => ['status' => 'deleted']]
+            : ['status' => 409, 'data' => ['error' => 'at least one active administrator is required']];
     }
 
     public function listGroupRoles(string $groupId): array
@@ -276,11 +286,12 @@ class RbacService
         }, 'group_role_assigned', 'group', $groupId);
     }
 
-    public function removeRoleFromGroup(string $groupId, string $roleId): void
+    public function removeRoleFromGroup(string $groupId, string $roleId): bool
     {
-        $this->auditMutation(function () use ($groupId, $roleId): int {
+        $affectsAdmin = $this->roleIsAdmin($roleId) && $this->groupHasActiveAdminMembers($groupId);
+        return $this->guardedAdminMutation(function () use ($groupId, $roleId): int {
             return Yii::$app->db->createCommand()->delete('group_roles', ['group_id' => $groupId, 'role_id' => $roleId])->execute();
-        }, 'group_role_removed', 'group', $groupId);
+        }, 'group_role_removed', 'group', $groupId, $affectsAdmin);
     }
 
     public function listUserGroups(string $userId): array
@@ -304,11 +315,13 @@ class RbacService
         }, 'group_assigned', 'user', $userId);
     }
 
-    public function removeGroupFromUser(string $userId, string $groupId): void
+    public function removeGroupFromUser(string $userId, string $groupId): bool
     {
-        $this->auditMutation(function () use ($userId, $groupId): int {
+        $affectsAdmin = $this->groupGrantsAdmin($groupId)
+            && (new AdminInvariantService())->userIsActiveAdmin($userId);
+        return $this->guardedAdminMutation(function () use ($userId, $groupId): int {
             return Yii::$app->db->createCommand()->delete('user_groups', ['user_id' => $userId, 'group_id' => $groupId])->execute();
-        }, 'group_removed', 'user', $userId);
+        }, 'group_removed', 'user', $userId, $affectsAdmin);
     }
 
     private function insertIgnore(string $table, array $data): int
@@ -340,5 +353,65 @@ class RbacService
             }
             throw $exception;
         }
+    }
+
+    private function guardedAdminMutation(
+        callable $mutation,
+        string $action,
+        string $targetType,
+        string $targetId,
+        bool $affectsAdmin
+    ): bool {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $guard = new AdminInvariantService();
+            if ($affectsAdmin) {
+                $guard->lock();
+            }
+            $changed = (int)$mutation();
+            if ($affectsAdmin && $changed > 0 && !$guard->hasActiveAdmin()) {
+                $transaction->rollBack();
+                return false;
+            }
+            if ($changed > 0) {
+                AuditService::record(null, $action, $targetType, $targetId);
+            }
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    private function roleIsAdmin(string $roleId): bool
+    {
+        return Role::find()->where(['id' => $roleId, 'code' => 'admin'])->exists();
+    }
+
+    private function groupGrantsAdmin(string $groupId): bool
+    {
+        return (bool)Yii::$app->db->createCommand(
+            "SELECT EXISTS(
+                SELECT 1 FROM group_roles gr
+                JOIN roles r ON r.id = gr.role_id
+                WHERE gr.group_id = :group_id AND r.code = 'admin'
+            )",
+            [':group_id' => $groupId]
+        )->queryScalar();
+    }
+
+    private function groupHasActiveAdminMembers(string $groupId): bool
+    {
+        return $this->groupGrantsAdmin($groupId) && (bool)Yii::$app->db->createCommand(
+            'SELECT EXISTS(
+                SELECT 1 FROM user_groups ug
+                JOIN users u ON u.id = ug.user_id
+                WHERE ug.group_id = :group_id AND u.status = :active
+            )',
+            [':group_id' => $groupId, ':active' => User::STATUS_ACTIVE]
+        )->queryScalar();
     }
 }

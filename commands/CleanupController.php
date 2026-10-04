@@ -2,6 +2,7 @@
 
 namespace app\commands;
 
+use app\services\MetricsService;
 use Yii;
 use yii\console\Controller;
 
@@ -11,8 +12,10 @@ class CleanupController extends Controller
 
     public function actionRun(): int
     {
+        $startedAt = microtime(true);
         $locked = (bool)Yii::$app->db->createCommand(
-            'SELECT pg_try_advisory_lock(:lock_id)', [':lock_id' => self::LOCK_ID]
+            'SELECT pg_try_advisory_lock(:lock_id)',
+            [':lock_id' => self::LOCK_ID]
         )->queryScalar();
         if (!$locked) {
             $this->stdout("cleanup already running\n");
@@ -31,14 +34,42 @@ class CleanupController extends Controller
                 'rate_limit_buckets' => 'expires_at <= now()',
                 'audit_logs' => "created_at < now() - make_interval(days => {$retention})",
             ];
+            $total = 0;
             foreach ($predicates as $table => $predicate) {
-                $this->stdout($this->deleteBatches($table, $predicate) . " {$table} rows deleted\n");
+                $deleted = $this->deleteBatches($table, $predicate);
+                $total += $deleted;
+                $this->stdout($deleted . " {$table} rows deleted\n");
             }
+            $metrics = new MetricsService();
+            $metrics->setGauge('cleanup_last_success_timestamp_seconds', time());
+            $metrics->setGauge('cleanup_duration_seconds', microtime(true) - $startedAt);
+            $metrics->setGauge('cleanup_rows_deleted', $total);
+            $metrics->event('cleanup', 'success');
+            return self::EXIT_CODE_NORMAL;
+        } catch (\Throwable $exception) {
+            (new MetricsService())->event('cleanup', 'failure');
+            Yii::error('cleanup run failed', 'cleanup');
+            return self::EXIT_CODE_ERROR;
         } finally {
             Yii::$app->db->createCommand(
-                'SELECT pg_advisory_unlock(:lock_id)', [':lock_id' => self::LOCK_ID]
+                'SELECT pg_advisory_unlock(:lock_id)',
+                [':lock_id' => self::LOCK_ID]
             )->queryScalar();
         }
+    }
+
+    public function actionStatus(int $maxAge = 7200): int
+    {
+        $lastSuccess = Yii::$app->db->createCommand(
+            'SELECT metric_value FROM metric_counters WHERE metric_key = :key',
+            [':key' => 'operations:cleanup_last_success_timestamp_seconds']
+        )->queryScalar();
+        if ($lastSuccess === false || (float)$lastSuccess < time() - max(60, $maxAge)) {
+            $this->stderr("cleanup has no recent successful run\n");
+            return self::EXIT_CODE_ERROR;
+        }
+
+        $this->stdout("cleanup is healthy\n");
         return self::EXIT_CODE_NORMAL;
     }
 

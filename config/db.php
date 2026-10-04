@@ -1,6 +1,9 @@
 <?php
 
-$url = getenv('SSO_DATABASE_URL');
+use app\components\Environment;
+
+$url = Environment::value('SSO_DATABASE_URL');
+$environment = strtolower((string)Environment::value('SSO_ENV', 'development'));
 
 if ($url) {
     $parts = parse_url($url);
@@ -17,8 +20,17 @@ if ($url) {
     if (!in_array($sslMode, $allowedSslModes, true)) {
         throw new RuntimeException('SSO_DATABASE_URL contains an invalid sslmode');
     }
-    if (getenv('SSO_ENV') === 'prod' && !in_array($sslMode, ['require', 'verify-ca', 'verify-full'], true)) {
-        throw new RuntimeException('production PostgreSQL connection must require TLS');
+    if ($environment === 'prod' && $sslMode !== 'verify-full') {
+        throw new RuntimeException('production PostgreSQL connection must use sslmode=verify-full');
+    }
+    if ($environment === 'prod' && empty($query['sslrootcert'])) {
+        throw new RuntimeException('production PostgreSQL connection requires sslrootcert');
+    }
+    if (
+        $environment === 'prod'
+        && !is_readable(rawurldecode((string)$query['sslrootcert']))
+    ) {
+        throw new RuntimeException('production PostgreSQL sslrootcert is not readable');
     }
     $dsn = "pgsql:host={$host};port={$port};dbname={$database};sslmode={$sslMode}";
     foreach (['sslrootcert', 'sslcert', 'sslkey'] as $option) {
@@ -29,8 +41,10 @@ if ($url) {
 
     $username = rawurldecode((string)($parts['user'] ?? 'sso'));
     $password = rawurldecode((string)($parts['pass'] ?? 'sso'));
-    if (getenv('SSO_ENV') === 'prod'
-        && ($password === '' || in_array(strtolower($password), ['sso', 'postgres', 'change-me'], true))) {
+    if (
+        $environment === 'prod'
+        && ($password === '' || in_array(strtolower($password), ['sso', 'postgres', 'change-me'], true))
+    ) {
         throw new RuntimeException('production PostgreSQL password must not be a default credential');
     }
 
@@ -40,11 +54,11 @@ if ($url) {
         'username' => $username,
         'password' => $password,
         'charset' => 'utf8',
-        'enableSchemaCache' => getenv('SSO_ENV') === 'prod',
+        'enableSchemaCache' => $environment === 'prod',
     ];
 }
 
-if (getenv('SSO_ENV') === 'prod') {
+if ($environment === 'prod') {
     throw new RuntimeException('SSO_DATABASE_URL is required in production');
 }
 

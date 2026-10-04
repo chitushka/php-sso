@@ -86,17 +86,18 @@ class LdapService
             return ['ok' => false, 'error' => 'LDAP host or transport is not allowed'];
         }
 
-        $this->configureTls();
-
         $uri = ($useTls ? 'ldaps://' : 'ldap://') . $host . ':' . $port;
         $conn = @ldap_connect($uri);
         if (!$conn) {
             return ['ok' => false, 'error' => 'ldap connection failed'];
         }
+        if (!$this->configureTls($conn, $host)) {
+            return ['ok' => false, 'error' => 'ldap TLS configuration failed'];
+        }
 
         ldap_set_option($conn, LDAP_OPT_PROTOCOL_VERSION, 3);
         ldap_set_option($conn, LDAP_OPT_REFERRALS, 0);
-        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, 5);
+        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)(Yii::$app->params['ldapNetworkTimeout'] ?? 5));
 
         if ($startTls && !@ldap_start_tls($conn)) {
             return ['ok' => false, 'error' => 'ldap start_tls failed'];
@@ -230,16 +231,18 @@ class LdapService
         if (!$this->ldapEndpointAllowed((string)$provider->host, (bool)$provider->use_tls, (bool)$provider->start_tls)) {
             return null;
         }
-        $this->configureTls();
         $uri = ($provider->use_tls ? 'ldaps://' : 'ldap://') . $provider->host . ':' . $provider->port;
         $conn = @ldap_connect($uri);
         if (!$conn) {
             return null;
         }
+        if (!$this->configureTls($conn, (string)$provider->host)) {
+            return null;
+        }
 
         ldap_set_option($conn, LDAP_OPT_PROTOCOL_VERSION, 3);
         ldap_set_option($conn, LDAP_OPT_REFERRALS, 0);
-        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, 5);
+        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)(Yii::$app->params['ldapNetworkTimeout'] ?? 5));
 
         if ($provider->start_tls && !@ldap_start_tls($conn)) {
             return null;
@@ -251,7 +254,12 @@ class LdapService
     private function ldapEndpointAllowed(string $host, bool $useTls, bool $startTls): bool
     {
         $host = strtolower(rtrim(trim($host), '.'));
-        if ($host === '' || preg_match('/[\x00-\x20\\\/]/', $host)) {
+        if (
+            $host === ''
+            || preg_match('/[\x00-\x20]/', $host)
+            || strpos($host, '\\') !== false
+            || strpos($host, '/') !== false
+        ) {
             return false;
         }
         $allowed = array_filter(array_map(static function (string $value): string {
@@ -269,15 +277,35 @@ class LdapService
         return true;
     }
 
-    private function configureTls(): void
+    private function configureTls($connection, string $host): bool
     {
         if (defined('LDAP_OPT_X_TLS_REQUIRE_CERT') && defined('LDAP_OPT_X_TLS_DEMAND')) {
-            @ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_DEMAND);
+            if (!@ldap_set_option($connection, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_DEMAND)) {
+                return false;
+            }
+        }
+        if (defined('LDAP_OPT_X_TLS_REQUIRE_SAN') && defined('LDAP_OPT_X_TLS_DEMAND')) {
+            if (!@ldap_set_option($connection, LDAP_OPT_X_TLS_REQUIRE_SAN, LDAP_OPT_X_TLS_DEMAND)) {
+                return false;
+            }
+        }
+        if (
+            defined('LDAP_OPT_X_TLS_HOSTNAME')
+            && !@ldap_set_option($connection, LDAP_OPT_X_TLS_HOSTNAME, $host)
+        ) {
+            return false;
         }
         $ca = (string)(Yii::$app->params['ldapCaCertificate'] ?? '');
         if ($ca !== '' && defined('LDAP_OPT_X_TLS_CACERTFILE')) {
-            @ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, $ca);
+            if (!@ldap_set_option($connection, LDAP_OPT_X_TLS_CACERTFILE, $ca)) {
+                return false;
+            }
         }
+        if (defined('LDAP_OPT_X_TLS_NEWCTX') && !@ldap_set_option($connection, LDAP_OPT_X_TLS_NEWCTX, 0)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function upsertLdapUser(LdapProvider $provider, array $entry, string $userDn, string $login): ?User

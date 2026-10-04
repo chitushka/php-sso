@@ -1,6 +1,7 @@
 <?php
 
 $db = require __DIR__ . '/db.php';
+$params = require __DIR__ . '/params.php';
 
 return [
     'id' => 'sso-php-console',
@@ -10,10 +11,10 @@ return [
         '@bower' => '@vendor/bower-asset',
         '@npm' => '@vendor/npm-asset',
     ],
-    'params' => require __DIR__ . '/params.php',
+    'params' => $params,
     'components' => [
         'db' => $db,
-        'cache' => (getenv('SSO_CACHE_DRIVER') === 'db')
+        'cache' => ($params['cacheDriver'] === 'db')
             ? [
                 'class' => yii\caching\DbCache::class,
                 'db' => 'db',
@@ -22,5 +23,14 @@ return [
             : [
                 'class' => yii\caching\FileCache::class,
             ],
+        'log' => [
+            'targets' => [[
+                'class' => app\components\JsonLogTarget::class,
+                'levels' => ['error', 'warning', 'info'],
+                'except' => ['yii\\db\\Command*', 'yii\\db\\Connection*'],
+                'logVars' => [],
+            ]],
+        ],
     ],
+    'bootstrap' => ['log'],
 ];

@@ -3,6 +3,7 @@
 namespace app\models;
 
 use app\components\Rfc3339;
+
 class Role extends ValidatedActiveRecord
 {
     public static function tableName(): string

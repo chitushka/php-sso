@@ -93,6 +93,8 @@ class OidcServiceTest extends TestCase
 
         $this->assertSame($this->userId, $claims['sub']);
         $this->assertSame('phpunit-client', $claims['aud']);
+        $this->assertSame('phpunit-client', $claims['azp']);
+        $this->assertSame(Yii::$app->params['issuer'], $claims['iss']);
         $this->assertSame('nonce-123', $claims['nonce']);
         $this->assertIsInt($claims['auth_time']);
         $this->assertLessThanOrEqual($claims['iat'], $claims['auth_time']);
@@ -196,7 +198,7 @@ class OidcServiceTest extends TestCase
     {
         $oauth = new OAuthService();
         $clientId = 'phpunit_oidc_client_' . bin2hex(random_bytes(4));
-        $logoutUri = 'https://rp.example.test/signed-out?tenant=one&state=old#done';
+        $logoutUri = 'https://rp.example.test/signed-out?tenant=one&state=old';
         $this->clientIds[] = $clientId;
         $created = $oauth->createClient([
             'client_id' => $clientId,
@@ -239,7 +241,7 @@ class OidcServiceTest extends TestCase
         parse_str($redirect['query'] ?? '', $query);
         $this->assertSame('one', $query['tenant']);
         $this->assertSame('logout-state', $query['state']);
-        $this->assertSame('done', $redirect['fragment']);
+        $this->assertArrayNotHasKey('fragment', $redirect);
         $this->assertSame(1, $this->revokedRefreshTokenCount($clientId));
         $this->assertSame(1, $this->auditCount('logout'));
 
@@ -255,6 +257,7 @@ class OidcServiceTest extends TestCase
     private function getRequest(array $query = [], array $body = []): Request
     {
         $_SERVER['REMOTE_ADDR'] = '203.0.113.46';
+        $_SERVER['REQUEST_METHOD'] = $body === [] ? 'GET' : 'POST';
         $_COOKIE = [];
         $request = new Request([
             'enableCookieValidation' => false,

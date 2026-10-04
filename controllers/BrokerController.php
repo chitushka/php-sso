@@ -3,6 +3,7 @@
 namespace app\controllers;
 
 use app\services\BrokerService;
+use app\services\MetricsService;
 use Yii;
 use yii\web\Response;
 
@@ -50,6 +51,7 @@ class BrokerController extends ApiController
         $continue = (string)Yii::$app->request->get('continue', '/');
         $redirect = (new BrokerService())->start($providerCode, $continue);
         if (!$redirect) {
+            (new MetricsService())->event('provider', 'failure');
             Yii::$app->response->statusCode = 404;
             Yii::$app->response->format = Response::FORMAT_JSON;
             Yii::$app->response->data = ['error' => 'unknown identity provider'];
@@ -62,6 +64,7 @@ class BrokerController extends ApiController
     public function actionCallback(string $providerCode): Response
     {
         if ((string)Yii::$app->request->get('error', '') !== '') {
+            (new MetricsService())->event('provider', 'failure');
             return Yii::$app->response->redirect('/login?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
         }
 
@@ -71,10 +74,14 @@ class BrokerController extends ApiController
             (string)Yii::$app->request->get('code', '')
         );
         if (!$result['ok']) {
+            (new MetricsService())->event('provider', 'failure');
             return Yii::$app->response->redirect('/login?broker_error=failed', 302);
         }
 
+        (new MetricsService())->event('provider', 'success');
+
         Yii::$app->response->cookies->add($result['cookie']);
+        Yii::$app->response->cookies->add($result['csrf_cookie']);
 
         return Yii::$app->response->redirect($result['continue'], 302);
     }

@@ -2,6 +2,8 @@
 
 namespace tests\Integration;
 
+require_once __DIR__ . '/ConcurrentProcessTrait.php';
+
 use app\models\OneTimeToken;
 use app\models\User;
 use app\services\AccountService;
@@ -14,6 +16,7 @@ use yii\web\Request;
 
 class AccountServiceTest extends TestCase
 {
+    use ConcurrentProcessTrait;
     private string $username;
     private ?string $userId = null;
 
@@ -140,6 +143,22 @@ class AccountServiceTest extends TestCase
         $this->assertSame(1, $this->auditCount('email_verified'));
     }
 
+    public function testConcurrentPasswordResetConsumesTokenOnce(): void
+    {
+        $rawToken = 'concurrent-reset-' . bin2hex(random_bytes(16));
+        $this->insertOneTimeToken(OneTimeToken::PURPOSE_PASSWORD_RESET, $rawToken);
+
+        $results = $this->runConcurrentWorkers([
+            ['password-reset', $rawToken, 'concurrent-password-123'],
+            ['password-reset', $rawToken, 'concurrent-password-123'],
+        ]);
+        sort($results);
+
+        $this->assertSame(['200', '400'], $results);
+        $this->assertSame(1, $this->usedTokenCount(OneTimeToken::PURPOSE_PASSWORD_RESET));
+        $this->assertSame(1, $this->auditCount('password_reset_completed'));
+    }
+
     public function testChangePasswordRevokesSessionsRefreshTokensAndJwt(): void
     {
         $auth = new AuthService();
@@ -173,6 +192,12 @@ class AccountServiceTest extends TestCase
     {
         $service = new AccountService();
         $user = User::findOne(['id' => $this->userId]);
+        Yii::$app->db->createCommand(
+            "UPDATE users SET updated_at = now() - interval '1 day' WHERE id = :id",
+            [':id' => $this->userId]
+        )->execute();
+        $user->refresh();
+        $previousUpdatedAt = strtotime((string)$user->updated_at);
 
         $invalid = $service->updateProfile($user, [
             'attributes' => ['department' => ['nested']],
@@ -190,6 +215,7 @@ class AccountServiceTest extends TestCase
         $this->assertSame('Ada', $valid['data']['first_name']);
         $this->assertSame('Lovelace', $valid['data']['last_name']);
         $this->assertSame(['department' => 'Security', 'level' => '3', 'empty' => ''], $valid['data']['attributes']);
+        $this->assertGreaterThan($previousUpdatedAt, strtotime((string)$valid['data']['updated_at']));
         $this->assertSame(1, $this->auditCount('profile_updated'));
     }
 

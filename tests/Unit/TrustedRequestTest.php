@@ -5,6 +5,7 @@ namespace tests\Unit;
 use app\components\TrustedRequest;
 use PHPUnit\Framework\TestCase;
 use Yii;
+use yii\base\InvalidConfigException;
 use yii\web\Application;
 
 class TrustedRequestTest extends TestCase
@@ -56,6 +57,35 @@ class TrustedRequestTest extends TestCase
         $this->assertSame(
             '203.0.113.7',
             $this->resolvedIp('198.51.100.10:52311', '203.0.113.7', '198.51.100.0/24')
+        );
+    }
+
+    /**
+     * @dataProvider invalidCidrProvider
+     */
+    public function testInvalidOrNonCanonicalTrustedProxyCidrIsRejected(string $cidr): void
+    {
+        $this->expectException(InvalidConfigException::class);
+        $this->resolvedIp('10.0.0.1', '203.0.113.7', $cidr);
+    }
+
+    public function invalidCidrProvider(): array
+    {
+        return [
+            'IPv4 prefix overflow' => ['10.0.0.0/33'],
+            'IPv6 prefix overflow' => ['2001:db8::/129'],
+            'negative prefix' => ['10.0.0.0/-1'],
+            'non-numeric prefix' => ['10.0.0.0/example'],
+            'IPv4 host bits' => ['10.0.0.1/24'],
+            'IPv6 host bits' => ['2001:db8::1/64'],
+        ];
+    }
+
+    public function testInvalidForwardedAddressIsNeverReturnedAsClientIp(): void
+    {
+        $this->assertSame(
+            '198.51.100.10',
+            $this->resolvedIp('198.51.100.10', 'not-an-ip', '198.51.100.0/24')
         );
     }
 

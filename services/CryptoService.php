@@ -44,10 +44,12 @@ class CryptoService
 
     public function decrypt(string $value): string
     {
-        if ($value === '' || (
+        if (
+            $value === '' || (
             strpos($value, self::GO_PREFIX) !== 0
             && strpos($value, self::LEGACY_PHP_PREFIX) !== 0
-        )) {
+            )
+        ) {
             if ($value === '' || $this->allowPlaintext) {
                 return $value;
             }

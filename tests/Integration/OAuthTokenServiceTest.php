@@ -2,6 +2,8 @@
 
 namespace tests\Integration;
 
+require_once __DIR__ . '/ConcurrentProcessTrait.php';
+
 use app\models\OAuthClient;
 use app\services\AuthService;
 use app\services\JwtService;
@@ -13,6 +15,7 @@ use yii\web\Request;
 
 class OAuthTokenServiceTest extends TestCase
 {
+    use ConcurrentProcessTrait;
     private string $username;
     private ?string $userId = null;
     private array $clientIds = [];
@@ -87,7 +90,7 @@ class OAuthTokenServiceTest extends TestCase
         $accessClaims = $this->jwtPayload($token['data']['access_token']);
         $this->assertSame($this->username . '@example.test', $accessClaims['email']);
         $this->assertSame('local', $accessClaims['source']);
-        $this->assertArrayNotHasKey('iss', $accessClaims);
+        $this->assertSame(Yii::$app->params['issuer'], $accessClaims['iss']);
         $this->assertSame($this->userId, (new AuthService())->currentUser($this->bearerRequest($token['data']['access_token']))->id);
         $this->assertSame(1, $this->usedAuthorizationCodeCount($clientId));
         $this->assertSame(1, $this->refreshTokenCount($clientId));
@@ -167,21 +170,19 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
     }
 
-    public function testAuthorizeRedirectReplacesOAuthParametersBeforeFragment(): void
+    public function testClientRegistrationRejectsRedirectFragments(): void
     {
         $redirectUri = 'https://rp.example.test/callback?tenant=one&state=old&code=old#section';
-        $flow = $this->issueAuthorizationCodeToken(false, 'profile', '', $redirectUri);
-        $redirect = parse_url($flow['authorize_redirect']);
-        parse_str($redirect['query'] ?? '', $query);
+        $created = (new OAuthService())->createClient([
+            'client_id' => 'fragment-' . bin2hex(random_bytes(4)),
+            'name' => 'Fragment client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+            'redirect_uris' => [$redirectUri],
+            'enabled' => true,
+        ]);
 
-        $this->assertSame('one', $query['tenant']);
-        $this->assertSame('state-123', $query['state']);
-        $this->assertNotSame('old', $query['code']);
-        $this->assertSame('section', $redirect['fragment']);
-        $this->assertLessThan(
-            strpos($flow['authorize_redirect'], '#section'),
-            strpos($flow['authorize_redirect'], 'code=')
-        );
+        $this->assertSame(400, $created['status']);
+        $this->assertSame('redirect URIs violate the client redirect policy', $created['data']['error']);
     }
 
     public function testBasicClientCredentialsUseFormUrlEncoding(): void
@@ -215,7 +216,7 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame($clientId, $tokenClaims['client_id']);
         $this->assertSame('', $tokenClaims['email']);
         $this->assertSame('client', $tokenClaims['source']);
-        $this->assertArrayNotHasKey('iss', $tokenClaims);
+        $this->assertSame(Yii::$app->params['issuer'], $tokenClaims['iss']);
 
         $emptyScopeRequest = $this->postRequest(['grant_type' => 'client_credentials']);
         $emptyScopeRequest->headers->set(
@@ -229,6 +230,110 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertTrue($emptyScopeToken['ok']);
         $this->assertArrayNotHasKey('scope', $emptyScopeToken['data']);
         $this->assertArrayNotHasKey('scope', $this->jwtPayload($emptyScopeToken['data']['access_token']));
+    }
+
+    public function testAuthorizeErrorsRedirectOnlyAfterRegisteredRedirectValidation(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(false);
+        $verifier = 'error-verifier-' . bin2hex(random_bytes(20));
+        $challenge = JwtService::base64url(hash('sha256', $verifier, true));
+        $service = new OAuthService();
+
+        $missingState = $service->authorize($this->getRequest([
+            'response_type' => 'code',
+            'client_id' => $flow['client_id'],
+            'redirect_uri' => 'https://rp.example.test/callback',
+            'scope' => 'profile',
+            'code_challenge' => $challenge,
+            'code_challenge_method' => 'S256',
+        ], ['sso_session' => $this->loginSessionToken()]));
+        $this->assertTrue($missingState['ok']);
+        parse_str((string)parse_url($missingState['redirect'], PHP_URL_QUERY), $errorQuery);
+        $this->assertSame('invalid_request', $errorQuery['error']);
+        $this->assertSame(Yii::$app->params['issuer'], $errorQuery['iss']);
+
+        $unregistered = $service->authorize($this->getRequest([
+            'response_type' => 'code',
+            'client_id' => $flow['client_id'],
+            'redirect_uri' => 'https://attacker.example/callback',
+            'scope' => 'profile',
+            'state' => 'state-value',
+            'code_challenge' => $challenge,
+            'code_challenge_method' => 'S256',
+        ]));
+        $this->assertFalse($unregistered['ok']);
+        $this->assertArrayNotHasKey('redirect', $unregistered);
+    }
+
+    public function testOpenidAuthorizeRequiresNonceAndAllClientsRequirePkceS256(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(false);
+        $service = new OAuthService();
+        $base = [
+            'response_type' => 'code',
+            'client_id' => $flow['client_id'],
+            'redirect_uri' => 'https://rp.example.test/callback',
+            'state' => 'required-state',
+        ];
+        $cookie = ['sso_session' => $this->loginSessionToken()];
+
+        $missingPkce = $service->authorize($this->getRequest(array_merge($base, [
+            'scope' => 'profile',
+        ]), $cookie));
+        parse_str((string)parse_url($missingPkce['redirect'], PHP_URL_QUERY), $pkceError);
+        $this->assertSame('invalid_request', $pkceError['error']);
+
+        $verifier = 'nonce-verifier-' . bin2hex(random_bytes(20));
+        $missingNonce = $service->authorize($this->getRequest(array_merge($base, [
+            'scope' => 'openid',
+            'code_challenge' => JwtService::base64url(hash('sha256', $verifier, true)),
+            'code_challenge_method' => 'S256',
+        ]), $cookie));
+        parse_str((string)parse_url($missingNonce['redirect'], PHP_URL_QUERY), $nonceError);
+        $this->assertSame('invalid_request', $nonceError['error']);
+        $this->assertStringContainsString('nonce', $nonceError['error_description']);
+    }
+
+    public function testClientCannotUseTwoAuthenticationMethods(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(false);
+        $request = $this->postRequest([
+            'grant_type' => 'authorization_code',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'code' => $flow['code'],
+            'redirect_uri' => 'https://rp.example.test/callback',
+            'code_verifier' => $flow['verifier'],
+        ]);
+        $request->headers->set(
+            'Authorization',
+            'Basic ' . base64_encode(urlencode($flow['client_id']) . ':' . urlencode($flow['client_secret']))
+        );
+
+        $result = (new OAuthService())->token($request);
+        $this->assertFalse($result['ok']);
+        $this->assertSame('invalid_client', $result['error']);
+    }
+
+    public function testUserCanListAndRevokeConsentWithRefreshTokens(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $service = new OAuthService();
+        $request = $this->getRequest([], ['sso_session' => $this->loginSessionToken()]);
+        $granted = $service->grantConsent($request, [
+            'client_id' => $flow['client_id'],
+            'scope' => 'profile',
+        ]);
+        $this->assertTrue($granted['ok']);
+
+        $consents = $service->listUserConsents($this->userId);
+        $this->assertSame($flow['client_id'], $consents[0]['client_id']);
+        $this->assertSame(['profile'], $consents[0]['scopes']);
+
+        $this->assertTrue($service->revokeUserConsent($this->userId, $flow['client_id']));
+        $this->assertSame([], $service->listUserConsents($this->userId));
+        $this->assertSame(1, $this->revokedRefreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->auditCount('consent_revoked', $flow['client_id']));
     }
 
     public function testRefreshRotationRejectsReuseAndRevokesDescendants(): void
@@ -269,6 +374,25 @@ class OAuthTokenServiceTest extends TestCase
 
         $this->assertFalse($descendant['ok']);
         $this->assertSame('invalid_grant', $descendant['error']);
+    }
+
+    public function testConcurrentRefreshRotationIssuesOnlyOneDescendant(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken();
+        $arguments = [
+            'oauth-refresh',
+            $flow['client_id'],
+            $flow['client_secret'],
+            $flow['token']['data']['refresh_token'],
+        ];
+
+        $results = $this->runConcurrentWorkers([$arguments, $arguments]);
+        sort($results);
+
+        $this->assertSame(['invalid_grant', 'success'], $results);
+        $this->assertSame(2, $this->refreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->rotatedRefreshTokenCount($flow['client_id']));
+        $this->assertSame(2, $this->revokedRefreshTokenCount($flow['client_id']));
     }
 
     public function testRevokeRefreshTokenPreventsFurtherRefresh(): void

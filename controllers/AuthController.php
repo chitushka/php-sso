@@ -5,6 +5,7 @@ namespace app\controllers;
 use app\services\AccountService;
 use app\services\AuthService;
 use app\services\MfaService;
+use app\services\MetricsService;
 use Yii;
 use yii\web\BadRequestHttpException;
 
@@ -15,12 +16,18 @@ class AuthController extends ApiController
         $fields = ['username', 'password'];
         $result = (new AuthService())->login($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
+        (new MetricsService())->event(
+            'auth',
+            !$result['ok'] ? 'failure' : (isset($result['cookie']) ? 'success' : 'mfa_required')
+        );
+
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
         }
 
         if (isset($result['cookie'])) {
             Yii::$app->response->cookies->add($result['cookie']);
+            Yii::$app->response->cookies->add($result['csrf_cookie']);
         }
         return $result['data'];
     }
@@ -30,11 +37,14 @@ class AuthController extends ApiController
         $fields = ['mfa_token', 'code'];
         $result = (new AuthService())->verifyMfaLogin($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
+        (new MetricsService())->event('auth', $result['ok'] ? 'success' : 'failure');
+
         if (!$result['ok']) {
             return $this->fail($result['status'], $result['error']);
         }
 
         Yii::$app->response->cookies->add($result['cookie']);
+        Yii::$app->response->cookies->add($result['csrf_cookie']);
         return $result['data'];
     }
 
@@ -45,6 +55,7 @@ class AuthController extends ApiController
         $auth->logout($token);
         $auth->revokeAccessToken(Yii::$app->request);
         Yii::$app->response->cookies->remove('sso_session');
+        Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
         return ['status' => 'logged_out'];
     }
 
@@ -110,6 +121,7 @@ class AuthController extends ApiController
 
         (new AuthService())->revokeAllSessions($user);
         Yii::$app->response->cookies->remove('sso_session');
+        Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
         return ['status' => 'all_revoked'];
     }
 

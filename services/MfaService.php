@@ -29,7 +29,9 @@ class MfaService
         $user->mfa_secret = (new CryptoService())->encrypt($secret);
         $user->mfa_enabled = false;
         $user->mfa_last_used_counter = 0;
-        $user->save(false, ['mfa_secret', 'mfa_enabled', 'mfa_last_used_counter']);
+        if (!$user->save(false, ['mfa_secret', 'mfa_enabled', 'mfa_last_used_counter'])) {
+            throw new \RuntimeException('failed to persist MFA enrollment');
+        }
 
         return $secret;
     }

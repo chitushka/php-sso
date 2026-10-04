@@ -41,6 +41,7 @@ class AuthService
             }
         } else {
             $user = (new LdapService())->authenticate($login, $password);
+            (new MetricsService())->event('ldap', $user ? 'success' : 'failure');
         }
 
         if (!$user || $user->status !== User::STATUS_ACTIVE) {
@@ -83,6 +84,7 @@ class AuthService
     private function issueLogin(User $user, Request $request): array
     {
         $sessionToken = $this->randomToken();
+        $csrfToken = $this->randomToken();
         $sessionExpiresAt = time() + Yii::$app->params['sessionTtl'];
         $session = new Session();
         $session->user_id = $user->id;
@@ -90,10 +92,20 @@ class AuthService
         $session->ip = $request->userIP;
         $session->user_agent = $request->userAgent;
         $session->expires_at = gmdate('Y-m-d H:i:sP', $sessionExpiresAt);
-        $session->save(false);
-
-        User::updateAll(['last_login_at' => new Expression('now()')], ['id' => $user->id]);
-        AuditService::record($user->id, 'login_success', 'user', $user->id, true);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            if (!$session->save(false)) {
+                throw new \RuntimeException('failed to persist session');
+            }
+            User::updateAll(['last_login_at' => new Expression('now()')], ['id' => $user->id]);
+            AuditService::record($user->id, 'login_success', 'user', $user->id, true);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['ok' => false, 'status' => 500, 'error' => 'failed to create session'];
+        }
 
         $issuedAt = time();
         if ($user->tokens_invalid_before) {
@@ -113,14 +125,23 @@ class AuthService
                 'path' => '/',
                 'expire' => time() + Yii::$app->params['sessionTtl'],
             ]),
+            'csrf_cookie' => new Cookie([
+                'name' => BrowserSecurityService::CSRF_COOKIE,
+                'value' => $csrfToken,
+                'httpOnly' => false,
+                'secure' => Yii::$app->params['cookieSecure'],
+                'sameSite' => Cookie::SAME_SITE_LAX,
+                'path' => '/',
+                'expire' => time() + Yii::$app->params['sessionTtl'],
+            ]),
             'data' => [
                 'access_token' => $jwt,
                 'access_token_expires_at' => gmdate(
                     'Y-m-d\\TH:i:s\\Z',
                     $issuedAt + Yii::$app->params['accessTokenTtl']
                 ),
-                'session_token' => $sessionToken,
                 'session_expires_at' => gmdate('Y-m-d\\TH:i:s\\Z', $sessionExpiresAt),
+                'csrf_token' => $csrfToken,
                 'user' => $user->publicData(),
             ],
         ];
@@ -162,10 +183,12 @@ class AuthService
             return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
         }
 
-        if ((bool)Yii::$app->db->createCommand(
-            'SELECT EXISTS(SELECT 1 FROM revoked_access_tokens WHERE jti = :jti AND expires_at > now())',
-            [':jti' => (string)$claims['jti']]
-        )->queryScalar()) {
+        if (
+            (bool)Yii::$app->db->createCommand(
+                'SELECT EXISTS(SELECT 1 FROM revoked_access_tokens WHERE jti = :jti AND expires_at > now())',
+                [':jti' => (string)$claims['jti']]
+            )->queryScalar()
+        ) {
             return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
         }
 
@@ -175,7 +198,11 @@ class AuthService
                 'client_id' => (string)($claims['client_id'] ?? ''),
                 'enabled' => true,
             ]);
-            if (!$client || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']) {
+            if (
+                !$client
+                || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']
+                || ($claims['iss'] ?? '') !== Yii::$app->params['issuer']
+            ) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
             return ['user' => null, 'client' => $client, 'claims' => $claims, 'error' => null];
@@ -190,7 +217,11 @@ class AuthService
                 'client_id' => (string)$claims['client_id'],
                 'enabled' => true,
             ]);
-            if (!$client || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']) {
+            if (
+                !$client
+                || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']
+                || ($claims['iss'] ?? '') !== Yii::$app->params['issuer']
+            ) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
         }
@@ -203,8 +234,10 @@ class AuthService
             return ['user' => null, 'claims' => null, 'error' => 'account is not active'];
         }
 
-        if ($user->tokens_invalid_before
-            && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)) {
+        if (
+            $user->tokens_invalid_before
+            && ($claims['iat'] ?? 0) <= strtotime($user->tokens_invalid_before)
+        ) {
             return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
         }
 
@@ -275,7 +308,25 @@ class AuthService
             return;
         }
 
-        Session::updateAll(['revoked_at' => new Expression('now()')], ['token_hash' => hash('sha256', $sessionToken), 'revoked_at' => null]);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $session = Yii::$app->db->createCommand(
+                'SELECT id, user_id FROM sessions
+                 WHERE token_hash = :token_hash AND revoked_at IS NULL
+                 FOR UPDATE',
+                [':token_hash' => hash('sha256', $sessionToken)]
+            )->queryOne();
+            if ($session) {
+                Session::updateAll(['revoked_at' => new Expression('now()')], ['id' => $session['id'], 'revoked_at' => null]);
+                AuditService::record((string)$session['user_id'], 'logout', 'user', (string)$session['user_id']);
+            }
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function listSessions(string $userId): array
@@ -297,18 +348,43 @@ class AuthService
 
     public function revokeSession(string $userId, string $sessionId): bool
     {
-        return Session::updateAll(['revoked_at' => new Expression('now()')], [
-            'id' => $sessionId,
-            'user_id' => $userId,
-            'revoked_at' => null,
-        ]) > 0;
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $updated = Session::updateAll(['revoked_at' => new Expression('now()')], [
+                'id' => $sessionId,
+                'user_id' => $userId,
+                'revoked_at' => null,
+            ]);
+            if ($updated > 0) {
+                AuditService::record($userId, 'session_revoked', 'session', $sessionId);
+            }
+            $transaction->commit();
+            return $updated > 0;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function revokeAllSessions(User $user): void
     {
-        Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
-        $user->tokens_invalid_before = new Expression('now()');
-        $user->save(false, ['tokens_invalid_before']);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
+            $user->tokens_invalid_before = new Expression('now()');
+            if (!$user->save(false, ['tokens_invalid_before'])) {
+                throw new \RuntimeException('failed to revoke user tokens');
+            }
+            AuditService::record($user->id, 'sessions_revoked_all', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function randomToken(int $bytes = 32): string
@@ -330,40 +406,47 @@ class AuthService
         return strtotime($attempt->locked_until) > time();
     }
 
-    private function recordFailure(string $username, string $ip): void
+    private function recordFailure(string $username, string $ip): int
     {
         if ($username === '') {
-            return;
+            return 0;
         }
 
-        $attempt = LoginAttempt::findOne(['username' => $username, 'ip' => $ip]);
-        if (!$attempt) {
-            $attempt = new LoginAttempt();
-            $attempt->username = $username;
-            $attempt->ip = $ip;
-            $attempt->attempts = 0;
-        }
-
-        // Как в Go-сервисе: после 5 ошибок включается экспоненциальная блокировка до 15 минут.
-        $attempt->attempts = ((int)$attempt->attempts) + 1;
-        $attempt->updated_at = new Expression('now()');
-        $locked = $attempt->attempts >= 5;
-        if ($locked) {
-            $power = max(0, $attempt->attempts - 5);
-            $seconds = min(900, 60 * (2 ** $power));
-            $attempt->locked_until = gmdate('Y-m-d H:i:sP', time() + $seconds);
-        }
-
-        $attempt->save(false);
-        if ($locked) {
-            AuditService::record(null, 'login_locked', 'user', $username, true);
-        }
+        // Один UPSERT не теряет инкременты при параллельных неуспешных входах.
+        return (int)Yii::$app->db->createCommand(
+            'INSERT INTO login_attempts(username, ip, attempts, locked_until, updated_at)
+             VALUES (:username, :ip, 1, NULL, now())
+             ON CONFLICT (username, ip) DO UPDATE SET
+                 attempts = login_attempts.attempts + 1,
+                 locked_until = CASE
+                     WHEN login_attempts.attempts + 1 >= 5 THEN now() + make_interval(secs => LEAST(
+                         900,
+                         (60 * power(2, LEAST(4, login_attempts.attempts + 1 - 5)))::integer
+                     ))
+                     ELSE NULL
+                 END,
+                 updated_at = now()
+             RETURNING attempts',
+            [':username' => $username, ':ip' => $ip]
+        )->queryScalar();
     }
 
-    private function registerLoginFailure(string $username, string $ip): void
+    public function registerLoginFailure(string $username, string $ip): void
     {
-        AuditService::record(null, 'login_failed', 'user', $username, true);
-        $this->recordFailure($username, $ip);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            AuditService::record(null, 'login_failed', 'user', $username, true);
+            $attempts = $this->recordFailure($username, $ip);
+            if ($attempts >= 5) {
+                AuditService::record(null, 'login_locked', 'user', $username, true);
+            }
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     private function resetFailures(string $username, string $ip): void

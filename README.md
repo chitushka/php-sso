@@ -1,223 +1,118 @@
 # SSO PHP
 
-PHP 8.4/Yii2 SSO сервис. Проект сохраняет single-tenant подход, PostgreSQL 17, OAuth2/OIDC контракты и административный UI на VueJS 3.5.43.
+Самостоятельный single-tenant SSO/Identity Provider на PHP 8.4, Yii2, PostgreSQL 17, nginx и Vue 3. Сервис поддерживает локальную, LDAP- и федеративную аутентификацию, OAuth 2.0/OpenID Connect, MFA, сессии, RBAC, аудит и административный интерфейс.
+
+Активный backlog находится только в [PLAN.md](PLAN.md). Требования определяются документацией проекта и применимыми стандартами, без сравнения с реализациями на других языках.
+
+## Возможности
+
+- Bootstrap первого администратора и локальная аутентификация.
+- HttpOnly SSO-сессии, Bearer JWT, просмотр и отзыв сессий.
+- CSRF-защита cookie-authenticated операций, строгие security headers и no-store для auth/token responses.
+- TOTP MFA, одноразовые recovery codes, password reset и email verification.
+- Атомарная выдача и отзыв auth-артефактов вместе с обязательным audit; конкурентно безопасные lockout, одноразовые tokens и refresh rotation.
+- LDAP Search + Bind, JIT provisioning и LDAP group mappings.
+- Федеративный вход через настраиваемые OIDC/OAuth identity providers.
+- OAuth 2.0 Authorization Code с обязательным PKCE S256/state, consent management, refresh rotation/reuse detection, client credentials, revoke и introspect.
+- OIDC Discovery, JWKS, RS256 ID Token, UserInfo и RP/back-channel logout.
+- Users, roles, permissions, groups, OAuth clients, providers и audit API.
+- Нормализованные уникальные email, повторное подтверждение после смены адреса и защита последнего активного администратора.
+- Vue admin UI, Prometheus metrics, health probes, cleanup и ротация зашифрованных секретов.
 
 ## Быстрый старт
 
-```bash
-cp .env.example .env
-docker compose build
-docker compose --profile operations run --rm migrate
-docker compose up
-```
-
-Production-запуск fail-closed: до старта замените placeholder-секреты и стандартный пароль БД, задайте HTTPS issuer и `SSO_DATABASE_URL` с `sslmode=require`, `verify-ca` или `verify-full`. Миграции выполняются отдельным job и никогда не запускаются entrypoint-ом приложения. HTTP обслуживают nginx и PHP-FPM; зависимости Composer уже находятся в неизменяемом image.
-
-Vue хранится локально в `web/js/vue.global.prod.js`, а HTTP-клиент admin UI вынесен в `web/js/admin-api.js`; сеть CDN во время работы не используется. Ответы защищены CSP, а неизвестные маршруты `/api`, `/oauth2` и `/.well-known` всегда возвращают JSON 404, не HTML SPA.
-
-Локальные PHP и Composer для разработки не требуются: проект запускается и проверяется в Docker-контейнере `app`.
-
-Приложение будет доступно на `http://localhost:8080`.
-PostgreSQL публикуется на `localhost:5433`, внутри Docker используется `postgres:5432`.
-
-Полезные команды:
+Все команды выполняются в Docker. Локальные PHP и Composer не требуются.
 
 ```bash
-make build    # собрать Docker-образ
-make up       # запустить app + PostgreSQL
-make migrate  # применить Yii2-миграции
-make lint     # проверить PHP-синтаксис
-make unit     # прогнать PHPUnit unit tests
-make phpunit-integration # прогнать PHPUnit integration tests против PostgreSQL
-make cleanup  # удалить истёкшие auth/OAuth артефакты
-make cutover-check # проверить готовность конфигурации, БД и secrets к Go -> PHP cutover
-make cutover-rewrap-dry-run # проверить возможность преобразования старых PHP secrets
-make cutover-rewrap # атомарно преобразовать v1: secrets в общий Go enc:v1: формат
-make cutover-rotate-key-dry-run # проверить ротацию SSO_ENCRYPTION_KEY без записи
-make cutover-rotate-key # атомарно перешифровать secrets новым production key
-make cutover-generate-local-key # сгенерировать local-only key и ротировать dev secrets
-make integration # прогнать OAuth/OIDC smoke flow с test-local rate limit
-make integration-client # прогнать внешний OAuth/OIDC RP client flow
-make integration-broker # прогнать broker callback flow с локальным mock OIDC provider
-make integration-ldap # прогнать LDAP bind/search flow с локальным OpenLDAP fixture
-make integration-ldap-external # прогнать тот же flow против LDAP из SSO_TEST_LDAP_*
+cp .env.development.example .env.development
+make build
+make up-development
 ```
 
-Если `make` недоступен, используйте прямые Docker-команды:
+Приложение доступно на `http://localhost:8080`, локальный HTTPS proxy — на `https://localhost:8443`, PostgreSQL публикуется на `localhost:5433`.
+
+`.env.development.example` предназначен только для локальной разработки. `.env.example`
+задаёт fail-closed production-профиль: до запуска обязательны уникальные secrets,
+нестандартный пароль БД, HTTPS issuer и PostgreSQL `sslmode=verify-full` с доверенным CA.
+Production secrets рекомендуется передавать через `*_FILE` и read-only secret mounts.
+
+## Проверки
 
 ```bash
-docker compose run --rm app php yii migrate --interactive=0
-docker compose run --rm app composer lint
-docker compose run --rm app php yii help
+make build
+make build-test
+make quality
+make migration-check
+make unit
+make phpunit-integration
+make coverage
+make integration
+make integration-client
+make integration-broker
+make integration-ldap
+make audit
 ```
 
-## Конфигурация
+Эквивалентные базовые команды без `make`:
 
-Основные переменные находятся в `.env.example` и используют namespace `SSO_*`:
+```bash
+docker compose --profile test run --rm --no-deps test composer lint
+docker compose --profile test run --rm --no-deps test composer test:unit
+docker compose --profile test run --rm test sh -lc "php yii migrate --interactive=0 && composer test:integration"
+```
 
-- `SSO_DATABASE_URL` — PostgreSQL DSN.
-- `SSO_ISSUER` — публичный issuer URL для OAuth2/OIDC.
-- `SSO_CUTOVER_EXPECTED_ISSUER` — issuer действующего Go-сервиса для строгой проверки перед переключением.
-- `SSO_JWT_SECRET` — HMAC-секрет access token, минимум 32 символа.
-- `SSO_ENCRYPTION_KEY` — ключ для будущего шифрования секретов, минимум 32 символа.
+Test service всегда задаёт отдельный `SSO_ENV=test` и не зависит от локального `.env`.
+Production-проверки намеренно запрещают невалидные TTL/лимиты/URL, `sslmode` кроме
+`verify-full`, отсутствующий CA, placeholder secrets и стандартные credentials.
+
+## Основная конфигурация
+
+- `SSO_ENV` — `prod` включает fail-closed validation.
+- `SSO_DATABASE_URL` — PostgreSQL DSN; production требует `sslmode=verify-full` и читаемый `sslrootcert`.
+- `SSO_ISSUER`, `SSO_API_AUDIENCE` — публичные OAuth/OIDC идентификаторы.
+- `SSO_JWT_SECRET`, `SSO_ENCRYPTION_KEY` — независимые secrets длиной не менее 32 символов.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — TTL в секундах.
-- `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимит чувствительных auth/OAuth/bootstrap запросов.
-- `SSO_CACHE_DRIVER` — backend общего Yii cache; rate limit и HTTP-метрики всегда используют отдельные атомарные PostgreSQL-таблицы.
-- `SSO_TRUSTED_PROXIES` — comma-separated IP/CIDR reverse proxy, которым разрешено задавать `X-Forwarded-For`.
-- `SSO_LDAP_ALLOWED_HOSTS`, `SSO_LDAP_CA_CERT`, `SSO_LDAP_ALLOW_INSECURE` — allowlist LDAP-хостов, доверенный CA и явное test-only разрешение plaintext LDAP.
-- `SSO_MAX_BODY_BYTES` — максимальный размер JSON/form тела запроса.
-- `SSO_SMTP_HOST`, `SSO_SMTP_PORT`, `SSO_SMTP_USERNAME`, `SSO_SMTP_PASSWORD`, `SSO_SMTP_FROM`, `SSO_SMTP_STARTTLS` — SMTP для reset/verification писем. Если `SSO_SMTP_HOST` или `SSO_SMTP_FROM` пустые, письмо пишется в лог приложения.
+- `SSO_COOKIE_SECURE`, `SSO_MAX_BODY_BYTES` — browser/request security.
+- `SSO_RATE_LIMIT_PER_MINUTE`, `SSO_RATE_LIMIT_BURST` — лимиты чувствительных endpoints.
+- `SSO_TRUSTED_PROXIES` — доверенные IP/CIDR reverse proxies.
+- `SSO_OUTBOUND_HOST_ALLOWLIST`, `SSO_OUTBOUND_CONNECT_TIMEOUT`, `SSO_OUTBOUND_READ_TIMEOUT`, `SSO_OUTBOUND_MAX_RESPONSE_BYTES` — outbound HTTP policy и resource limits.
+- `SSO_LDAP_ALLOWED_HOSTS`, `SSO_LDAP_CA_CERT`, `SSO_LDAP_ALLOW_INSECURE`, `SSO_LDAP_NETWORK_TIMEOUT` — LDAP transport policy.
+- `SSO_SMTP_*` — SMTP transport, credentials и CA.
+- `SSO_AUDIT_RETENTION_DAYS`, `SSO_CLEANUP_BATCH_SIZE` — retention и cleanup.
+- `SSO_CLEANUP_INTERVAL` — интервал scheduler в секундах.
+- `SSO_METRICS_ALLOWED_CIDRS`, `SSO_METRICS_BEARER_TOKEN` — защита `/metrics`.
 
-Для production замените все placeholder-секреты.
+Полный шаблон находится в `.env.example`. Не коммитьте `.env`, ключи, сертификаты и client secrets.
 
-## Уже перенесено
+## Эксплуатация
 
-- Yii2/Docker/PostgreSQL каркас.
-- Стартовая PostgreSQL-схема из Go-миграций `000001-000010`.
-- `GET /health/live`, `GET /health/ready`, `GET /health/version`.
-- `GET /metrics` в Prometheus text format с dependency-free HTTP counters через Yii cache.
-- `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
-- `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
-- Успешный login возвращает Go-compatible `session_token`, `access_token_expires_at` и `session_expires_at`; тот же raw session token устанавливается в HttpOnly cookie без несовместимой Yii-обёртки.
-- User и Session API сохраняют Go wire-format: RFC3339 timestamps, `{}` для пустых attributes и отсутствие nullable `omitempty` полей.
-- Просмотр и отзыв пользовательских сессий.
-- Brute-force lockout по паре login/IP и rate limit для чувствительных endpoint-ов.
-- RBAC-проверка admin API с прямыми ролями и ролями через группы.
-- Admin API для users, roles, permissions, groups и audit, включая Go-compatible ошибки создания users/roles/groups и валидацию audit-фильтров.
-- Roles, Permissions и Groups API возвращают Go-compatible RFC3339 timestamps; PUT ролей/групп полностью заменяет поля и обновляет `updated_at`.
-- Audit API возвращает Go-compatible RFC3339 timestamps, строковые zero values и `omitempty` для отсутствующего actor.
-- `PUT /api/v1/users/{id}` использует Go-compatible полную замену разрешённых полей; пропущенные profile-поля очищаются.
-- Admin API для LDAP providers, test bind и LDAP group mappings.
-- LDAP providers и group mappings возвращают RFC3339 timestamps; PUT провайдера обновляет `updated_at` как Go-сервис.
-- LDAP Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `bind_password` при PUT сохраняет текущий секрет.
-- LDAP persistence errors используют Go-compatible generic 500 ответы, а duplicate group mapping возвращает 409.
-- LDAP provider DELETE идемпотентен; group mappings и LDAP audit side effects повторяют фактический порядок и target semantics Go repository.
-- Go-compatible AES-256-GCM формат `enc:v1:` для LDAP, MFA и identity provider secrets; plaintext после cutover отклоняется. Временный `SSO_ALLOW_PLAINTEXT_SECRETS=true` допустим только для контролируемой миграции.
-- LDAP Search + Bind authentication при login с auto-provisioning LDAP-пользователей.
-- Синхронизация LDAP group mappings в группы пользователя с `source=ldap`.
-- MFA TOTP setup/enable/disable с Go-compatible `enroll`/`activate` алиасами, MFA challenge при login и одноразовые recovery codes.
-- `POST /api/v1/auth/password/forgot`, `/reset`, `/change` для password reset/change.
-- `PUT /api/v1/auth/profile` для self-service обновления first/last name и attributes.
-- `POST /api/v1/auth/email/request`, `/verify` для email verification.
-- `GET /api/v1/broker/providers`, `/oauth2/broker/{code}/login`, `/oauth2/broker/{code}/callback` для external sign-in.
-- Admin API `GET/POST/PUT/DELETE /api/v1/identity-providers` для Google/GitHub/OIDC federation.
-- Identity Providers POST/PUT повторяют Go zero-value/full-replacement семантику; пустой `client_secret` при PUT безопасно сохраняет текущий секрет.
-- Identity Providers API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT как Go-сервис.
-- Broker authorize redirects заменяют OAuth query-параметры, сохраняют provider query/fragment, а callback errors возвращаются на `/login`.
-- Trusted-proxy-aware client IP через `SSO_TRUSTED_PROXIES`.
-- `php yii cleanup/run` удаляет истёкшие записи и audit retention ограниченными батчами под PostgreSQL advisory lock; после крупных исторических чисток планируйте штатный autovacuum/VACUUM.
-- `php yii cutover/check` — read-only preflight конфигурации, PostgreSQL-схемы, seed data и расшифровки LDAP/MFA/broker secrets; возвращает ненулевой exit code при блокерах.
-- `php yii cutover/rewrap-secrets` выполняет read-only dry-run старых PHP `v1:` secrets, а `--apply=1` атомарно перепаковывает их в общий Go `enc:v1:` формат без изменения plaintext.
-- `php yii cutover/rotate-encryption-key` проверяет maintenance-ротацию через `SSO_OLD_ENCRYPTION_KEY`/`SSO_NEW_ENCRYPTION_KEY`; `--apply=1` атомарно перешифровывает все непустые LDAP/MFA/broker secrets и распознаёт уже переключённые строки при повторном запуске.
-- `php yii cutover/generate-local-encryption-key` доступна только вне `SSO_ENV=prod`: генерирует ключ без вывода, ротирует локальные secrets и обновляет игнорируемый `.env`; production keys должны поступать из secret manager.
-- Атомарные PostgreSQL token buckets и Prometheus counters безопасны для нескольких PHP-FPM-инстансов и не используют cache get/set.
-- Локальный production-like профиль поднимается на `https://localhost:8443`: nginx завершает TLS, имеет фиксированный IP `172.31.250.10`, а приложение доверяет forwarded-заголовкам только от него. Однократная команда `make cutover-configure-local-secure-runtime` генерирует 256-битный JWT secret без вывода и атомарно включает HTTPS issuer, secure cookies и DB cache в игнорируемом `.env`.
-- `make cutover-rehearse-rollback` создаёт ephemeral custom-format dump, восстанавливает его в изолированную временную БД и сверяет критическую схему, `pgcrypto`, seed data, business row counts и инвентарь пяти `enc:v1` secrets. Исходная БД не изменяется, временная БД и архив удаляются даже при ошибке.
-- После переключения reverse proxy `make cutover-smoke` выполняет HTTPS-only проверку health/readiness, public bootstrap/broker endpoints, точного OIDC issuer, Discovery и пригодного RS256 JWKS. TLS проверяется строго; `make cutover-smoke-local` разрешает self-signed сертификат только для loopback issuer.
-- `make cutover-maintenance-on` включает общий Docker write-freeze: через proxy и прямой app port доступен только `GET /health/live`, остальные запросы получают 503 без DB-backed metrics side effects. `make cutover-maintenance-off` атомарно снимает флаг после backup/migrations/switch.
-- `make cutover-smoke-authenticated` завершает post-switch проверку через публичный HTTPS API: local login (включая опциональный MFA code), `/auth/me`, Authorization Code + PKCE реального зарегистрированного клиента, UserInfo, refresh rotation и OIDC logout. Credentials выделенного smoke-user/client передаются только через `SSO_CUTOVER_SMOKE_*`; скрипт не печатает секреты и не создаёт DB fixtures.
-- `make cutover-smoke-authenticated-local` воспроизводит тот же flow через self-signed Docker HTTPS proxy с временными user/client fixtures и гарантированно удаляет их после проверки.
-- CRUD-основа OAuth-клиентов.
-- OAuth Clients API возвращает RFC3339 timestamps и обновляет `updated_at` при PUT и rotate-secret как Go-сервис.
-- OAuth2 Authorization Code + PKCE, одноразовый authorization code, `client_secret_post`/`client_secret_basic`, consent flow, refresh token, revoke, introspect, client_credentials.
-- Refresh token rotation с reuse detection: повтор старого refresh token отзывает всю token family.
-- Public OAuth clients требуют PKCE S256; ошибки OAuth endpoints возвращаются в RFC-style формате `error` + `error_description`.
-- OIDC Discovery, JWKS, UserInfo и RS256 ID Token с проверкой issuer/audience/nonce claims в smoke flow.
-- OIDC UserInfo scope filtering: `profile` раскрывает profile claims, `email` раскрывает email.
-- RP-initiated logout проверяет `id_token_hint`, registered `post_logout_redirect_uri` и отзывает refresh tokens пользователя.
-- PHPUnit unit tests для password policy и trusted-proxy IP resolution.
-- PHPUnit integration tests против PostgreSQL для OAuth client service, Authorization Code + PKCE token exchange, refresh rotation/reuse/revoke, OIDC ID token/JWKS/UserInfo/RP logout, auth login/session/JWT/logout, account reset/email/profile security flows, MFA, RBAC, identity provider и LDAP admin flows, PostgreSQL array-полей и audit side effects.
-- Local mock OIDC broker smoke `make integration-broker` для внешнего sign-in callback без реального внешнего провайдера.
-- Автономный LDAP bind/search smoke `make integration-ldap` с локальным OpenLDAP fixture проверяет service bind, search + user bind, JIT-provisioning, group mapping и audit; `make integration-ldap-external` сохраняет проверку внешнего LDAP через `SSO_TEST_LDAP_*`.
-- Vue-админка для bootstrap/login/external sign-in/forgot/reset password/account profile/MFA/email verification/OAuth clients/identity providers/users/roles/groups/LDAP/audit.
-- UI-формы назначения ролей пользователям, групп пользователям, permissions ролям и ролей группам.
+```bash
+make cleanup
+make cutover-check
+make cutover-rotate-key-dry-run
+make cutover-rotate-key
+make cutover-rehearse-rollback
+make cutover-smoke
+make cutover-smoke-authenticated
+```
 
-## Следующие работы
+Имена части maintenance-команд пока содержат исторический префикс `cutover`; их нейтральное переименование без потери функций включено в план. Актуальный порядок deployment, backup, maintenance и restore описан в [MIGRATION_NOTES.md](MIGRATION_NOTES.md).
+SLO, alerts, cleanup scheduler, backup retention, restore drill и ротация ключей описаны
+в [OPERATIONS.md](OPERATIONS.md).
 
-Актуальный порядок переноса зафиксирован в `PLAN.md`, завершённая матрица Go/PHP endpoint-контрактов — в `ENDPOINT_CONTRACTS.md`, а заметки cutover — в `MIGRATION_NOTES.md`. Автономные OAuth/OIDC, broker и LDAP compatibility flows воспроизводятся локально; `make integration-ldap-external` остаётся опциональной сертификацией конкретного внешнего каталога.
+## Документация
 
-## Важные изменения
+- [PLAN.md](PLAN.md) — единый список незавершённых работ.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — границы системы и ключевые решения.
+- [ENDPOINT_CONTRACTS.md](ENDPOINT_CONTRACTS.md) — собственный HTTP/API контракт.
+- [MIGRATION_NOTES.md](MIGRATION_NOTES.md) — deployment, schema upgrade, backup и restore.
+- [SECURITY.md](SECURITY.md) — модель угроз и browser/transport/OAuth security profile.
+- [OPERATIONS.md](OPERATIONS.md) — SLO, мониторинг, backup/restore и ротация секретов.
+- [VENDORED_ASSETS.md](VENDORED_ASSETS.md) — происхождение и обновление сторонних web-ресурсов.
 
-- 2026-09-25: добавлена maintenance-ротация `SSO_ENCRYPTION_KEY`: old/new keys передаются только процессу команды, dry-run проверяет весь набор, apply требует совпадения old key с активной конфигурацией и production-grade new key. Повторный запуск пропускает ciphertext, уже доступный новым ключом, а неизвестный третий ключ откатывает транзакцию.
-- 2026-09-25: Docker-контур получил TLS reverse proxy и фиксированную edge-сеть; secure runtime profile синхронно настраивает issuer, HTTPS cookies, trusted proxy, DB cache и локальный production-grade JWT secret.
-- 2026-09-25: добавлена транзакционная миграция legacy secrets `make cutover-rewrap`: она блокирует выбранные LDAP/MFA/broker строки, проверяет расшифровку, записывает Go `enc:v1:` ciphertext с compare-and-update guard и проверяет round-trip до commit. По умолчанию доступен только dry-run; apply отвергает короткий или placeholder encryption key.
-- 2026-09-25: добавлен production preflight `make cutover-check`: команда проверяет обязательные `SSO_*`, совпадение Go/PHP issuer, TTL/cookie/cache/proxy настройки, соединение и критическую схему PostgreSQL, `pgcrypto`, seed roles/permissions и расшифровку всех сохранённых LDAP/MFA/broker secrets без их вывода.
-- 2026-09-25: storage-формат зашифрованных секретов выровнен с Go `secrets.AESGCM`: SHA-256 derivation, `enc:v1:`, unpadded standard Base64 и порядок `nonce || ciphertext || tag`. PHP читает ciphertext Go-сервиса и ранний PHP `v1:` формат, но все новые LDAP/MFA/broker secrets пишет в Go-формате, сохраняя rolling migration и rollback совместимость.
-- 2026-09-25: LDAP Search + Bind контур закреплён автономным OpenLDAP fixture в Docker Compose. `make integration-ldap` проверяет service bind, search, user bind, JIT-provisioning, group mapping и audit без внешних секретов; тест изолирует ранее настроенные providers и гарантированно очищает временные записи при ошибках.
-- 2026-09-25: завершена полная дифференциальная сверка Go/PHP endpoint-контрактов: строгие typed JSON edge cases, case-insensitive имена полей, UUID/time parsing, порядок проверок, MFA/OIDC wire format и audit side effects выровнены и покрыты regression-тестами.
-- 2026-09-18: signed state identity broker приведён к Go wire-format: общий `SSO_JWT_SECRET`, RFC3339 expiry и строгий unpadded base64url позволяют продолжать broker login между Go/PHP-инстансами при rolling migration.
-- 2026-09-18: HS256 JWT verifier дополнен строгим unpadded base64url-разбором compact-сегментов и проверкой optional `nbf`; подписанные токены с padding/некорректным `nbf` или временем активации в будущем отклоняются.
-- 2026-09-18: HS256 JWT verifier приведён к Go security contract: строгий `alg=HS256`, числовой future `exp` и regression-тесты против algorithm confusion.
-- 2026-09-18: HS256 access token claims выровнены с Go: добавлены `email`/`source`, optional OAuth claims не сериализуются пустыми, лишний `iss` удалён; RS256 OIDC tokens сохраняют issuer.
-- 2026-09-18: ответ `client_credentials` выровнен с Go: непустой подтверждённый `scope` возвращается в token response, пустой scope не сериализуется.
-- 2026-09-18: `client_secret_basic` приведён к RFC 6749 и Go: client credentials используют form-urlencoded encoding с корректной обработкой `+`, `%2B` и пробелов.
-- 2026-09-18: authorize и logout redirects выровнены с Go для URI с существующими query/fragment: OAuth-параметры заменяются без дублей и размещаются до `#fragment`.
-- 2026-09-18: ID Token выровнен с Go по claims `auth_time` и `nonce`: время аутентификации переносится из authorization code/refresh token, а refresh ID Token содержит пустой `nonce`.
-- 2026-09-18: перенесена ротация OIDC signing keys: новый RS256-ключ создаётся после 30 дней, прежний остаётся в JWKS на 24-часовой grace-период, а advisory lock защищает от параллельной ротации.
-- 2026-09-18: добавлен OIDC Back-Channel Logout, ранее только заявленный в Discovery: RS256 logout token с `jti`/events отправляется на `backchannel_logout_uri`; основной integration flow поднимает mock RP и проверяет доставку, claims и подпись.
-- 2026-09-18: Authorization Code + PKCE exchange выровнен с Go: code атомарно потребляется до дальнейшей валидации, не может быть повторно использован после неудачного обмена, а PKCE challenge всегда проверяется по S256; добавлены PostgreSQL и HTTP regression-тесты.
-- 2026-09-18: OAuth revocation/introspection выровнены с Go и RFC 7009/7662: revoke отзывает refresh family, пишет аудит и возвращает пустой body; introspection распознаёт access/refresh tokens и их inactive states; client auth использует Basic precedence и `WWW-Authenticate` для `invalid_client`.
-- 2026-09-18: OAuth consent lifecycle выровнен с Go: consent info требует SSO-сессию, проверяет enabled client/scope и возвращает requested/granted scopes; последовательные grant-запросы объединяют scopes и пишут `consent_granted` в аудит.
-- 2026-09-18: Bearer middleware contract выровнен с Go для account/session, admin API и OIDC UserInfo: различаются `missing bearer token`, `invalid token`, `account is not active` и `token revoked`; `password/forgot` сохраняет специальную ошибку `login is required` при decode failure, поведение закреплено HTTP smoke-тестами.
-- 2026-09-17: Prometheus route labels выровнены с chi-шаблонами Go (`/api/v1/oauth/clients/{id}` и другие); внутренние Yii route names и реальные UUID больше не попадают в метрики, а версионированный cache key отсекает ранее накопленные серии.
-- 2026-09-17: bootstrap первого администратора выровнен с Go: обязательные identity-поля проверяются до пароля, исходные значения сохраняются без trim, `email_verified=false`, аудит использует `bootstrap_completed`; PostgreSQL-сценарий покрыт откатываемой транзакцией.
-- 2026-09-17: health readiness выровнен с Go: недоступная PostgreSQL возвращает 503 `database unavailable`; live/ready/version покрыты HTTP smoke flow и unit-тестом отказа БД.
-- 2026-09-17: Audit API выровнен с Go по строгой проверке actor UUID, поддержке дробных секунд в RFC3339-фильтрах и pagination semantics: невалидный или превышающий 200 `limit` сбрасывается к 50.
-- 2026-09-17: OAuth client create/update semantics выровнены с Go: create возвращает `{client, client_secret}`, пропущенные enabled/array-поля получают zero values, update выполняет полную замену разрешённых полей и сохраняет `type`; UI явно создаёт включённых клиентов.
-- 2026-09-17: OAuth consent JSON-контракт выровнен с Go: разрешены только `client_id` и `scope`, а malformed/non-object/unknown-field body возвращает RFC-style 400 `invalid_request` с описанием `invalid json body`.
-- 2026-09-17: OAuth clients, Identity Providers и LDAP provider/test/group-mapping JSON payloads выровнены с Go `DisallowUnknownFields`; OAuth client update больше не принимает отсутствующее в Go поле `type`.
-- 2026-09-17: Users/Roles/Groups CRUD и assignment JSON payloads выровнены с Go `DisallowUnknownFields`; user update больше не принимает отсутствующие в Go поля `password` и `email_verified`, а лишние ключи возвращают 400 `invalid json body`.
-- 2026-09-17: Auth/account/bootstrap JSON payloads выровнены с Go `DisallowUnknownFields`: неизвестные поля возвращают 400 `invalid json body`; Vue MFA flow переведён с `challenge_token`/`secret` на `mfa_token` и `/enroll`/`/activate`.
-- 2026-09-17: JSON body parsing выровнен с Go: malformed JSON и JSON-массивы/скаляры на object endpoints возвращают компактный 400 `invalid json body`, при этом сохраняется исходный порядок path UUID и body validation.
-- 2026-09-17: LDAP provider PUT/DELETE и group-mapping path UUID выровнены с Go: API возвращает `invalid id`/`invalid mapping id`, корректные отсутствующие UUID дают 404, а delete mapping сохраняет исходную семантику без проверки parent provider ID.
-- 2026-09-17: Identity Provider PUT/DELETE path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, корректный отсутствующий UUID — 404 `provider not found`.
-- 2026-09-17: OAuth client GET/PUT/DELETE/rotate-secret path UUID выровнены с Go: невалидный ID возвращает 400 `invalid id` вместо SPA fallback, отсутствующий клиент — 404 `client not found`, а rotate-secret сохраняет отдельную ошибку `confidential client not found`.
-- 2026-09-17: User-role list/assign/remove path/body UUID выровнены с Go; API возвращает `invalid user id`, `invalid role id` и `invalid json body` до обращения к PostgreSQL.
-- 2026-09-17: Groups CRUD, group-role и user-group path/body UUID выровнены с Go; составные маршруты возвращают точные `invalid group id`, `invalid user id`, `invalid role id` и `invalid json body`.
-- 2026-09-17: Roles CRUD и permission assignment path/body UUID выровнены с Go: API возвращает точные `invalid role id`, `invalid permission id` и `invalid json body` вместо SPA fallback или PostgreSQL-ошибки.
-- 2026-09-17: Users GET/PUT/DELETE path UUID и pagination limit выровнены с Go: невалидный ID возвращает 400 JSON вместо SPA fallback, отсутствующий пользователь — 404, максимальный limit равен 100.
-- 2026-09-26: `tokens_invalid_before` применяется ко всем пользовательским JWT, включая OAuth access tokens с `client_id`; password reset и revoke-all больше не оставляют внешний token действующим.
-- 2026-09-17: MFA activate/disable lifecycle выровнен с Go-контрактом, включая ошибки повторных операций, успешный статус `mfa_disabled` и сохранение текущего Bearer JWT; устранена также секундная гонка revoke-all с немедленным повторным login.
-- 2026-09-17: MFA login verification выровнен с Go-контрактом: invalid token и invalid code различаются, неверные коды участвуют в login/IP lockout, успешная MFA-проверка сбрасывает попытки; поведение закреплено PostgreSQL PHPUnit и HTTP smoke-тестами.
-- 2026-09-17: Session API выровнен с Go-сервисом: список показывает только активные неистёкшие сессии и включает `user_id`, невалидный session UUID возвращает 400, а list/revoke/revoke-all и инвалидизация Bearer JWT закреплены PHPUnit и HTTP smoke-проверками.
-- 2026-09-07: создан начальный Yii2-порт SSO с Docker, PostgreSQL, миграцией схемы, базовой auth/OAuth/OIDC функциональностью и Vue UI. Внешний порт PostgreSQL установлен в `5433`, чтобы не конфликтовать с локальными БД.
-- 2026-09-13: проект переведён на стандартный Yii2 web root `web/`; dev-сервер использует `web/router.php`, чтобы Yii2 корректно обрабатывал `/.well-known/*` маршруты.
-- 2026-09-13: документация закрепляет Docker-контейнер `app` как основной способ запуска и проверки проекта без локального PHP/Composer.
-- 2026-09-16: добавлена PHPUnit-инфраструктура `make unit` для unit-проверок password policy и trusted-proxy IP resolution.
-- 2026-09-16: добавлен `make phpunit-integration` с PostgreSQL fixture-проверками `OAuthService` для OAuth clients, array-полей и audit side effects.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой `AuthService` для local login, brute-force reset, session lookup, Bearer JWT `currentUser` и logout revoke.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой `OAuthService` для Authorization Code + PKCE token exchange, refresh token issuance и запрета повторного использования authorization code.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой refresh token rotation, reuse detection с отзывом family и revoke refresh token.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой OIDC ID token hint, JWKS, UserInfo scope filtering и RP-initiated logout с redirect validation и отзывом refresh tokens.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверкой `AccountService`: password reset token consumption, отзыв sessions/refresh/JWT, email verification pending accounts и profile attributes validation.
-- 2026-09-16: PostgreSQL PHPUnit-набор расширен проверками `MfaService`, `RbacService`, identity providers и LDAP providers/group mappings; оставшиеся сетевые LDAP/OIDC callback сценарии остаются в smoke/manual проверках.
-- 2026-09-16: добавлен `make integration-broker` с локальным mock OIDC provider; исправлен broker callback route, чтобы path-параметр provider не конфликтовал с OAuth query `code`.
-- 2026-09-16: добавлен optional `make integration-ldap`, который проверяет LDAP service bind, search + user bind, provisioning, group mapping и audit при заданных `SSO_TEST_LDAP_*`.
-- 2026-09-13: MFA API выровнен с Go-контрактом: добавлены `/api/v1/auth/mfa/enroll`, `/activate`, ответ `mfa_token`, сохранение enrollment secret до активации и smoke-проверка этих маршрутов.
-- 2026-09-13: перенесён Go-compatible `/metrics` endpoint с Prometheus text метриками HTTP-запросов, inflight gauge и суммарной длительностью.
-- 2026-09-13: Users API выровнен с Go-контрактом для создания пользователей: пустые username/email возвращают 400 `username and email are required`, конфликт username возвращает 409 `user already exists`.
-- 2026-09-13: RBAC API выровнен с Go-контрактом для создания ролей и групп: пустые code/name возвращают 400 с точным сообщением, конфликт code возвращает 409 `role already exists` или `group already exists`.
-- 2026-09-13: Audit API выровнен с Go-контрактом фильтров: невалидный `actor`, `from` и `to` возвращают точные 400-ошибки до выполнения запроса.
-- 2026-09-13: Identity providers API выровнен с Go-контрактом создания: обязательные `code`/`client_id`, точная ошибка OIDC URL и 409 `provider already exists` для конфликта code.
-- 2026-09-07: добавлен `.dockerignore`, а Dockerfile использует `composer.lock` для воспроизводимой установки Yii2.
-- 2026-09-07: перенесены brute-force lockout и rate limiting из Go-сервиса; добавлено ограничение тела запроса 1 MiB.
-- 2026-09-07: добавлен явный Yii2 `controllerMap` для сохранения маршрутов `oauth/*`.
-- 2026-09-07: перенесены RBAC-проверка, Users/Roles/Permissions/Groups/Audit admin API и базовые Vue-вкладки для этих разделов.
-- 2026-09-07: перенесены LDAP providers CRUD, LDAP test bind, LDAP group mappings и шифрование bind password.
-- 2026-09-10: добавлены UI-формы RBAC-назначений для пользователей, ролей и групп.
-- 2026-09-10: добавлен LDAP Search + Bind fallback для login и синхронизация LDAP group mappings.
-- 2026-09-10: добавлены MFA TOTP, login challenge и одноразовые recovery codes.
-- 2026-09-12: перенесены password forgot/reset/change и email verification; reset отзывает сессии, refresh tokens и ранее выданные first-party Bearer JWT, reset/verification письма отправляются через SMTP или пишутся в лог.
-- 2026-09-29: identity brokering усилен: token исключён из redirect URL и `localStorage`, `continue` ограничен локальными путями, исходящие token/userinfo/back-channel запросы защищены от SSRF (включая IPv4-mapped IPv6), а совпадение verified email не вызывает автоматическую привязку существующего аккаунта.
-- 2026-09-26: OAuth access tokens используют `SSO_API_AUDIENCE`; admin API требует соответствующий permission scope поверх RBAC. OIDC private keys шифруются `SSO_ENCRYPTION_KEY`, включая миграцию существующих ключей и их последующую ротацию.
-- 2026-09-29: auth lifecycle усилен `jti` revocation, транзакционными password/OAuth/MFA операциями, одноразовыми MFA challenges и сериализованным bootstrap; SMTP больше не логирует секретные ссылки, LDAP требует TLS/allowlist, административный audit сохраняет actor.
-- 2026-09-12: перенесён production hardening для trusted proxy IP, cleanup expired records и shared rate limit через `SSO_CACHE_DRIVER=db`.
-- 2026-09-12: добавлен self-service account profile update для `first_name`, `last_name` и `attributes` через API и Vue UI.
-- 2026-09-12: hardened refresh token rotation: family сохраняется при rotation, reuse/проигранная гонка отзывает всю refresh family.
-- 2026-09-12: добавлен `make integration` с HTTP smoke flow для bootstrap-ready OAuth/OIDC, PKCE, UserInfo scope filtering, RP logout validation, refresh rotation/reuse detection, RBAC enforcement и базовых OAuth error contracts.
-- 2026-09-12: интеграционный OAuth/OIDC smoke flow расширен проверками Discovery/JWKS, RS256 `id_token` claims, одноразовости authorization code, introspection active/inactive token, revocation refresh token, `client_secret_basic`, client_credentials token contract, consent-required/grant сценария и OAuth error contracts для authorize/revoke/introspect.
-- 2026-09-12: подготовлены `MIGRATION_NOTES.md` для cutover с Go-сервиса на PHP/Yii2: совместимость контрактов, миграции БД, checklist переключения и rollback.
-- 2026-09-12: добавлен `make integration-client` с dependency-free внешним OAuth/OIDC RP client flow через Discovery, Authorization Code + PKCE, `client_secret_basic`, UserInfo, refresh token и RP logout.
-- 2026-09-12: public OAuth clients теперь требуют PKCE S256 на authorize.
-- 2026-09-12: OIDC discovery дополнен revocation/introspection metadata, UserInfo фильтрует claims по OAuth scope.
-- 2026-09-12: RP-initiated logout валидирует `id_token_hint` и registered `post_logout_redirect_uri`, отзывает SSO-сессию и refresh tokens пользователя.
+## Текущее качество
+
+CI воспроизводимо собирает production/test images, проверяет миграции fresh/upgrade/rollback,
+lint, PSR-12, PHPStan, unit/integration/coverage и protocol smoke flows. Также обязательны
+Composer audit, secret/document/asset checks, SPDX SBOM и vulnerability scan. Актуальные
+подтверждённые результаты локального прогона фиксируются в `PLAN.md`.

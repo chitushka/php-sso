@@ -60,13 +60,17 @@ class JwtService
 
         $now = time();
         $expiresAt = $data['exp'] ?? null;
-        if ((!is_int($expiresAt) && !is_float($expiresAt))
-            || $expiresAt <= $now) {
+        if (
+            (!is_int($expiresAt) && !is_float($expiresAt))
+            || $expiresAt <= $now
+        ) {
             return null;
         }
 
-        if (array_key_exists('nbf', $data)
-            && ((!is_int($data['nbf']) && !is_float($data['nbf'])) || $data['nbf'] > $now)) {
+        if (
+            array_key_exists('nbf', $data)
+            && ((!is_int($data['nbf']) && !is_float($data['nbf'])) || $data['nbf'] > $now)
+        ) {
             return null;
         }
 

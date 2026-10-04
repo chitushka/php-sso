@@ -176,4 +176,58 @@ class OAuthClientServiceTest extends TestCase
         $this->assertSame([], $created['data']['allowed_scopes']);
         $this->assertSame([], $created['data']['post_logout_redirect_uris']);
     }
+
+    /**
+     * @dataProvider unsafeRedirectProvider
+     */
+    public function testClientRegistrationRejectsUnsafeRedirects(string $uri): void
+    {
+        $result = (new OAuthService())->createClient([
+            'client_id' => $this->prefix . '_unsafe_' . bin2hex(random_bytes(2)),
+            'name' => 'Unsafe redirect client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+            'redirect_uris' => [$uri],
+            'enabled' => true,
+        ]);
+
+        $this->assertSame(400, $result['status']);
+        $this->assertSame('redirect URIs violate the client redirect policy', $result['data']['error']);
+    }
+
+    public function unsafeRedirectProvider(): array
+    {
+        return [
+            'plain HTTP' => ['http://rp.example.test/callback'],
+            'credentials' => ['https://user:pass@rp.example.test/callback'],
+            'fragment' => ['https://rp.example.test/callback#token'],
+            'backslash' => ['https://rp.example.test/callback\\evil'],
+        ];
+    }
+
+    public function testLoopbackRedirectRequiresExplicitPublicClientPolicy(): void
+    {
+        $service = new OAuthService();
+        $publicId = $this->prefix . '_loopback_public';
+        $this->clientIds[] = $publicId;
+        $public = $service->createClient([
+            'client_id' => $publicId,
+            'name' => 'Native loopback client',
+            'type' => OAuthClient::TYPE_PUBLIC,
+            'redirect_uris' => ['http://127.0.0.1/callback'],
+            'allow_loopback_redirects' => true,
+            'enabled' => true,
+        ]);
+        $this->assertSame(201, $public['status']);
+        $this->assertTrue($public['data']['allow_loopback_redirects']);
+
+        $confidential = $service->createClient([
+            'client_id' => $this->prefix . '_loopback_confidential',
+            'name' => 'Invalid loopback client',
+            'type' => OAuthClient::TYPE_CONFIDENTIAL,
+            'redirect_uris' => ['http://127.0.0.1/callback'],
+            'allow_loopback_redirects' => true,
+            'enabled' => true,
+        ]);
+        $this->assertSame(400, $confidential['status']);
+    }
 }

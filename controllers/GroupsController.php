@@ -61,7 +61,9 @@ class GroupsController extends ApiController
         }
         $groupID = $this->canonicalUuid($groupID);
 
-        return $this->service()->deleteGroup($groupID) ? ['status' => 'deleted'] : $this->fail(404, 'group not found');
+        $result = $this->service()->deleteGroup($groupID);
+        Yii::$app->response->statusCode = $result['status'];
+        return $result['data'];
     }
 
     public function actionListRoles(string $groupID): array
@@ -113,8 +115,9 @@ class GroupsController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        $this->service()->removeRoleFromGroup($groupID, $roleID);
-        return ['status' => 'removed'];
+        return $this->service()->removeRoleFromGroup($groupID, $roleID)
+            ? ['status' => 'removed']
+            : $this->fail(409, 'at least one active administrator is required');
     }
 
     public function actionListUserGroups(string $userID): array
@@ -166,7 +169,8 @@ class GroupsController extends ApiController
         }
         $groupID = $this->canonicalUuid($groupID);
 
-        $this->service()->removeGroupFromUser($userID, $groupID);
-        return ['status' => 'removed'];
+        return $this->service()->removeGroupFromUser($userID, $groupID)
+            ? ['status' => 'removed']
+            : $this->fail(409, 'at least one active administrator is required');
     }
 }

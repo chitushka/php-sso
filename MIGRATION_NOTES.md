@@ -1,210 +1,116 @@
-# Migration notes: Go SSO -> PHP/Yii2
+# Deployment and database upgrade runbook
 
-Этот документ описывает практический переход с рабочего Go-сервиса `D:\workspace\GolandProjects\sso` на PHP 7.4/Yii2 порт из этого репозитория.
+Документ описывает deployment новой версии SSO PHP, применение schema migrations, backup, smoke-check и восстановление. Он не является сравнением с другой реализацией и не задаёт продуктовый API.
 
-## Область совместимости
+## До окна изменений
 
-PHP-порт сохраняет single-tenant модель, PostgreSQL-схему, namespace переменных `SSO_*`, cookie `sso_session`, Bearer JWT для API, публичные OAuth2/OIDC маршруты и основные admin API.
-
-Совместимые публичные контракты:
-
-- `GET /health/live`, `/health/ready`, `/health/version`.
-- `GET /api/v1/bootstrap/status`, `POST /api/v1/bootstrap`.
-- `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
-- Login response использует Go `LoginResult`, а raw `session_token` совпадает с cookie `sso_session`; Yii signing envelope отключён, поэтому cookie можно передавать между Go/PHP-инстансами.
-- Вложенный `user` и `GET /api/v1/auth/sessions` используют Go JSON wire-format для RFC3339 timestamps, пустых map и nullable `omitempty` полей.
-- `GET /.well-known/openid-configuration`, `GET /.well-known/jwks.json`.
-- `GET /oauth2/authorize`, `POST /oauth2/token`, `POST /oauth2/revoke`, `POST /oauth2/introspect`.
-- `GET /oauth2/userinfo`, `GET|POST /oauth2/logout`, `GET|POST /oauth2/consent`.
-- Admin API для users, roles, permissions, groups, audit, OAuth clients, LDAP providers и identity providers.
-- Roles, Permissions и Groups API используют Go JSON wire-format дат и описаний; update ролей/групп сохраняет Go full-replacement и `updated_at` lifecycle.
-- Audit events используют Go JSON wire-format для `created_at`, nullable actor и строковых network metadata.
-- OAuth Clients API сохраняет Go lifecycle `updated_at` при изменении клиента и ротации секрета.
-- Identity Providers API сохраняет Go lifecycle `updated_at`, RFC3339 wire-format дат и zero-value/full-replacement семантику POST/PUT; пустой PUT `client_secret` не стирает сохранённый секрет.
-- Identity broker сохраняет custom query/fragment authorize URL без дублирования OAuth-параметров и использует Go-compatible `/login` callback error redirects.
-- LDAP Providers и group mappings сохраняют Go lifecycle временных полей и RFC3339 wire-format дат; POST/PUT провайдеров используют Go zero-value/full-replacement семантику, сохраняя текущий bind password при пустом PUT-секрете.
-- LDAP create/update не раскрывают ошибки PostgreSQL и возвращают стабильные Go 500 errors; duplicate group mapping возвращает 409 `mapping already exists`.
-- LDAP provider DELETE можно безопасно повторять; mapping list order и audit actor/target fields совпадают с Go-сервисом.
-- LDAP bind passwords, MFA secrets и identity provider client secrets используют общий с Go storage wire-format `enc:v1:<base64.RawStdEncoding(nonce || ciphertext || tag)>`. PHP читает существующие Go-записи и ранние PHP `v1:` записи, а новые ciphertext доступны Go-сервису при rolling migration или rollback.
-
-Проверено текущим smoke flow:
-
-- Authorization Code + PKCE.
-- `client_secret_post` и `client_secret_basic`.
-- refresh token rotation и reuse detection.
-- revoke/introspect.
-- OIDC Discovery/JWKS, RS256 `id_token`, UserInfo scope filtering.
-- RP-initiated logout.
-- consent-required/grant flow.
-- базовые OAuth error contracts.
-- RBAC enforcement для admin API.
-- внешний RP client flow через `make integration-client`.
-
-## Подготовка
-
-Для локальной репетиции production-настроек выполнить `make cutover-configure-local-secure-runtime`, затем `docker compose up -d --build --wait`. Команда без вывода генерирует JWT secret и атомарно настраивает `https://localhost:8443`, secure cookies, DB cache и trusted proxy `172.31.250.10`; self-signed сертификат создаётся в Docker volume. Этот профиль не заменяет внешний secret manager, публичный production issuer и реальные CIDR балансировщиков.
-
-До maintenance window запустить read-only preflight с issuer действующего Go-сервиса:
+1. Зафиксировать image digest и версию приложения.
+2. Проверить production secrets, HTTPS issuer/audience, secure cookies, trusted proxies, LDAP/SMTP CA и PostgreSQL `verify-full` или согласованный TLS mode.
+3. Выполнить read-only readiness check:
 
 ```bash
-SSO_CUTOVER_EXPECTED_ISSUER="https://sso.example.com" docker compose run --rm app php yii cutover/check
+make cutover-check
 ```
 
-Команда не изменяет БД и возвращает ненулевой exit code при блокерах. Она проверяет обязательные secrets и TTL, точное совпадение issuer, HTTPS cookie, соединение и критическую PostgreSQL-схему, `pgcrypto`, seed roles/permissions, а также расшифровку всех LDAP/MFA/broker secrets. Значения secrets в отчёт не выводятся. `WARN` по file cache допустим только для одного PHP-инстанса; пустой trusted-proxy список допустим только без reverse proxy.
-
-Ранний PHP ciphertext с префиксом `v1:` читается PHP-портом, но не Go-сервисом, поэтому preflight считает его rollback-блокером. После резервной копии запустить сначала dry-run, затем apply с тем же `SSO_ENCRYPTION_KEY`, которым зашифрованы текущие записи:
-
-```bash
-docker compose run --rm app php yii cutover/rewrap-secrets
-docker compose run --rm app php yii cutover/rewrap-secrets --apply=1
-docker compose run --rm app php yii cutover/check
-```
-
-Apply отказывается работать с коротким или placeholder key. LDAP, MFA и identity provider secrets блокируются и обновляются одной транзакцией; при ошибке расшифровки, конкурентном изменении или неудачном round-trip откатывается весь набор. Plaintext и ciphertext в вывод не попадают. Повторный запуск идемпотентен и должен сообщить `0 secrets rewrapped`.
-
-Если текущий `SSO_ENCRYPTION_KEY` является placeholder, коротким или должен быть заменён, одного rewrap недостаточно: нужна maintenance-ротация. До apply остановить Go/PHP writers и сделать backup. Передавать ключи следует через secret manager или переменные окружения, не значениями в аргументах командной строки:
-
-```bash
-export SSO_OLD_ENCRYPTION_KEY='<current-key>'
-export SSO_NEW_ENCRYPTION_KEY='<new-production-key>'
-make cutover-rotate-key-dry-run
-make cutover-rotate-key
-```
-
-Apply требует, чтобы `SSO_OLD_ENCRYPTION_KEY` совпадал с активным `SSO_ENCRYPTION_KEY`, а новый ключ имел минимум 32 символа и не был placeholder. После commit, не возобновляя traffic, заменить `SSO_ENCRYPTION_KEY` новым значением во всех Go/PHP-инстансах и перезапустить их. Затем удалить одноразовые old/new variables и запустить `make cutover-check`. Повторный запуск rotation безопасен: уже ротированные строки распознаются новым ключом и пропускаются. Если хотя бы одна строка не открывается ни старым, ни новым ключом, вся транзакция откатывается.
-
-Только для локального `SSO_ENV!=prod` доступен `make cutover-generate-local-key`: команда генерирует 256-битный ключ без вывода, временно сохраняет recovery-копию в игнорируемом `runtime/`, ротирует dev-БД и обновляет локальный `.env`. В production эта команда намеренно запрещена — ключ должен поступать из внешнего secret manager.
-
-1. Зафиксировать версию Go-сервиса, от которой выполняется переход, и сохранить дамп PostgreSQL:
-
-   ```bash
-   pg_dump "$SSO_DATABASE_URL" > sso-before-php-cutover.sql
-   ```
-
-2. Сравнить production `.env` с `.env.example` PHP-порта. Обязательные значения:
-
-   - `SSO_DATABASE_URL`
-   - `SSO_ISSUER`
-   - `SSO_JWT_SECRET`
-   - `SSO_ENCRYPTION_KEY`
-   - `SSO_ACCESS_TOKEN_TTL`
-   - `SSO_SESSION_TTL`
-   - `SSO_REFRESH_TOKEN_TTL`
-   - `SSO_TRUSTED_PROXIES`
-   - `SSO_CACHE_DRIVER`
-   - SMTP-переменные, если включены password reset/email verification письма
-
-3. Проверить, что `SSO_ISSUER` остаётся тем же публичным URL. Изменение issuer ломает доверие OIDC-клиентов к уже настроенному провайдеру.
-
-   `SSO_JWT_SECRET` и `SSO_ENCRYPTION_KEY` должны в точности совпадать с Go-инстансами. Замена encryption key сделает существующие LDAP/MFA/broker secrets нерасшифровываемыми; PHP намеренно завершает такую операцию ошибкой, а не подменяет секрет пустой строкой.
-
-4. Для production с несколькими app-инстансами включить `SSO_CACHE_DRIVER=db`, чтобы rate limit использовал PostgreSQL-backed Yii cache.
-
-5. Убедиться, что reverse proxy IP/CIDR перечислены в `SSO_TRUSTED_PROXIES`; иначе `X-Forwarded-For` будет игнорироваться намеренно.
-
-## Миграции БД
-
-PHP-порт содержит стартовую Yii2-миграцию, соответствующую Go-миграциям `000001-000010`, и отдельную миграцию таблицы `cache` для DB-backed rate limit.
-
-Для перехода на существующей базе:
-
-```bash
-docker compose run --rm app php yii migrate --interactive=0
-```
-
-Если база уже создана Go-сервисом и схема актуальна, Yii2 может потребовать отметить стартовую миграцию как применённую вручную. Делать это нужно только после проверки структуры таблиц и индексов:
-
-```bash
-docker compose run --rm app php yii migrate/mark m260907_000001_init_sso_schema --interactive=0
-docker compose run --rm app php yii migrate --interactive=0
-```
-
-## Cutover
-
-1. Остановить запись в Go-сервис или перевести его в maintenance window. Для уже направленного на PHP контура включить write-freeze:
-
-   ```bash
-   make cutover-maintenance-on
-   ```
-
-   После включения только `GET /health/live` возвращает 200; readiness и все API отвечают 503, а metrics hooks не записывают DB cache.
-2. Сделать финальный `pg_dump`.
-3. Запустить PHP-миграции против production PostgreSQL.
-4. Поднять PHP-приложение с тем же `SSO_ISSUER`.
-5. Проверить health endpoints:
-
-   ```bash
-   curl -fsS "$SSO_ISSUER/health/live"
-   curl -fsS "$SSO_ISSUER/health/ready"
-   curl -fsS "$SSO_ISSUER/.well-known/openid-configuration"
-   ```
-
-   Затем выполнить строгий автоматизированный smoke из deployment-окружения:
-
-   ```bash
-   make cutover-smoke
-   ```
-
-   Команда требует HTTPS, проверяет сертификат системным trust store и сверяет Discovery с `SSO_ISSUER`. Флаг `SSO_TEST_TLS_INSECURE` защищён loopback guard и не может использоваться для внешнего production issuer.
-
-6. Переключить reverse proxy на PHP app.
-7. Снять PHP write-freeze командой `make cutover-maintenance-off`.
-8. Задать через secret manager `SSO_CUTOVER_SMOKE_USERNAME`, `SSO_CUTOVER_SMOKE_PASSWORD`, `SSO_CUTOVER_SMOKE_CLIENT_ID`, `SSO_CUTOVER_SMOKE_REDIRECT_URI` и `SSO_CUTOVER_SMOKE_LOGOUT_REDIRECT_URI`. Для confidential client также задать `SSO_CUTOVER_SMOKE_CLIENT_SECRET`, а для MFA непосредственно перед запуском — `SSO_CUTOVER_SMOKE_MFA_CODE`. Использовать выделенного smoke-пользователя: RP logout штатно отзывает его refresh tokens. Redirect URI должны быть заранее зарегистрированы у клиента.
-
-   Затем выполнить authenticated flow:
-
-   ```bash
-   make cutover-smoke-authenticated
-   ```
-
-   Команда проверяет:
-
-   - login/logout выделенного локального пользователя;
-   - `GET /api/v1/auth/me`;
-   - Authorization Code + PKCE из реального клиента;
-   - refresh token;
-   - `/oauth2/userinfo`;
-   - `/oauth2/logout`;
-   - вход через LDAP или identity provider, если они используются.
-
-   Автоматизированная часть использует local login. LDAP/identity provider login остаётся ручной проверкой, если он включён. Скрипт не создаёт fixtures и не выводит credentials/tokens, однако штатный flow создаёт и отзывает session/code/refresh records и пишет audit. Если client требует consent, его следует выдать заранее; `SSO_CUTOVER_SMOKE_GRANT_CONSENT=true` разрешает скрипту сделать это явно и идемпотентно.
-
-## Rollback
-
-До maintenance window выполнить локальную репетицию восстановления:
+4. Выполнить dry-run ротации/перешифрования, если меняется `SSO_ENCRYPTION_KEY`.
+5. Создать проверяемый PostgreSQL backup и сохранить его вне Compose volume.
+6. Выполнить restore rehearsal:
 
 ```bash
 make cutover-rehearse-rollback
 ```
 
-Runner не подменяет рабочую БД: он создаёт consistent custom-format dump, восстанавливает его во временную БД, проверяет критическую схему и данные и удаляет оба временных объекта. Production backup всё равно должен сохраняться в штатном зашифрованном backup storage с заданной retention policy.
+Исторический префикс имён команд будет заменён нейтральным deployment/readiness naming в рамках `PLAN.md`.
 
-Rollback должен возвращать трафик на Go-сервис и базу из дампа, сделанного перед cutover.
+## Применение миграций
 
-Если PHP-приложение уже принимало production-записи, простой возврат трафика без восстановления дампа рискован: новые сессии, refresh tokens, audit logs, one-time tokens и изменения пользователей могли появиться только после переключения.
+Миграции запускаются отдельным operations job, а не application entrypoint:
 
-Безопасный rollback:
+```bash
+docker compose --profile operations run --rm migrate
+```
 
-1. Остановить PHP-приложение.
-2. Восстановить `sso-before-php-cutover.sql` в PostgreSQL.
-3. Вернуть reverse proxy на Go-сервис.
-4. Проверить `/health/ready`, login и один OAuth flow.
+Перед применением каждой новой миграции должны быть определены:
 
-## Известные отличия
+- совместимость с текущей версией приложения;
+- lock/statement timeout и влияние на большие таблицы;
+- необходимость backfill и его batch strategy;
+- возможность rollback или обязательное restore из backup;
+- проверка результата и expected schema version.
 
-- Go-сервис поддерживал `SSO_MIGRATE_ON_START`; PHP-порт применяет миграции явной командой `php yii migrate --interactive=0`.
-- Go-конфигурация использовала duration-строки вроде `15m`/`720h`; PHP-порт ожидает TTL в секундах.
-- Prometheus `/metrics` перенесён; имена route labels совпадают с chi-шаблонами Go.
-- UI в PHP-порте встроен в Yii2 layout и не требует отдельной Vite-сборки.
-- Встроенный `make integration` использует высокий test-local rate limit только для расширенного smoke flow; production rate limit задаётся обычными `SSO_RATE_LIMIT_PER_MINUTE` и `SSO_RATE_LIMIT_BURST`.
+Baseline migrations с `IF NOT EXISTS` не считаются полноценной проверкой schema drift. До их переработки всегда выполняйте readiness/schema inventory и restore rehearsal.
 
-## Перед production
+Миграция `m261004_000006_normalize_user_email` нормализует email и создаёт уникальный индекс `lower(email)`. При существующих дублях после `trim + lowercase` она останавливается до изменения данных. Такие записи нужно разобрать вручную по владельцам учётных записей, затем повторить migration job; автоматически объединять пользователей запрещено.
 
-- Заменить placeholder secrets.
-- Проверить, что `.env` не попадает в Git.
-- Указать `SSO_CUTOVER_EXPECTED_ISSUER` и добиться завершения `make cutover-check` без FAIL.
-- Прогнать `composer lint`.
-- Прогнать `make integration` в окружении с Docker и `make`.
-- Прогнать `make integration-client` в окружении с Docker и `make`, затем проверить внешний OAuth/OIDC flow настоящим production-клиентом.
-- Настроить регулярный `php yii cleanup/run`.
-- Проверить SMTP-доставку reset/verification писем.
+## Maintenance window
+
+Для операций, требующих отсутствия записи:
+
+```bash
+make cutover-maintenance-on
+```
+
+Maintenance mode оставляет доступным только liveness и блокирует остальные HTTP requests. После включения убедитесь, что фоновые writers и старые application instances остановлены, затем снимите финальный backup и примените миграции.
+
+После успешной проверки:
+
+```bash
+make cutover-maintenance-off
+```
+
+## Ротация encryption key
+
+Передавайте старый и новый ключи через secret manager/environment только maintenance process. Не помещайте значения в историю shell или repository.
+
+```bash
+make cutover-rotate-key-dry-run
+make cutover-rotate-key
+```
+
+Во время apply не должно быть других writers. После commit атомарно обновите `SSO_ENCRYPTION_KEY` для всех instances, перезапустите их и повторите readiness/smoke. Не удаляйте старый ключ до подтверждённого backup и завершённой проверки.
+
+## Post-deployment checks
+
+Сначала выполните read-only public smoke:
+
+```bash
+make cutover-smoke
+```
+
+Затем authenticated smoke выделенной тестовой учётной записью и зарегистрированным клиентом:
+
+```bash
+make cutover-smoke-authenticated
+```
+
+Проверить вручную/мониторингом:
+
+- liveness/readiness и точный issuer в Discovery;
+- пригодный активный RS256 JWKS key;
+- local login/MFA и `/auth/me`;
+- Authorization Code + PKCE, UserInfo, refresh rotation и logout;
+- LDAP/federated login, если они используются в окружении;
+- SMTP delivery без token/secret leakage в logs;
+- error rate, latency, DB connections, rate-limit и cleanup health.
+
+## Restore
+
+Restore выбирается вместо down migration, если изменение данных необратимо или rollback-код не проверен.
+
+1. Включить maintenance и остановить все writers.
+2. Сохранить аварийный dump текущего состояния отдельно.
+3. Восстановить последний проверенный backup в новую/очищенную БД по утверждённой процедуре.
+4. Вернуть совместимый image и набор secrets/configuration.
+5. Проверить schema version, row counts, extensions, seed permissions и расшифровку secrets.
+6. Запустить public и authenticated smoke.
+7. Только после успешной проверки снять maintenance и возобновить traffic.
+
+## Обязательные артефакты релиза
+
+- image digest и application version;
+- список миграций и оценка lock/backfill;
+- backup location, checksum и restore rehearsal result;
+- результаты lint/unit/integration/security audits;
+- smoke results и время переключения;
+- владелец решения о продолжении/restore;
+- changelog API/config/schema изменений.

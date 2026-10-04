@@ -18,6 +18,7 @@ class OAuthController extends ApiController
         'post_logout_redirect_uris',
         'backchannel_logout_uri',
         'skip_consent',
+        'allow_loopback_redirects',
         'enabled',
     ];
 
@@ -28,6 +29,7 @@ class OAuthController extends ApiController
         'post_logout_redirect_uris',
         'backchannel_logout_uri',
         'skip_consent',
+        'allow_loopback_redirects',
         'enabled',
     ];
 
@@ -40,6 +42,7 @@ class OAuthController extends ApiController
         'post_logout_redirect_uris' => 'strings',
         'backchannel_logout_uri' => 'string',
         'skip_consent' => 'bool',
+        'allow_loopback_redirects' => 'bool',
         'enabled' => 'bool',
     ];
 
@@ -50,6 +53,7 @@ class OAuthController extends ApiController
         'post_logout_redirect_uris' => 'strings',
         'backchannel_logout_uri' => 'string',
         'skip_consent' => 'bool',
+        'allow_loopback_redirects' => 'bool',
         'enabled' => 'bool',
     ];
 
@@ -191,8 +195,14 @@ class OAuthController extends ApiController
     {
         $result = (new OAuthService())->revoke(Yii::$app->request);
         if (!$result['ok']) {
-            Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
-            return $this->oauthError(401, 'invalid_client', 'client authentication failed');
+            if (($result['error'] ?? '') === 'invalid_client' || !isset($result['error'])) {
+                Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
+            }
+            return $this->oauthError(
+                (int)($result['status'] ?? 401),
+                (string)($result['error'] ?? 'invalid_client'),
+                (string)($result['description'] ?? 'client authentication failed')
+            );
         }
 
         Yii::$app->response->format = \yii\web\Response::FORMAT_RAW;
@@ -220,6 +230,30 @@ class OAuthController extends ApiController
         return $result['data'];
     }
 
+    public function actionListUserConsents(): array
+    {
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
+        }
+
+        return (new OAuthService())->listUserConsents($user->id);
+    }
+
+    public function actionRevokeUserConsent(string $clientId): array
+    {
+        $user = $this->requireUser();
+        if (is_array($user)) {
+            return $user;
+        }
+
+        if (!(new OAuthService())->revokeUserConsent($user->id, $clientId)) {
+            return $this->fail(404, 'consent not found');
+        }
+
+        return ['status' => 'revoked'];
+    }
+
     public function actionGrantConsent(): array
     {
         try {
@@ -242,11 +276,12 @@ class OAuthController extends ApiController
     public function actionLogout()
     {
         $result = (new OAuthService())->logout(Yii::$app->request);
-        Yii::$app->response->cookies->remove('sso_session');
-
         if (!$result['ok']) {
             return $this->oauthError($result['status'], $result['error'], $result['description']);
         }
+
+        Yii::$app->response->cookies->remove('sso_session');
+        Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
 
         if (isset($result['redirect'])) {
             return $this->redirect($result['redirect']);

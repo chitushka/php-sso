@@ -11,6 +11,7 @@ class OidcService
     private const KEY_MAX_AGE_DAYS = 30;
     private const RETIRING_GRACE_HOURS = 24;
     private const KEY_ROTATION_LOCK = 1397968720;
+    private const CLOCK_SKEW = 60;
 
     public function configuration(): array
     {
@@ -32,6 +33,8 @@ class OidcService
             'scopes_supported' => ['openid', 'profile', 'email'],
             'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'email', 'preferred_username'],
             'backchannel_logout_supported' => true,
+            'code_challenge_methods_supported' => ['S256'],
+            'authorization_response_iss_parameter_supported' => true,
         ];
     }
 
@@ -60,13 +63,33 @@ class OidcService
         ];
     }
 
+    public function signingReady(): bool
+    {
+        try {
+            $key = $this->activeKey();
+            $payload = random_bytes(32);
+            $signature = '';
+            if (!openssl_sign($payload, $signature, $this->privateKey($key), OPENSSL_ALGO_SHA256)) {
+                return false;
+            }
+
+            return openssl_verify(
+                $payload,
+                $signature,
+                (string)$key['public_key_pem'],
+                OPENSSL_ALGO_SHA256
+            ) === 1;
+        } catch (\Throwable $exception) {
+            return false;
+        }
+    }
+
     public function issueIdToken(
         string $userId,
         string $audience,
         string $nonce = '',
         ?int $authTime = null
-    ): string
-    {
+    ): string {
         $key = $this->activeKey();
         $user = User::findOne(['id' => $userId]);
         $now = time();
@@ -74,6 +97,7 @@ class OidcService
             'iss' => Yii::$app->params['issuer'],
             'sub' => $userId,
             'aud' => $audience,
+            'azp' => $audience,
             'iat' => $now,
             'exp' => $now + Yii::$app->params['accessTokenTtl'],
             'auth_time' => $authTime ?? $now,
@@ -168,10 +192,24 @@ class OidcService
         if (($payload['iss'] ?? '') !== Yii::$app->params['issuer']) {
             return null;
         }
-        if (empty($payload['sub']) || empty($payload['aud'])) {
+        if (empty($payload['sub']) || !is_string($payload['aud']) || $payload['aud'] === '') {
             return null;
         }
-        if (!empty($payload['iat']) && time() - (int)$payload['iat'] > self::MAX_LOGOUT_HINT_AGE) {
+        if (isset($payload['azp']) && (!is_string($payload['azp']) || $payload['azp'] !== $payload['aud'])) {
+            return null;
+        }
+        $now = time();
+        if (
+            !isset($payload['exp']) || !is_numeric($payload['exp'])
+            || (int)$payload['exp'] < $now - self::CLOCK_SKEW
+        ) {
+            return null;
+        }
+        if (
+            !isset($payload['iat']) || !is_numeric($payload['iat'])
+            || (int)$payload['iat'] > $now + self::CLOCK_SKEW
+            || $now - (int)$payload['iat'] > self::MAX_LOGOUT_HINT_AGE
+        ) {
             return null;
         }
 
@@ -201,10 +239,15 @@ class OidcService
             }
 
             // Старый ключ остаётся в JWKS на время жизни уже выданных токенов.
+            $retiringSeconds = max(
+                self::RETIRING_GRACE_HOURS * 3600,
+                (int)Yii::$app->params['accessTokenTtl'] + self::CLOCK_SKEW
+            );
             Yii::$app->db->createCommand(
                 "UPDATE oidc_signing_keys
-                 SET status = 'retiring', expires_at = now() + interval '" . self::RETIRING_GRACE_HOURS . " hours'
-                 WHERE status = 'active'"
+                 SET status = 'retiring', expires_at = now() + make_interval(secs => :seconds)
+                 WHERE status = 'active'",
+                [':seconds' => $retiringSeconds]
             )->execute();
 
             $row = $this->createActiveKey();

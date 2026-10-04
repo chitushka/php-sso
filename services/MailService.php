@@ -14,11 +14,13 @@ class MailService
         if ($host === '' || $from === '') {
             // Секретная ссылка никогда не должна попадать в журнал.
             Yii::warning('mail delivery is not configured', 'mail');
+            (new MetricsService())->event('mail', 'failure');
             return false;
         }
 
         if (!$this->validHost($host) || !$this->validAddress($to) || !$this->validAddress($from) || $this->hasHeaderBreak($subject)) {
             Yii::warning('mail address or subject is invalid', 'mail');
+            (new MetricsService())->event('mail', 'failure');
             return false;
         }
 
@@ -26,10 +28,11 @@ class MailService
         $startTls = (bool)(Yii::$app->params['smtpStartTls'] ?? false);
         if ($username !== '' && !$startTls) {
             Yii::warning('smtp credentials require STARTTLS', 'mail');
+            (new MetricsService())->event('mail', 'failure');
             return false;
         }
 
-        return $this->sendSmtp(
+        $sent = $this->sendSmtp(
             $host,
             (int)(Yii::$app->params['smtpPort'] ?? 25),
             $username,
@@ -40,6 +43,9 @@ class MailService
             $body,
             $startTls
         );
+        (new MetricsService())->event('mail', $sent ? 'success' : 'failure');
+
+        return $sent;
     }
 
     private function sendSmtp(
@@ -73,42 +79,68 @@ class MailService
             $context
         );
         if (!$socket) {
-            Yii::warning('smtp connection failed: ' . $errstr, 'mail');
+            Yii::warning('smtp connection failed', 'mail');
             return false;
         }
 
         try {
+            stream_set_timeout($socket, 10);
             if (!$this->expect($socket, 220)) {
                 return false;
             }
 
-            $this->command($socket, 'EHLO localhost', 250);
+            $capabilities = $this->ehlo($socket);
+            if ($capabilities === null) {
+                return false;
+            }
             if ($startTls) {
+                if (!isset($capabilities['STARTTLS'])) {
+                    Yii::warning('smtp server does not advertise STARTTLS', 'mail');
+                    return false;
+                }
                 if (!$this->command($socket, 'STARTTLS', 220)) {
                     return false;
                 }
                 if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
                     return false;
                 }
-                $this->command($socket, 'EHLO localhost', 250);
-            }
-
-            if ($username !== '') {
-                if (!$this->command($socket, 'AUTH LOGIN', 334)
-                    || !$this->command($socket, base64_encode($username), 334)
-                    || !$this->command($socket, base64_encode($password), 235)) {
+                $capabilities = $this->ehlo($socket);
+                if ($capabilities === null) {
                     return false;
                 }
             }
 
-            $safeBody = preg_replace('/(?m)^\./', '..', str_replace(["\r\n", "\r"], "\n", $body));
+            if ($username !== '') {
+                if (
+                    !isset($capabilities['AUTH'])
+                    || stripos(' ' . $capabilities['AUTH'] . ' ', ' LOGIN ') === false
+                ) {
+                    Yii::warning('smtp server does not advertise AUTH LOGIN', 'mail');
+                    return false;
+                }
+                if (
+                    !$this->command($socket, 'AUTH LOGIN', 334)
+                    || !$this->command($socket, base64_encode($username), 334)
+                    || !$this->command($socket, base64_encode($password), 235)
+                ) {
+                    return false;
+                }
+            }
+
+            $safeBody = quoted_printable_encode(str_replace(["\r\n", "\r"], "\n", $body));
+            $safeBody = preg_replace('/(?m)^\./', '..', $safeBody);
             $safeBody = str_replace("\n", "\r\n", (string)$safeBody);
+            $subjectHeader = $this->subjectHeader($subject);
+            if ($subjectHeader === null) {
+                return false;
+            }
             $message = implode("\r\n", [
                 'From: ' . $from,
                 'To: ' . $to,
-                'Subject: ' . $subject,
+                $subjectHeader,
                 'MIME-Version: 1.0',
                 'Content-Type: text/plain; charset=utf-8',
+                'Content-Transfer-Encoding: quoted-printable',
                 '',
                 $safeBody,
             ]);
@@ -146,20 +178,69 @@ class MailService
 
     private function expect($socket, int $expectedCode): bool
     {
-        $line = '';
+        $response = $this->readResponse($socket);
+        return $response !== null && $response['code'] === $expectedCode;
+    }
+
+    private function ehlo($socket): ?array
+    {
+        fwrite($socket, "EHLO localhost\r\n");
+        $response = $this->readResponse($socket);
+        if ($response === null || $response['code'] !== 250) {
+            return null;
+        }
+
+        $capabilities = [];
+        foreach ($response['lines'] as $line) {
+            $value = trim(substr($line, 4));
+            if ($value === '') {
+                continue;
+            }
+            [$name, $arguments] = array_pad(preg_split('/\s+/', $value, 2), 2, '');
+            $capabilities[strtoupper($name)] = $arguments;
+        }
+
+        return $capabilities;
+    }
+
+    private function readResponse($socket): ?array
+    {
+        $lines = [];
         do {
             $line = fgets($socket, 512);
             if ($line === false) {
-                return false;
+                return null;
             }
+            $lines[] = $line;
         } while (strlen($line) >= 4 && $line[3] === '-');
 
-        $code = (int)substr($line, 0, 3);
-        if ($code !== $expectedCode) {
-            Yii::warning('smtp unexpected response: ' . trim($line), 'mail');
-            return false;
+        if (preg_match('/^\d{3}[ -]/', $line) !== 1) {
+            return null;
         }
 
-        return true;
+        return ['code' => (int)substr($line, 0, 3), 'lines' => $lines];
+    }
+
+    private function subjectHeader(string $subject): ?string
+    {
+        if (strlen($subject) > 998 || !preg_match('//u', $subject)) {
+            return null;
+        }
+        if (preg_match('/^[\x20-\x7E]*$/D', $subject) === 1) {
+            return 'Subject: ' . $subject;
+        }
+        if (!function_exists('iconv_mime_encode')) {
+            return null;
+        }
+
+        $encoded = iconv_mime_encode('Subject', $subject, [
+            'scheme' => 'B',
+            'input-charset' => 'UTF-8',
+            'output-charset' => 'UTF-8',
+            'line-length' => 76,
+            'line-break-chars' => "\r\n",
+        ]);
+
+        return $encoded === false ? null : $encoded;
     }
 }

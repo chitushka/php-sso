@@ -21,14 +21,27 @@ class AccountService
             return;
         }
 
-        $user = User::find()
-            ->where(['or', ['username' => $login], ['email' => $login]])
-            ->one();
+        // Login identifier имеет явный приоритет, чтобы совпадение username одной
+        // учётной записи с email другой не приводило к недетерминированному выбору.
+        $user = User::findOne(['username' => $login]);
+        if (!$user) {
+            $user = User::findOne(['email' => User::normalizeEmail($login)]);
+        }
         if (!$user || $user->source !== User::SOURCE_LOCAL || $user->status !== User::STATUS_ACTIVE || $user->email === '') {
             return;
         }
 
-        $token = $this->createToken($user, OneTimeToken::PURPOSE_PASSWORD_RESET, self::RESET_TTL);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $token = $this->createToken($user, OneTimeToken::PURPOSE_PASSWORD_RESET, self::RESET_TTL);
+            AuditService::record($user->id, 'password_reset_requested', 'user', $user->id, true);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
         $link = $this->issuerUrl('/reset-password?token=' . rawurlencode($token));
         $body = sprintf(
             "Hello %s,\n\nA password reset was requested for your account.\nOpen the link below within 1 hour to set a new password:\n\n%s\n\nIf you did not request this, ignore this message.",
@@ -37,7 +50,6 @@ class AccountService
         );
 
         (new MailService())->send((string)$user->email, 'Password reset', $body);
-        AuditService::record($user->id, 'password_reset_requested', 'user', $user->id, true);
     }
 
     public function resetPassword(string $token, string $password): array
@@ -128,9 +140,12 @@ class AccountService
             $user->attributes = json_encode($attributes);
         }
 
-        if (!$user->save(false, ['first_name', 'last_name', 'attributes'])) {
+        $user->updated_at = new Expression('now()');
+
+        if (!$user->save(false, ['first_name', 'last_name', 'attributes', 'updated_at'])) {
             return ['status' => 400, 'data' => ['error' => 'invalid profile payload']];
         }
+        $user->refresh();
 
         AuditService::record($user->id, 'profile_updated', 'user', $user->id);
 
@@ -160,7 +175,17 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'email already verified']];
         }
 
-        $token = $this->createToken($user, OneTimeToken::PURPOSE_EMAIL_VERIFY, self::VERIFY_TTL);
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $token = $this->createToken($user, OneTimeToken::PURPOSE_EMAIL_VERIFY, self::VERIFY_TTL);
+            AuditService::record($user->id, 'email_verification_requested', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to create verification token']];
+        }
         $link = $this->issuerUrl('/verify-email?token=' . rawurlencode($token));
         $body = sprintf(
             "Hello %s,\n\nConfirm your email address by opening the link below within 24 hours:\n\n%s",
@@ -177,19 +202,32 @@ class AccountService
 
     public function verifyEmail(string $token): array
     {
-        $user = $this->consumeToken(OneTimeToken::PURPOSE_EMAIL_VERIFY, $token);
-        if (!$user) {
-            return ['status' => 400, 'data' => ['error' => 'invalid or expired token']];
-        }
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $user = $this->consumeToken(OneTimeToken::PURPOSE_EMAIL_VERIFY, $token);
+            if (!$user) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid or expired token']];
+            }
 
-        $user->email_verified = true;
-        $fields = ['email_verified'];
-        if ($user->status === User::STATUS_PENDING) {
-            $user->status = User::STATUS_ACTIVE;
-            $fields[] = 'status';
+            $user->email_verified = true;
+            $user->updated_at = new Expression('now()');
+            $fields = ['email_verified', 'updated_at'];
+            if ($user->status === User::STATUS_PENDING) {
+                $user->status = User::STATUS_ACTIVE;
+                $fields[] = 'status';
+            }
+            if (!$user->save(false, $fields)) {
+                throw new \RuntimeException('failed to verify email');
+            }
+            AuditService::record($user->id, 'email_verified', 'user', $user->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return ['status' => 500, 'data' => ['error' => 'failed to verify email']];
         }
-        $user->save(false, $fields);
-        AuditService::record($user->id, 'email_verified', 'user', $user->id);
 
         return ['status' => 200, 'data' => ['status' => 'email_verified']];
     }
@@ -202,7 +240,9 @@ class AccountService
         $model->purpose = $purpose;
         $model->token_hash = hash('sha256', $token);
         $model->expires_at = gmdate('Y-m-d H:i:sP', time() + $ttl);
-        $model->save(false);
+        if (!$model->save(false)) {
+            throw new \RuntimeException('failed to persist one-time token');
+        }
 
         return $token;
     }

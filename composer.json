@@ -44,6 +44,17 @@
       "yii\\composer\\Installer::postInstall"
     ],
     "lint": "find . -path ./vendor -prune -o -name '*.php' -print -exec php -l {} \\;",
+    "cs": "phpcs -n --standard=phpcs.xml.dist",
+    "analyse": "phpstan analyse --configuration=phpstan.neon --no-progress",
+    "test:unit": "phpunit --testsuite Unit",
+    "test:integration": "phpunit --testsuite Integration",
+    "test:coverage": "phpunit --testsuite Integration --coverage-clover=runtime/coverage.xml",
+    "verify:coverage": "php scripts/ci/check_coverage.php runtime/coverage.xml 35",
+    "verify:assets": "php scripts/ci/verify_assets.php",
+    "verify:docs": "php scripts/ci/verify_docs.php",
+    "verify:secrets": "php scripts/ci/secret_scan.php",
+    "security:audit": "composer audit --locked --no-dev",
+    "quality": ["@lint", "@cs", "@analyse", "@verify:assets", "@verify:docs", "@verify:secrets"],
     "test": "phpunit",
     "migrate": "php yii migrate --interactive=0",
     "serve": "php -S 0.0.0.0:8080 -t web web/router.php"
@@ -55,6 +66,8 @@
     "process-timeout": 1800
   },
   "require-dev": {
-    "phpunit/phpunit": "^9.6"
+    "phpunit/phpunit": "^9.6",
+    "squizlabs/php_codesniffer": "^3.13",
+    "phpstan/phpstan": "^2.1"
   }
 }

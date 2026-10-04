@@ -63,13 +63,18 @@ class TrustedRequest extends Request
             }
             [$network, $prefix] = explode('/', $entry, 2);
             $packed = @inet_pton($network);
-            if ($packed === false) {
-                continue;
+            if ($packed === false || preg_match('/^\d+$/D', $prefix) !== 1) {
+                throw new \yii\base\InvalidConfigException('invalid trusted proxy CIDR');
+            }
+            $prefix = (int)$prefix;
+            $bytes = strlen($packed);
+            if ($prefix < 0 || $prefix > $bytes * 8 || !$this->isNetworkAddress($packed, $prefix)) {
+                throw new \yii\base\InvalidConfigException('invalid trusted proxy CIDR');
             }
             $networks[] = [
                 'packed' => $packed,
-                'prefix' => (int)$prefix,
-                'bytes' => strlen($packed),
+                'prefix' => $prefix,
+                'bytes' => $bytes,
             ];
         }
 
@@ -100,8 +105,8 @@ class TrustedRequest extends Request
     {
         $parts = array_reverse(explode(',', $xff));
         foreach ($parts as $part) {
-            $ip = trim($part);
-            if ($ip !== '' && !$this->ipInNetworks($ip, $trusted)) {
+            $ip = $this->hostOnly(trim($part));
+            if (filter_var($ip, FILTER_VALIDATE_IP) !== false && !$this->ipInNetworks($ip, $trusted)) {
                 return $ip;
             }
         }
@@ -142,5 +147,20 @@ class TrustedRequest extends Request
 
         $mask = (0xff << (8 - $remainingBits)) & 0xff;
         return (ord($ip[$fullBytes]) & $mask) === (ord($network[$fullBytes]) & $mask);
+    }
+
+    private function isNetworkAddress(string $packed, int $prefix): bool
+    {
+        $fullBytes = intdiv($prefix, 8);
+        $remainingBits = $prefix % 8;
+        if ($remainingBits > 0) {
+            $hostMask = (1 << (8 - $remainingBits)) - 1;
+            if ((ord($packed[$fullBytes]) & $hostMask) !== 0) {
+                return false;
+            }
+            $fullBytes++;
+        }
+
+        return substr($packed, $fullBytes) === str_repeat("\0", strlen($packed) - $fullBytes);
     }
 }
