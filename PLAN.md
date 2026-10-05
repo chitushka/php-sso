@@ -13,14 +13,6 @@
 - Пункт закрывается только после кода, миграции при необходимости, автоматических тестов и обновления документации.
 - Новое поведение сначала фиксируется в `ENDPOINT_CONTRACTS.md` и тестах как собственный контракт проекта.
 
-## P1 — эксплуатационная готовность
-
-### 1. Подтвердить dependency audit в удалённом CI
-
-- Запустить обязательный GitHub Actions workflow в приватном remote и получить успешный результат `composer audit --locked`; локальный Docker NAT получает TLS EOF от Packagist, а доступ к private Actions в текущем окружении не авторизован.
-
-Критерий готовности: обязательный remote workflow проходит dependency audit.
-
 ## P2 — архитектура и поддерживаемость
 
 ### 5. Отвязать код и терминологию от истории переноса
@@ -72,5 +64,5 @@
 - Production image запускается как `www-data` и не содержит тесты, Composer metadata или PHPUnit.
 - SPDX SBOM production image сформирован и содержит 188 пакетов.
 - Trivy 0.67.2: 0 исправимых HIGH/CRITICAL findings в Debian, Composer и Node слоях production image.
-- `composer audit --locked`: не завершён из-за TLS/network ошибки доступа к Packagist; это не считается подтверждением отсутствия уязвимостей и оставлено в P1.
+- Remote GitHub Actions quality gate для commit `15f7eaf` завершён успешно; `composer audit --locked`, SPDX SBOM и Trivy scan прошли.
 - OpenAPI schema пока отсутствует и учтена в пункте 8.
