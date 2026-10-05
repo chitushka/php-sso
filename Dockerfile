@@ -9,7 +9,7 @@ WORKDIR /app
 COPY composer.json composer.lock ./
 RUN composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
 
-FROM php:8.4-fpm-bookworm AS extension-builder
+FROM php:8.5-fpm-bookworm AS extension-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq-dev libldap2-dev \
     && docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu \
@@ -18,7 +18,7 @@ RUN apt-get update \
     && docker-php-ext-enable pcov \
     && rm -rf /var/lib/apt/lists/*
 
-FROM php:8.4-fpm-bookworm AS runtime-base
+FROM php:8.5-fpm-bookworm AS runtime-base
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends libpq5 libldap-2.5-0 openssl \
