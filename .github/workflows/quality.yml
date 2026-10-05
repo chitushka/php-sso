@@ -34,7 +34,7 @@ jobs:
           artifact-name: sso-php-app.spdx.json
           format: spdx-json
       - name: Scan production image
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: sso-php-app:latest
           format: table
