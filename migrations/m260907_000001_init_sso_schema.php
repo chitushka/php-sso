@@ -10,7 +10,7 @@ class m260907_000001_init_sso_schema extends Migration
         $this->db->pdo->exec(<<<'SQL'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE IF NOT EXISTS ldap_providers (
+CREATE TABLE ldap_providers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
     host TEXT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS ldap_providers (
     CHECK (NOT (use_tls AND start_tls))
 );
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
+CREATE TABLE audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_user_id UUID,
     action TEXT NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS oauth_clients (
+CREATE TABLE oauth_clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id TEXT NOT NULL UNIQUE,
     client_secret_hash TEXT,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+CREATE TABLE oauth_authorization_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code_hash TEXT NOT NULL UNIQUE,
     client_id TEXT NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS oidc_signing_keys (
+CREATE TABLE oidc_signing_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     kid TEXT NOT NULL UNIQUE,
     alg TEXT NOT NULL,
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS oidc_signing_keys (
     expires_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS refresh_tokens (
+CREATE TABLE refresh_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token_hash TEXT NOT NULL UNIQUE,
     family_id UUID NOT NULL,
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS login_attempts (
+CREATE TABLE login_attempts (
     username TEXT NOT NULL,
     ip TEXT NOT NULL,
     attempts INT NOT NULL DEFAULT 0,
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     PRIMARY KEY (username, ip)
 );
 
-CREATE TABLE IF NOT EXISTS roles (
+CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS roles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS permissions (
+CREATE TABLE permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code TEXT NOT NULL UNIQUE,
     resource TEXT NOT NULL,
@@ -158,21 +158,21 @@ CREATE TABLE IF NOT EXISTS permissions (
     UNIQUE(resource, action)
 );
 
-CREATE TABLE IF NOT EXISTS role_permissions (
+CREATE TABLE role_permissions (
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (role_id, permission_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_roles (
+CREATE TABLE user_roles (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, role_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_consents (
+CREATE TABLE user_consents (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     client_id TEXT NOT NULL,
     scopes TEXT NOT NULL DEFAULT '',
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS user_consents (
     PRIMARY KEY (user_id, client_id)
 );
 
-CREATE TABLE IF NOT EXISTS one_time_tokens (
+CREATE TABLE one_time_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     purpose TEXT NOT NULL,
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS one_time_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
+CREATE TABLE mfa_recovery_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     code_hash TEXT NOT NULL,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS groups (
+CREATE TABLE groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -208,14 +208,14 @@ CREATE TABLE IF NOT EXISTS groups (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS group_roles (
+CREATE TABLE group_roles (
     group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (group_id, role_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_groups (
+CREATE TABLE user_groups (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     source TEXT NOT NULL DEFAULT 'manual',
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS user_groups (
     PRIMARY KEY (user_id, group_id)
 );
 
-CREATE TABLE IF NOT EXISTS ldap_group_mappings (
+CREATE TABLE ldap_group_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider_id UUID NOT NULL REFERENCES ldap_providers(id) ON DELETE CASCADE,
     ldap_group TEXT NOT NULL,
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS ldap_group_mappings (
     UNIQUE (provider_id, ldap_group, group_id)
 );
 
-CREATE TABLE IF NOT EXISTS identity_providers (
+CREATE TABLE identity_providers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS identity_providers (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS federated_identities (
+CREATE TABLE federated_identities (
     provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
     external_subject TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -257,24 +257,18 @@ CREATE TABLE IF NOT EXISTS federated_identities (
     PRIMARY KEY (provider_id, external_subject)
 );
 
-CREATE TABLE IF NOT EXISTS cache (
-    id CHAR(128) PRIMARY KEY,
-    expire INTEGER,
-    data BYTEA
-);
-
-CREATE INDEX IF NOT EXISTS idx_ldap_providers_enabled ON ldap_providers(enabled);
-CREATE INDEX IF NOT EXISTS idx_users_ldap_provider_id ON users(ldap_provider_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_oidc_signing_keys_status ON oidc_signing_keys(status);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family_id ON refresh_tokens(family_id);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_role_permissions_permission_id ON role_permissions(permission_id);
-CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
-CREATE INDEX IF NOT EXISTS idx_one_time_tokens_user ON one_time_tokens(user_id, purpose);
-CREATE INDEX IF NOT EXISTS idx_mfa_recovery_codes_user ON mfa_recovery_codes(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_groups_group ON user_groups(group_id);
-CREATE INDEX IF NOT EXISTS idx_federated_identities_user ON federated_identities(user_id);
+CREATE INDEX idx_ldap_providers_enabled ON ldap_providers(enabled);
+CREATE INDEX idx_users_ldap_provider_id ON users(ldap_provider_id);
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_oidc_signing_keys_status ON oidc_signing_keys(status);
+CREATE INDEX idx_refresh_tokens_family_id ON refresh_tokens(family_id);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_role_permissions_permission_id ON role_permissions(permission_id);
+CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX idx_one_time_tokens_user ON one_time_tokens(user_id, purpose);
+CREATE INDEX idx_mfa_recovery_codes_user ON mfa_recovery_codes(user_id);
+CREATE INDEX idx_user_groups_group ON user_groups(group_id);
+CREATE INDEX idx_federated_identities_user ON federated_identities(user_id);
 
 INSERT INTO roles(code, name, description)
 VALUES
@@ -336,7 +330,6 @@ SQL);
     {
         $this->db->pdo->exec(<<<'SQL'
 DROP TABLE IF EXISTS federated_identities CASCADE;
-DROP TABLE IF EXISTS cache CASCADE;
 DROP TABLE IF EXISTS identity_providers CASCADE;
 DROP TABLE IF EXISTS ldap_group_mappings CASCADE;
 DROP TABLE IF EXISTS user_groups CASCADE;

@@ -19,7 +19,7 @@ class GroupsController extends ApiController
     public function actionIndex(): array
     {
         $auth = $this->requirePermission('groups', 'read');
-        return is_array($auth) ? $auth : $this->groups->list();
+        return is_array($auth) ? $auth : $this->groups->list($this->adminListOptions());
     }
 
     public function actionCreate(): array

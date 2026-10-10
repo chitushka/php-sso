@@ -76,6 +76,8 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 
 Конкретные методы, обязательные поля, статусы и edge cases фиксируются router/controller definitions и contract/integration tests. Новое внешнее поведение одновременно обновляет этот раздел и тесты; предполагаемое поведение исторической реализации контрактом не является.
 
+Верхнеуровневые административные списки принимают `limit` (1–100, по умолчанию 50), `offset` (неотрицательный) и текстовый фильтр `q`. Список пользователей дополнительно принимает `status` и `source`, OAuth clients и identity providers — `type`, LDAP providers — `enabled`. Некорректные границы заменяются безопасными значениями по умолчанию; ответы остаются JSON-массивами.
+
 ## Browser и OAuth/OIDC security
 
 Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается для HTTPS. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP и scheme принимаются только от `SSO_TRUSTED_PROXIES`.
@@ -90,13 +92,13 @@ Authorization codes и refresh tokens одноразовые. Повторное
 
 Операции, способные оставить систему без активного администратора, сериализуются PostgreSQL advisory transaction lock и отклоняются с HTTP 409. Permissions встроенной admin-роли нельзя удалить.
 
-Audit хранит actor, action, target и при необходимости IP/User-Agent, но не secrets и токены. Политика целостности actor после удаления пользователя ещё должна быть формализована и отражена в `PLAN.md`.
+Audit хранит actor, action, target и при необходимости IP/User-Agent, но не secrets и токены. `audit_logs.actor_user_id` ссылается на пользователя через FK `ON DELETE SET NULL`: soft delete сохраняет actor, физическое удаление анонимизирует ссылку, а само audit-событие остаётся неизменяемым и доступным до retention cleanup.
 
 ## Надёжность и эксплуатация
 
 Rate limits и metrics counters используют атомарные PostgreSQL operations. JSON-логи направляются в stderr и связываются `X-Request-ID`; metric labels имеют ограниченную cardinality, а `/metrics` защищён CIDR allowlist и/или bearer token.
 
-Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов.
+Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов. Baseline-миграция намеренно не использует `IF NOT EXISTS` для таблиц и индексов, поэтому частичная схема не принимается за новую установку. `deployment-check` дополнительно сверяет обязательные таблицы, столбцы, constraints и индексы и должен завершиться до запуска новой версии приложения.
 
 Maintenance mode блокирует весь HTTP кроме liveness на время backup/schema operations. Restore rehearsal разворачивает dump во временную БД и проверяет критическую структуру и данные. Пошаговые deployment, backup, restore, monitoring и rotation процедуры находятся в `README.md`.
 

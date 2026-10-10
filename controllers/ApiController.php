@@ -231,6 +231,25 @@ class ApiController extends Controller
         return $negative ? -$parsed : $parsed;
     }
 
+    protected function adminListOptions(array $filterNames = []): array
+    {
+        $limit = $this->parseQueryInteger((string)Yii::$app->request->get('limit', ''));
+        if ($limit <= 0 || $limit > 100) {
+            $limit = 50;
+        }
+        $offset = max($this->parseQueryInteger((string)Yii::$app->request->get('offset', '')), 0);
+        $options = ['limit' => $limit, 'offset' => $offset];
+
+        foreach (array_merge(['q'], $filterNames) as $name) {
+            $value = trim((string)Yii::$app->request->get($name, ''));
+            if ($value !== '') {
+                $options[$name] = mb_substr($value, 0, 200);
+            }
+        }
+
+        return $options;
+    }
+
     protected function requirePermission(string $resource, string $action)
     {
         $authService = new AuthService();

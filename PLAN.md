@@ -9,17 +9,7 @@
 
 ## P2 — архитектура и поддерживаемость
 
-### 1. Усилить модель и миграции БД
-
-- Убрать `IF NOT EXISTS` из baseline-подхода новых установок либо добавить строгую schema drift verification.
-- Дополнить CHECK/FK/UNIQUE для enum/invariant полей и проверить индексы через `EXPLAIN` на cleanup и admin queries.
-- Исправить `ValidatedActiveRecord`: required/schema rules должны полноценно отражать `NOT NULL`.
-- Добавить pagination/filtering для потенциально неограниченных admin lists.
-- Определить политику хранения actor после удаления пользователя и целостность audit log.
-
-Критерий готовности: схема отклоняет невозможные состояния, drift обнаруживается до запуска приложения, списки имеют стабильные лимиты.
-
-### 2. Формализовать API и продуктовые сценарии
+### 1. Формализовать API и продуктовые сценарии
 
 - Создать OpenAPI 3.1 для административного/account API и отдельное описание OAuth/OIDC endpoints; генерировать contract checks.
 - Унифицировать JSON error envelope, HTTP statuses для not-found/validation/conflict и pagination metadata.

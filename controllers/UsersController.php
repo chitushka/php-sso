@@ -27,13 +27,9 @@ final class UsersController extends ApiController
             return $auth;
         }
 
-        $limit = $this->parseQueryInteger((string)Yii::$app->request->get('limit', ''));
-        if ($limit <= 0 || $limit > 100) {
-            $limit = 50;
-        }
-        $offset = max($this->parseQueryInteger((string)Yii::$app->request->get('offset', '')), 0);
+        $options = $this->adminListOptions(['status', 'source']);
 
-        return $this->respond($this->users->list($limit, $offset));
+        return $this->respond($this->users->list($options['limit'], $options['offset'], $options));
     }
 
     public function actionView(string $id): array

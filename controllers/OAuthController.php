@@ -81,7 +81,7 @@ class OAuthController extends ApiController
             return $auth;
         }
 
-        return $this->clients->list();
+        return $this->clients->list($this->adminListOptions(['type']));
     }
 
     public function actionCreateClient(): array

@@ -128,13 +128,13 @@ class AdminProviderServiceTest extends TestCase
         ]);
         $this->assertSame(200, $updated['status'], json_encode($updated));
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
-        $this->assertSame('', $updated['data']['type']);
-        $this->assertSame('', $updated['data']['client_id']);
-        $this->assertSame('', $updated['data']['authorize_url']);
-        $this->assertSame('', $updated['data']['token_url']);
-        $this->assertSame('', $updated['data']['userinfo_url']);
-        $this->assertSame('', $updated['data']['scopes']);
-        $this->assertFalse($updated['data']['enabled']);
+        $this->assertSame('oidc', $updated['data']['type']);
+        $this->assertSame('client-' . $code, $updated['data']['client_id']);
+        $this->assertStringStartsWith('https://idp.example.test/authorize', $updated['data']['authorize_url']);
+        $this->assertSame('https://idp.example.test/token', $updated['data']['token_url']);
+        $this->assertSame('https://idp.example.test/userinfo', $updated['data']['userinfo_url']);
+        $this->assertSame('openid email', $updated['data']['scopes']);
+        $this->assertTrue($updated['data']['enabled']);
         $provider->refresh();
         $this->assertSame('super-secret', (new CryptoService())->decrypt((string)$provider->client_secret));
 

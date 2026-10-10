@@ -84,7 +84,7 @@ make smoke-authenticated
 
 ### Развёртывание и изменение схемы
 
-1. Зафиксируйте версию или digest образа, выполните `make deployment-check`, создайте резервную копию и проверьте её через `make backup-restore-test`.
+1. Зафиксируйте версию или digest образа, создайте резервную копию и проверьте её через `make backup-restore-test`.
 2. Для изменений, несовместимых с параллельной записью, включите maintenance mode и остановите writers.
 3. Примените миграции отдельной operations-задачей:
 
@@ -92,7 +92,8 @@ make smoke-authenticated
    docker compose --profile operations run --rm migrate
    ```
 
-4. Запустите приложение, проверьте readiness, `make smoke` и `make smoke-authenticated`, затем выключите maintenance mode.
+4. До запуска новой версии выполните `make deployment-check`: проверка fail-closed сверяет обязательные таблицы, столбцы, constraints и индексы и обнаруживает schema drift.
+5. Запустите приложение, проверьте readiness, `make smoke` и `make smoke-authenticated`, затем выключите maintenance mode.
 
 Перед миграциями нормализации email необходимо заранее устранить адреса, совпадающие после `trim + lowercase`: такие конфликты намеренно не разрешаются автоматически. Откат приложения и обратимые миграции выполняются только после остановки writers; необратимые изменения восстанавливаются из проверенной резервной копии.
 

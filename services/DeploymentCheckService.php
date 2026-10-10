@@ -210,7 +210,60 @@ class DeploymentCheckService
             $pgcrypto ? 'pgcrypto extension is installed' : 'pgcrypto extension is missing'
         );
 
+        $constraints = [
+            'chk_users_status',
+            'chk_users_source',
+            'fk_refresh_tokens_client',
+            'fk_user_consents_client',
+            'fk_audit_logs_actor',
+            'chk_identity_providers_type',
+            'chk_user_groups_source',
+            'chk_one_time_tokens_purpose',
+            'chk_oauth_codes_challenge_method',
+            'chk_login_attempts_nonnegative',
+            'chk_rate_limit_tokens_nonnegative',
+            'chk_metric_counters_nonnegative',
+            'ux_mfa_recovery_codes_user_code',
+        ];
+        $indexes = [
+            'idx_sessions_cleanup',
+            'idx_oauth_codes_cleanup',
+            'idx_refresh_tokens_cleanup',
+            'idx_one_time_tokens_cleanup',
+            'idx_login_attempts_cleanup',
+            'idx_audit_logs_cleanup',
+            'idx_rate_limit_buckets_expiry',
+            'idx_users_admin_list',
+            'idx_oauth_clients_admin_list',
+            'idx_ldap_providers_admin_list',
+            'idx_ldap_group_mappings_admin_list',
+            'idx_audit_logs_admin_list',
+            'idx_audit_logs_actor_list',
+            'idx_audit_logs_action_list',
+        ];
+        $results[] = $this->schemaObjectResult('constraint', 'database.constraints', $constraints);
+        $results[] = $this->schemaObjectResult('index', 'database.indexes', $indexes);
+
         return $results;
+    }
+
+    private function schemaObjectResult(string $type, string $check, array $expected): array
+    {
+        $sql = $type === 'constraint'
+            ? 'SELECT c.conname FROM pg_constraint c '
+                . 'JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = current_schema()'
+            : "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                . "WHERE n.nspname = current_schema() AND c.relkind = 'i'";
+        $actual = $this->db->createCommand($sql)->queryColumn();
+        $missing = array_values(array_diff($expected, $actual));
+
+        return $this->result(
+            $missing === [] ? self::PASS : self::FAIL,
+            $check,
+            $missing === []
+                ? 'required database ' . $type . 's are present'
+                : 'missing database ' . $type . 's: ' . implode(', ', $missing)
+        );
     }
 
     private function checkSeedData(): array

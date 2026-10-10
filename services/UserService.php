@@ -24,10 +24,24 @@ final class UserService
         $this->clock = $clock ?? new SystemClock();
     }
 
-    public function list(int $limit, int $offset): ServiceResult
+    public function list(int $limit, int $offset, array $filters = []): ServiceResult
     {
-        $users = User::find()
-            ->orderBy(['created_at' => SORT_DESC])
+        $query = User::find();
+        if (($filters['q'] ?? '') !== '') {
+            $query->andWhere(['or',
+                ['ilike', 'username', $filters['q']],
+                ['ilike', 'email', $filters['q']],
+                ['ilike', 'first_name', $filters['q']],
+                ['ilike', 'last_name', $filters['q']],
+            ]);
+        }
+        foreach (['status', 'source'] as $field) {
+            if (($filters[$field] ?? '') !== '') {
+                $query->andWhere([$field => $filters[$field]]);
+            }
+        }
+        $users = $query
+            ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC])
             ->limit($limit)
             ->offset($offset)
             ->all();

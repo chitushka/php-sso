@@ -21,11 +21,24 @@ final class OAuthClientService
         $this->random = $random ?? new SecureRandomGenerator();
     }
 
-    public function list(): array
+    public function list(array $options = []): array
     {
+        $query = OAuthClient::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or',
+                ['ilike', 'client_id', $options['q']],
+                ['ilike', 'name', $options['q']],
+            ]);
+        }
+        if (($options['type'] ?? '') !== '') {
+            $query->andWhere(['type' => $options['type']]);
+        }
         return array_map(static function (OAuthClient $client): array {
             return $client->publicData();
-        }, OAuthClient::find()->orderBy(['created_at' => SORT_DESC])->all());
+        }, $query->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC])
+            ->limit($options['limit'] ?? 50)
+            ->offset($options['offset'] ?? 0)
+            ->all());
     }
 
     public function get(string $id): ?array

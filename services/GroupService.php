@@ -11,9 +11,9 @@ final class GroupService
         $this->rbac = $rbac ?? new RbacService();
     }
 
-    public function list(): array
+    public function list(array $options = []): array
     {
-        return $this->rbac->listGroups();
+        return $this->rbac->listGroups($options);
     }
 
     public function create(array $body): array

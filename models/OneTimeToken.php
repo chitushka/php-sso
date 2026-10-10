@@ -16,7 +16,7 @@ class OneTimeToken extends ValidatedActiveRecord
     public function rules(): array
     {
         return array_merge(parent::rules(), [
-            [['purpose'], 'in', 'range' => [self::PURPOSE_MFA_LOGIN, self::PURPOSE_PASSWORD_RESET, self::PURPOSE_EMAIL_VERIFY]],
+            [['purpose'], 'in', 'range' => [self::PURPOSE_MFA_LOGIN, self::PURPOSE_PASSWORD_RESET, self::PURPOSE_EMAIL_VERIFY], 'skipOnEmpty' => false],
         ]);
     }
 }

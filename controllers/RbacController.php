@@ -19,7 +19,7 @@ class RbacController extends ApiController
     public function actionListRoles(): array
     {
         $auth = $this->requirePermission('roles', 'read');
-        return is_array($auth) ? $auth : $this->roles->list();
+        return is_array($auth) ? $auth : $this->roles->list($this->adminListOptions());
     }
 
     public function actionCreateRole(): array
@@ -73,7 +73,7 @@ class RbacController extends ApiController
     public function actionListPermissions(): array
     {
         $auth = $this->requirePermission('permissions', 'read');
-        return is_array($auth) ? $auth : $this->roles->listPermissions();
+        return is_array($auth) ? $auth : $this->roles->listPermissions($this->adminListOptions());
     }
 
     public function actionListRolePermissions(string $roleID): array

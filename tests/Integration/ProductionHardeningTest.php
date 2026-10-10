@@ -3,6 +3,7 @@
 namespace tests\Integration;
 
 use app\models\Session;
+use app\models\AuditLog;
 use app\models\User;
 use app\services\RateLimitService;
 use PHPUnit\Framework\TestCase;
@@ -39,6 +40,51 @@ class ProductionHardeningTest extends TestCase
         $session = new Session();
         $session->id = 'not-a-uuid';
         $this->assertFalse($session->validate(['id']));
+    }
+
+    public function testSchemaRequiredRulesRejectNullForNotNullColumns(): void
+    {
+        $audit = new AuditLog();
+
+        $this->assertFalse($audit->validate(['action', 'target_type', 'target_id']));
+        $this->assertArrayHasKey('action', $audit->errors);
+        $this->assertArrayHasKey('target_type', $audit->errors);
+        $this->assertArrayHasKey('target_id', $audit->errors);
+    }
+
+    public function testDatabaseRejectsInvalidInvariantValues(): void
+    {
+        $this->expectException(\yii\db\IntegrityException::class);
+        Yii::$app->db->createCommand()->insert('login_attempts', [
+            'username' => 'negative-attempts-' . bin2hex(random_bytes(4)),
+            'ip' => '192.0.2.10',
+            'attempts' => -1,
+        ])->execute();
+    }
+
+    public function testCleanupAndAdminQueriesUseExpectedIndexes(): void
+    {
+        Yii::$app->db->createCommand('SET enable_seqscan = off')->execute();
+        try {
+            $cleanupPlan = Yii::$app->db->createCommand(
+                "EXPLAIN SELECT ctid FROM sessions
+                 WHERE expires_at < now() - interval '24 hours' LIMIT 1000"
+            )->queryColumn();
+            $adminPlan = Yii::$app->db->createCommand(
+                'EXPLAIN SELECT id FROM users ORDER BY created_at DESC, id DESC LIMIT 50'
+            )->queryColumn();
+            $auditPlan = Yii::$app->db->createCommand(
+                "EXPLAIN SELECT id FROM audit_logs
+                 WHERE actor_user_id = '00000000-0000-4000-8000-000000000000'
+                 ORDER BY created_at DESC, id DESC LIMIT 50"
+            )->queryColumn();
+        } finally {
+            Yii::$app->db->createCommand('RESET enable_seqscan')->execute();
+        }
+
+        $this->assertStringContainsString('idx_sessions_cleanup', implode("\n", $cleanupPlan));
+        $this->assertStringContainsString('idx_users_admin_list', implode("\n", $adminPlan));
+        $this->assertStringContainsString('idx_audit_logs_actor_list', implode("\n", $auditPlan));
     }
 
     public function testRateLimitBucketConsumesBurstAtomically(): void

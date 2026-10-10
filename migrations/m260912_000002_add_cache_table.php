@@ -8,7 +8,7 @@ class m260912_000002_add_cache_table extends Migration
     {
         // Таблица нужна для shared Yii cache/rate limit при нескольких app-инстансах.
         $this->db->pdo->exec(<<<'SQL'
-CREATE TABLE IF NOT EXISTS cache (
+CREATE TABLE cache (
     id CHAR(128) PRIMARY KEY,
     expire INTEGER,
     data BYTEA

@@ -50,7 +50,19 @@ class DeploymentCheckServiceTest extends TestCase
         $this->assertFalse(DeploymentCheckService::hasFailures($results), $this->failureMessages($results));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.schema'));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.pgcrypto'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.constraints'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.indexes'));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'secrets.decrypt'));
+    }
+
+    public function testSchemaDriftIsReportedBeforeDeployment(): void
+    {
+        Yii::$app->db->createCommand('ALTER TABLE users DROP CONSTRAINT chk_users_status')->execute();
+
+        $results = $this->service()->check();
+
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'database.constraints'));
+        $this->assertStringContainsString('chk_users_status', $this->message($results, 'database.constraints'));
     }
 
     public function testConfigurationMismatchIsReportedAsFailure(): void

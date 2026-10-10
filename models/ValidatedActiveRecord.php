@@ -16,6 +16,15 @@ abstract class ValidatedActiveRecord extends ActiveRecord
                 continue;
             }
             if (
+                !$column->allowNull
+                && !$column->isPrimaryKey
+                && $column->defaultValue === null
+            ) {
+                $rules[] = [[$name], 'required', 'isEmpty' => static function ($value): bool {
+                    return $value === null;
+                }];
+            }
+            if (
                 (property_exists($column, 'dimension') && $column->dimension > 0)
                 || in_array($column->dbType, ['json', 'jsonb'], true)
             ) {

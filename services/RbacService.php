@@ -27,11 +27,16 @@ class RbacService
         return $this->authorization->userHasPermission($user, $resource, $action);
     }
 
-    public function listRoles(): array
+    public function listRoles(array $options = []): array
     {
+        $query = Role::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or', ['ilike', 'code', $options['q']], ['ilike', 'name', $options['q']]]);
+        }
         return array_map(static function (Role $role): array {
             return $role->publicData();
-        }, Role::find()->orderBy(['code' => SORT_ASC])->all());
+        }, $query->orderBy(['code' => SORT_ASC])
+            ->limit($options['limit'] ?? 50)->offset($options['offset'] ?? 0)->all());
     }
 
     public function createRole(array $body): array
@@ -106,11 +111,20 @@ class RbacService
         return ['status' => 200, 'data' => ['status' => 'deleted']];
     }
 
-    public function listPermissions(): array
+    public function listPermissions(array $options = []): array
     {
+        $query = Permission::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or',
+                ['ilike', 'code', $options['q']],
+                ['ilike', 'resource', $options['q']],
+                ['ilike', 'action', $options['q']],
+            ]);
+        }
         return array_map(static function (Permission $permission): array {
             return $permission->publicData();
-        }, Permission::find()->orderBy(['resource' => SORT_ASC, 'action' => SORT_ASC])->all());
+        }, $query->orderBy(['resource' => SORT_ASC, 'action' => SORT_ASC])
+            ->limit($options['limit'] ?? 50)->offset($options['offset'] ?? 0)->all());
     }
 
     public function listRolePermissions(string $roleId): array
@@ -181,11 +195,16 @@ class RbacService
         }, 'role_removed', 'user', $userId, $affectsAdmin);
     }
 
-    public function listGroups(): array
+    public function listGroups(array $options = []): array
     {
+        $query = Group::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or', ['ilike', 'code', $options['q']], ['ilike', 'name', $options['q']]]);
+        }
         return array_map(static function (Group $group): array {
             return $group->publicData();
-        }, Group::find()->orderBy(['code' => SORT_ASC])->all());
+        }, $query->orderBy(['code' => SORT_ASC])
+            ->limit($options['limit'] ?? 50)->offset($options['offset'] ?? 0)->all());
     }
 
     public function createGroup(array $body): array

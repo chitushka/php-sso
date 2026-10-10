@@ -27,11 +27,24 @@ final class IdentityProviderAdminService
         }, $providers);
     }
 
-    public function list(): array
+    public function list(array $options = []): array
     {
+        $query = IdentityProvider::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or',
+                ['ilike', 'code', $options['q']],
+                ['ilike', 'name', $options['q']],
+            ]);
+        }
+        if (($options['type'] ?? '') !== '') {
+            $query->andWhere(['type' => $options['type']]);
+        }
         return array_map(function (IdentityProvider $provider): array {
             return $this->policy->publicData($provider);
-        }, IdentityProvider::find()->orderBy(['code' => SORT_ASC])->all());
+        }, $query->orderBy(['code' => SORT_ASC])
+            ->limit($options['limit'] ?? 50)
+            ->offset($options['offset'] ?? 0)
+            ->all());
     }
 
     public function create(array $body): ServiceResult
@@ -73,9 +86,13 @@ final class IdentityProviderAdminService
         }
 
         foreach (['name', 'type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $field) {
-            $provider->$field = (string)($body[$field] ?? '');
+            if (array_key_exists($field, $body)) {
+                $provider->$field = (string)$body[$field];
+            }
         }
-        $provider->enabled = (bool)($body['enabled'] ?? false);
+        if (array_key_exists('enabled', $body)) {
+            $provider->enabled = (bool)$body['enabled'];
+        }
         if ($isNewRecord && $provider->type === '') {
             $provider->type = 'oidc';
         }

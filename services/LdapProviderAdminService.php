@@ -19,11 +19,25 @@ final class LdapProviderAdminService
         $this->crypto = $crypto ?? new CryptoService();
     }
 
-    public function list(): array
+    public function list(array $options = []): array
     {
+        $query = LdapProvider::find();
+        if (($options['q'] ?? '') !== '') {
+            $query->andWhere(['or',
+                ['ilike', 'name', $options['q']],
+                ['ilike', 'host', $options['q']],
+                ['ilike', 'base_dn', $options['q']],
+            ]);
+        }
+        if (isset($options['enabled'])) {
+            $query->andWhere(['enabled' => $options['enabled'] === 'true']);
+        }
         return array_map(function (LdapProvider $provider): array {
             return $this->publicProvider($provider);
-        }, LdapProvider::find()->orderBy(['created_at' => SORT_DESC])->all());
+        }, $query->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC])
+            ->limit($options['limit'] ?? 50)
+            ->offset($options['offset'] ?? 0)
+            ->all());
     }
 
     public function create(array $body, ?string $actorId): ServiceResult
@@ -68,13 +82,16 @@ final class LdapProviderAdminService
         return true;
     }
 
-    public function listMappings(string $providerId): array
+    public function listMappings(string $providerId, array $options = []): array
     {
         return array_map(function (LdapGroupMapping $mapping): array {
             return $this->publicMapping($mapping);
         }, LdapGroupMapping::find()
             ->where(['provider_id' => $providerId])
-            ->orderBy(['ldap_group' => SORT_ASC])
+            ->andFilterWhere(['ilike', 'ldap_group', $options['q'] ?? null])
+            ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC])
+            ->limit($options['limit'] ?? 50)
+            ->offset($options['offset'] ?? 0)
             ->all());
     }
 

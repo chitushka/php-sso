@@ -72,8 +72,8 @@ class User extends ValidatedActiveRecord
         return array_merge(parent::rules(), [
             [['email'], 'email'],
             [['email'], 'unique'],
-            [['status'], 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_PENDING, self::STATUS_BLOCKED, self::STATUS_DELETED]],
-            [['source'], 'in', 'range' => [self::SOURCE_LOCAL, self::SOURCE_LDAP, self::SOURCE_FEDERATED]],
+            [['status'], 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_PENDING, self::STATUS_BLOCKED, self::STATUS_DELETED], 'skipOnEmpty' => false],
+            [['source'], 'in', 'range' => [self::SOURCE_LOCAL, self::SOURCE_LDAP, self::SOURCE_FEDERATED], 'skipOnEmpty' => false],
         ]);
     }
     private function decodeJson($value): array

@@ -11,9 +11,9 @@ final class RoleService
         $this->rbac = $rbac ?? new RbacService();
     }
 
-    public function list(): array
+    public function list(array $options = []): array
     {
-        return $this->rbac->listRoles();
+        return $this->rbac->listRoles($options);
     }
 
     public function create(array $body): array
@@ -31,9 +31,9 @@ final class RoleService
         return $this->rbac->deleteRole($id);
     }
 
-    public function listPermissions(): array
+    public function listPermissions(array $options = []): array
     {
-        return $this->rbac->listPermissions();
+        return $this->rbac->listPermissions($options);
     }
 
     public function listPermissionsForRole(string $roleId): array

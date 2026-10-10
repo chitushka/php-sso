@@ -15,7 +15,7 @@ class AuditController extends ApiController
             return $auth;
         }
 
-        $query = AuditLog::find()->orderBy(['created_at' => SORT_DESC]);
+        $query = AuditLog::find()->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC]);
         $request = Yii::$app->request;
 
         if ($request->get('actor')) {
