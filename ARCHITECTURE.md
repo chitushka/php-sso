@@ -74,7 +74,7 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 - `/oauth2/*` и `/.well-known/*` для OAuth 2.0/OpenID Connect;
 - `/api/v1/users`, `/roles`, `/permissions`, `/groups`, `/oauth/clients`, `/identity-providers`, `/ldap/providers`, `/audit` и broker endpoints для администрирования.
 
-Конкретные методы, обязательные поля, статусы и edge cases фиксируются router/controller definitions и contract/integration tests. Новое внешнее поведение одновременно обновляет этот раздел и тесты; предполагаемое поведение исторической реализации контрактом не является.
+Машиночитаемый HTTP-контракт разделён на `contracts/openapi-admin.json` для administrative/account API и `contracts/openapi-oauth.json` для OAuth 2.0, OpenID Connect и federation broker endpoints. Оба документа используют OpenAPI 3.1 и JSON Schema 2020-12. `composer verify:contracts` строит множество операций из спецификаций, сверяет его со всеми маршрутами `/api/v1`, `/oauth2` и `/.well-known`, проверяет уникальность `operationId`, path parameters, responses и локальные `$ref`. Любое изменение внешнего поведения должно атомарно обновлять router, соответствующую спецификацию и contract/integration tests; предполагаемое поведение исторической реализации контрактом не является.
 
 Верхнеуровневые административные списки принимают `limit` (1–100, по умолчанию 50), `offset` (неотрицательный) и текстовый фильтр `q`. Список пользователей дополнительно принимает `status` и `source`, OAuth clients и identity providers — `type`, LDAP providers — `enabled`. Некорректные границы заменяются безопасными значениями по умолчанию; ответы остаются JSON-массивами.
 

@@ -52,9 +52,10 @@
     "verify:coverage": "php scripts/ci/check_coverage.php runtime/coverage.xml 35",
     "verify:assets": "php scripts/ci/verify_assets.php",
     "verify:docs": "php scripts/ci/verify_docs.php",
+    "verify:contracts": "php scripts/ci/openapi_contract_check.php",
     "verify:secrets": "php scripts/ci/secret_scan.php",
     "security:audit": "composer audit --locked --no-dev",
-    "quality": ["@lint", "@cs", "@analyse", "@verify:assets", "@verify:docs", "@verify:secrets"],
+    "quality": ["@lint", "@cs", "@analyse", "@verify:assets", "@verify:docs", "@verify:contracts", "@verify:secrets"],
     "test": "phpunit",
     "migrate": "php yii migrate --interactive=0",
     "serve": "php -S 0.0.0.0:8080 -t web web/router.php"

@@ -117,6 +117,7 @@ Signing/JWT keys и credentials БД, SMTP и LDAP следует ротиров
 ## Документация
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — границы системы, security model и нормативный HTTP/API-контракт.
+- [Administrative/account OpenAPI](contracts/openapi-admin.json) и [OAuth/OIDC OpenAPI](contracts/openapi-oauth.json) — машиночитаемые OpenAPI 3.1 контракты; `composer verify:contracts` проверяет их синхронность с router.
 - [PLAN.md](PLAN.md) — только незавершённые и явно отложенные работы.
 - [AGENTS.md](AGENTS.md) — правила разработки и сопровождения репозитория.
 
