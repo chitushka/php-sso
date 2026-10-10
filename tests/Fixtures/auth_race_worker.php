@@ -44,7 +44,7 @@ switch ((string)($argv[1] ?? '')) {
             'refresh_token' => (string)$argv[4],
         ]);
         $result = (new OAuthService())->token($request);
-        echo $result['ok'] ? 'success' : (string)$result['error'];
+        echo $result->isSuccess() ? 'success' : $result->error->code;
         break;
 
     case 'logout':

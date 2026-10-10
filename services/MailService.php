@@ -8,8 +8,8 @@ class MailService
 {
     public function send(string $to, string $subject, string $body): bool
     {
-        $host = (string)(Yii::$app->params['smtpHost'] ?? '');
-        $from = (string)(Yii::$app->params['smtpFrom'] ?? '');
+        $host = (string)ApplicationRuntime::param('smtpHost', '');
+        $from = (string)ApplicationRuntime::param('smtpFrom', '');
 
         if ($host === '' || $from === '') {
             // Секретная ссылка никогда не должна попадать в журнал.
@@ -24,8 +24,8 @@ class MailService
             return false;
         }
 
-        $username = (string)(Yii::$app->params['smtpUsername'] ?? '');
-        $startTls = (bool)(Yii::$app->params['smtpStartTls'] ?? false);
+        $username = (string)ApplicationRuntime::param('smtpUsername', '');
+        $startTls = (bool)ApplicationRuntime::param('smtpStartTls', false);
         if ($username !== '' && !$startTls) {
             Yii::warning('smtp credentials require STARTTLS', 'mail');
             (new MetricsService())->event('mail', 'failure');
@@ -34,9 +34,9 @@ class MailService
 
         $sent = $this->sendSmtp(
             $host,
-            (int)(Yii::$app->params['smtpPort'] ?? 25),
+            (int)ApplicationRuntime::param('smtpPort', 25),
             $username,
-            (string)(Yii::$app->params['smtpPassword'] ?? ''),
+            (string)ApplicationRuntime::param('smtpPassword', ''),
             $from,
             $to,
             $subject,
@@ -65,7 +65,7 @@ class MailService
             'peer_name' => $host,
             'SNI_enabled' => true,
         ];
-        $ca = (string)(Yii::$app->params['smtpCaCertificate'] ?? '');
+        $ca = (string)ApplicationRuntime::param('smtpCaCertificate', '');
         if ($ca !== '') {
             $ssl['cafile'] = $ca;
         }

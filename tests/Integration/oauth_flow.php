@@ -224,11 +224,11 @@ try {
 
     $live = httpRequest('GET', $baseUrl . '/health/live');
     assertTrue($live['status'] === 200, 'liveness endpoint must return 200');
-    assertTrue(($live['json']['status'] ?? '') === 'ok', 'liveness endpoint must return Go-compatible status');
+    assertTrue(($live['json']['status'] ?? '') === 'ok', 'liveness endpoint must return contract-compliant status');
 
     $ready = httpRequest('GET', $baseUrl . '/health/ready');
     assertTrue($ready['status'] === 200, 'readiness endpoint must return 200 while PostgreSQL is available');
-    assertTrue(($ready['json']['status'] ?? '') === 'ready', 'readiness endpoint must return Go-compatible status');
+    assertTrue(($ready['json']['status'] ?? '') === 'ready', 'readiness endpoint must return contract-compliant status');
 
     $version = httpRequest('GET', $baseUrl . '/health/version');
     assertTrue($version['status'] === 200, 'version endpoint must return 200');
@@ -265,7 +265,7 @@ try {
     assertTrue($login['status'] === 200, 'admin login must return 200');
     assertTrue(!empty($login['json']['access_token']), 'admin login must return access_token');
     assertTrue(strpos((string)responseHeader($login, 'Cache-Control'), 'no-store') !== false, 'login response must not be cached');
-    assertTrue(responseHeader($login, 'Pragma') === 'no-cache', 'login response must disable legacy caches');
+    assertTrue(responseHeader($login, 'Pragma') === 'no-cache', 'login response must disable shared caches');
     assertTrue(responseHeader($login, 'Permissions-Policy') !== null, 'login response must include Permissions-Policy');
     assertTrue(!array_key_exists('session_token', $login['json']), 'login must not expose session_token to JavaScript');
     assertTrue(!empty($login['json']['csrf_token']), 'login must return csrf_token');
@@ -275,25 +275,25 @@ try {
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string)($login['json']['access_token_expires_at'] ?? '')) === 1,
-        'login access_token_expires_at must use Go-compatible RFC3339'
+        'login access_token_expires_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string)($login['json']['session_expires_at'] ?? '')) === 1,
-        'login session_expires_at must use Go-compatible RFC3339'
+        'login session_expires_at must use contract-compliant RFC3339'
     );
     assertTrue(!array_key_exists('token_type', $login['json']), 'login must not return OAuth-only token_type');
     assertTrue(!array_key_exists('expires_in', $login['json']), 'login must not return OAuth-only expires_in');
-    assertTrue(strpos((string)$login['body'], '"attributes":{}') !== false, 'empty user attributes must be a Go-compatible JSON object');
+    assertTrue(strpos((string)$login['body'], '"attributes":{}') !== false, 'empty user attributes must be a contract-compliant JSON object');
     assertTrue(!array_key_exists('ldap_provider_id', $login['json']['user']), 'local user must omit empty ldap_provider_id');
     assertTrue(!array_key_exists('ldap_dn', $login['json']['user']), 'local user must omit empty ldap_dn');
     assertTrue(!array_key_exists('last_login_at', $login['json']['user']), 'first login user must omit empty last_login_at');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($login['json']['user']['created_at'] ?? '')) === 1,
-        'user created_at must use Go-compatible RFC3339'
+        'user created_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($login['json']['user']['updated_at'] ?? '')) === 1,
-        'user updated_at must use Go-compatible RFC3339'
+        'user updated_at must use contract-compliant RFC3339'
     );
     assertTrue(!empty($login['cookies']['sso_session']), 'admin login must set sso_session cookie');
     if ((bool)(Yii::$app->params['cookieSecure'] ?? false)) {
@@ -432,16 +432,16 @@ try {
     $sessions = jsonRequest('GET', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
     assertTrue($sessions['status'] === 200, 'session list must return 200');
     assertTrue(count($sessions['json'] ?? []) === 2, 'session list must include both active sessions');
-    assertTrue(($sessions['json'][0]['user_id'] ?? '') === $adminId, 'session list must include Go-compatible user_id');
+    assertTrue(($sessions['json'][0]['user_id'] ?? '') === $adminId, 'session list must include contract-compliant user_id');
     assertTrue(!array_key_exists('token_hash', $sessions['json'][0]), 'session list must not expose token hash');
     assertTrue(!array_key_exists('revoked_at', $sessions['json'][0]), 'active session must omit empty revoked_at');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($sessions['json'][0]['expires_at'] ?? '')) === 1,
-        'session expires_at must use Go-compatible RFC3339'
+        'session expires_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($sessions['json'][0]['created_at'] ?? '')) === 1,
-        'session created_at must use Go-compatible RFC3339'
+        'session created_at must use contract-compliant RFC3339'
     );
 
     $invalidSession = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions/not-a-uuid', [], $adminToken);
@@ -498,7 +498,7 @@ try {
         'create oauth client must return 201: ' . json_encode($client, JSON_UNESCAPED_SLASHES)
     );
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
-    assertTrue(isset($client['json']['client']), 'create oauth client must return Go-compatible nested client');
+    assertTrue(isset($client['json']['client']), 'create oauth client must return contract-compliant nested client');
     $clientSecret = $client['json']['client_secret'];
     $client['json'] = $client['json']['client'];
     $client['json']['client_secret'] = $clientSecret;
@@ -506,11 +506,11 @@ try {
     $createdAuditTargets[] = ['action' => 'refresh_token_revoked', 'target_id' => $client['json']['client_id']];
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($client['json']['created_at'] ?? '')) === 1,
-        'OAuth client created_at must use Go-compatible RFC3339'
+        'OAuth client created_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($client['json']['updated_at'] ?? '')) === 1,
-        'OAuth client updated_at must use Go-compatible RFC3339'
+        'OAuth client updated_at must use contract-compliant RFC3339'
     );
 
     $db->createCommand()->update(
@@ -618,7 +618,7 @@ try {
     assertTrue($metrics['status'] === 200, 'metrics endpoint must return 200');
     assertTrue(strpos((string)$metrics['body'], '# TYPE sso_http_requests_total counter') !== false, 'metrics endpoint must expose request counter');
     assertTrue(strpos((string)$metrics['body'], 'sso_http_requests_processed_total') !== false, 'metrics endpoint must expose processed counter');
-    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}"') !== false, 'metrics must expose Go-compatible dynamic route template');
+    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}"') !== false, 'metrics must expose contract-compliant dynamic route template');
     assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}/rotate-secret"') !== false, 'metrics must preserve nested Go route template');
     assertTrue(strpos((string)$metrics['body'], 'route="oauth/get-client"') === false, 'metrics must not expose internal Yii route names');
     assertTrue(strpos((string)$metrics['body'], '00000000-0000-0000-0000-000000000000') === false, 'metrics route labels must not contain resource UUIDs');
@@ -1089,7 +1089,7 @@ try {
         "SELECT count(*) FROM audit_logs WHERE actor_user_id = :user_id AND action = 'consent_granted' AND target_id = :client_id",
         [':user_id' => $adminId, ':client_id' => $consentClient['json']['client_id']]
     )->queryScalar();
-    assertTrue($consentAuditCount === 2, 'each consent grant must write a Go-compatible audit event');
+    assertTrue($consentAuditCount === 2, 'each consent grant must write a contract-compliant audit event');
 
     $consentedAuthorize = httpRequest('GET', $consentAuthorizeUrl, ['cookies' => $sessionCookie]);
     assertTrue($consentedAuthorize['status'] >= 300 && $consentedAuthorize['status'] < 400, 'authorize after consent must redirect');
@@ -1144,7 +1144,7 @@ try {
     $db->createCommand()->update('users', [
         'first_name' => 'Old',
         'last_name' => 'Name',
-        'attributes' => json_encode(['legacy' => 'value']),
+        'attributes' => json_encode(['department' => 'value']),
     ], ['id' => $plainUserId])->execute();
     $replacedUser = jsonRequest('PUT', $baseUrl . '/api/v1/users/' . $plainUserId, [
         'username' => $userUsername,
@@ -1228,17 +1228,17 @@ try {
     $role = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => 'itest-role-' . $suffix,
         'name' => 'Integration role ' . $suffix,
-        'description' => 'Legacy description',
+        'description' => 'Updated description',
     ], $adminToken);
     assertTrue($role['status'] === 201, 'create role must return 201');
     $createdRoleIds[] = $role['json']['id'];
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($role['json']['created_at'] ?? '')) === 1,
-        'role created_at must use Go-compatible RFC3339'
+        'role created_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($role['json']['updated_at'] ?? '')) === 1,
-        'role updated_at must use Go-compatible RFC3339'
+        'role updated_at must use contract-compliant RFC3339'
     );
 
     $db->createCommand()->update('roles', [
@@ -1255,7 +1255,7 @@ try {
     assertTrue($permissions['status'] === 200 && !empty($permissions['json']), 'permissions list must return seeded permissions');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($permissions['json'][0]['created_at'] ?? '')) === 1,
-        'permission created_at must use Go-compatible RFC3339'
+        'permission created_at must use contract-compliant RFC3339'
     );
 
     foreach ([
@@ -1342,15 +1342,15 @@ try {
     assertTrue(($group['json']['description'] ?? null) === '', 'group must preserve Go string zero value for empty description');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($group['json']['created_at'] ?? '')) === 1,
-        'group created_at must use Go-compatible RFC3339'
+        'group created_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($group['json']['updated_at'] ?? '')) === 1,
-        'group updated_at must use Go-compatible RFC3339'
+        'group updated_at must use contract-compliant RFC3339'
     );
 
     $db->createCommand()->update('groups', [
-        'description' => 'Legacy description',
+        'description' => 'Updated description',
         'updated_at' => '2000-01-01 00:00:00+00',
     ], ['id' => $group['json']['id']])->execute();
     $updatedGroup = jsonRequest('PUT', $baseUrl . '/api/v1/groups/' . $group['json']['id'], [
@@ -1465,7 +1465,7 @@ try {
     ]), [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
-    assertTrue($fractionalAuditRange['status'] === 200, 'audit must accept Go-compatible fractional RFC3339 timestamps');
+    assertTrue($fractionalAuditRange['status'] === 200, 'audit must accept contract-compliant fractional RFC3339 timestamps');
 
     $auditLimitAction = 'integration_audit_limit_' . $suffix;
     $createdAuditActions[] = $auditLimitAction;
@@ -1492,7 +1492,7 @@ try {
     assertTrue(($auditWire['json'][0]['user_agent'] ?? null) === '', 'audit event must use Go zero value for empty user_agent');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($auditWire['json'][0]['created_at'] ?? '')) === 1,
-        'audit created_at must use Go-compatible RFC3339'
+        'audit created_at must use contract-compliant RFC3339'
     );
 
     foreach (['201', '-1', '12invalid'] as $invalidAuditLimit) {
@@ -1602,11 +1602,11 @@ try {
     assertTrue(($identityProvider['json']['enabled'] ?? null) === false, 'identity provider create must preserve Go zero value for omitted enabled');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($identityProvider['json']['created_at'] ?? '')) === 1,
-        'identity provider created_at must use Go-compatible RFC3339'
+        'identity provider created_at must use contract-compliant RFC3339'
     );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($identityProvider['json']['updated_at'] ?? '')) === 1,
-        'identity provider updated_at must use Go-compatible RFC3339'
+        'identity provider updated_at must use contract-compliant RFC3339'
     );
 
     $db->createCommand()->update(
@@ -1777,7 +1777,7 @@ try {
     assertTrue(($ldapProvider['json']['enabled'] ?? null) === false, 'LDAP provider create must preserve Go zero value for omitted enabled');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapProvider['json']['created_at'] ?? '')) === 1,
-        'LDAP provider created_at must use Go-compatible RFC3339'
+        'LDAP provider created_at must use contract-compliant RFC3339'
     );
     $ldapCreateAuditCount = (int)$db->createCommand(
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
@@ -1852,7 +1852,7 @@ try {
     assertTrue($ldapMapping['status'] === 201, 'create LDAP group mapping must return 201');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapMapping['json']['created_at'] ?? '')) === 1,
-        'LDAP group mapping created_at must use Go-compatible RFC3339'
+        'LDAP group mapping created_at must use contract-compliant RFC3339'
     );
 
     $duplicateLdapMapping = jsonRequest(
@@ -1890,7 +1890,7 @@ try {
             'cn=aardvarks,dc=example,dc=test',
             'cn=integration,dc=example,dc=test',
         ],
-        'LDAP mappings must use Go-compatible ldap_group ordering'
+        'LDAP mappings must use contract-compliant ldap_group ordering'
     );
 
     foreach ([$ldapMapping, $secondLdapMapping] as $mappingToDelete) {
@@ -1925,21 +1925,21 @@ try {
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id = :actor_id",
         [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
     )->queryScalar();
-    assertTrue($ldapDeleteAuditCount === 2, 'each idempotent LDAP provider delete must write the Go-compatible audit event');
+    assertTrue($ldapDeleteAuditCount === 2, 'each idempotent LDAP provider delete must write the contract-compliant audit event');
 
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
-    assertTrue($mfaEnroll['status'] === 200, 'Go-compatible MFA enroll must return 200');
+    assertTrue($mfaEnroll['status'] === 200, 'contract-compliant MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
-    assertTrue(!empty($mfaEnroll['json']['otpauth_url']), 'MFA enroll must return Go-compatible otpauth_url');
+    assertTrue(!empty($mfaEnroll['json']['otpauth_url']), 'MFA enroll must return contract-compliant otpauth_url');
     assertTrue(!array_key_exists('otpauth_uri', $mfaEnroll['json']), 'MFA enroll must not add fields absent from Go response');
 
     $mfaCounter = (int)floor(time() / 30);
     $mfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
         'code' => totpCode($mfaEnroll['json']['secret'], $mfaCounter),
     ], $adminToken);
-    assertTrue($mfaActivate['status'] === 200, 'Go-compatible MFA activate must return 200');
+    assertTrue($mfaActivate['status'] === 200, 'contract-compliant MFA activate must return 200');
     assertTrue(($mfaActivate['json']['status'] ?? '') === 'mfa_enabled', 'MFA activate must return mfa_enabled status');
-    assertTrue(count($mfaActivate['json']['recovery_codes'] ?? []) === 8, 'MFA activate must return Go-compatible recovery code count');
+    assertTrue(count($mfaActivate['json']['recovery_codes'] ?? []) === 8, 'MFA activate must return contract-compliant recovery code count');
 
     $repeatedMfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
         'code' => 'not-a-code',
@@ -1953,7 +1953,7 @@ try {
     ]);
     assertTrue($mfaLogin['status'] === 200, 'MFA password step must return 200');
     assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
-    assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return Go-compatible mfa_token');
+    assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return contract-compliant mfa_token');
     assertTrue(!array_key_exists('challenge_token', $mfaLogin['json']), 'MFA password step must not add fields absent from Go LoginResult');
     assertTrue(($mfaLogin['json']['session_expires_at'] ?? '') === '0001-01-01T00:00:00Z', 'MFA challenge must preserve Go zero session expiry');
     assertTrue(($mfaLogin['json']['user']['id'] ?? '') === '00000000-0000-0000-0000-000000000000', 'MFA challenge must preserve Go zero user');
@@ -2168,7 +2168,7 @@ try {
         'code' => $mfaActivate['json']['recovery_codes'][0],
     ], $mfaVerify['json']['access_token']);
     assertTrue($mfaDisable['status'] === 200, 'MFA disable must return 200');
-    assertTrue(($mfaDisable['json']['status'] ?? '') === 'mfa_disabled', 'MFA disable must return Go-compatible status');
+    assertTrue(($mfaDisable['json']['status'] ?? '') === 'mfa_disabled', 'MFA disable must return contract-compliant status');
 
     $tokenAfterMfaDisable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
     assertTrue($tokenAfterMfaDisable['status'] === 200, 'MFA disable must keep the current Bearer token valid like Go');

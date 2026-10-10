@@ -2,23 +2,25 @@
 
 namespace app\services;
 
-use Yii;
 use yii\web\Request;
 
 class RateLimitService
 {
     public function check(string $route, Request $request): array
     {
-        $routes = Yii::$app->params['rateLimitedRoutes'] ?? [];
+        $routes = ApplicationRuntime::param('rateLimitedRoutes', []);
         if (!in_array($route, $routes, true)) {
             return ['allowed' => true];
         }
 
-        $capacity = max(1.0, (float)(Yii::$app->params['rateLimitBurst'] ?? 10));
-        $refillPerSecond = max(1.0 / 3600.0, ((float)(Yii::$app->params['rateLimitPerMinute'] ?? 30)) / 60.0);
+        $capacity = max(1.0, (float)ApplicationRuntime::param('rateLimitBurst', 10));
+        $refillPerSecond = max(
+            1.0 / 3600.0,
+            ((float)ApplicationRuntime::param('rateLimitPerMinute', 30)) / 60.0
+        );
         $key = sha1($route . '|' . $request->userIP);
         $now = microtime(true);
-        $state = Yii::$app->db->createCommand(<<<'SQL'
+        $state = ApplicationRuntime::db()->createCommand(<<<'SQL'
 INSERT INTO rate_limit_buckets(bucket_key, tokens, updated_at, expires_at, last_allowed)
 VALUES (:key, :capacity - 1, :now, now() + interval '2 minutes', true)
 ON CONFLICT (bucket_key) DO UPDATE SET

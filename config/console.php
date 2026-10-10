@@ -6,6 +6,12 @@ $params = require __DIR__ . '/params.php';
 return [
     'id' => 'sso-php-console',
     'basePath' => dirname(__DIR__),
+    'container' => [
+        'definitions' => [
+            app\services\contracts\ClockInterface::class => app\services\SystemClock::class,
+            app\services\contracts\RandomGeneratorInterface::class => app\services\SecureRandomGenerator::class,
+        ],
+    ],
     'controllerNamespace' => 'app\commands',
     'aliases' => [
         '@bower' => '@vendor/bower-asset',

@@ -10,12 +10,12 @@ case "$source_db" in
         ;;
 esac
 
-rehearsal_db="sso_rollback_rehearsal_$(date +%s)_$$"
-dump_path="/tmp/${rehearsal_db}.dump"
+restore_db="sso_backup_restore_test_$(date +%s)_$$"
+dump_path="/tmp/${restore_db}.dump"
 
 cleanup() {
     # Временная БД и dump удаляются при любом исходе репетиции.
-    dropdb --if-exists --force "$rehearsal_db" >/dev/null 2>&1 || true
+    dropdb --if-exists --force "$restore_db" >/dev/null 2>&1 || true
     rm -f "$dump_path"
 }
 trap cleanup EXIT HUP INT TERM
@@ -61,15 +61,15 @@ if [ "$before_counts" != "$after_counts" ]; then
     exit 1
 fi
 
-createdb --template=template0 "$rehearsal_db"
+createdb --template=template0 "$restore_db"
 pg_restore \
     --exit-on-error \
     --no-owner \
     --no-privileges \
-    --dbname="$rehearsal_db" \
+    --dbname="$restore_db" \
     "$dump_path"
 
-missing_schema="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$rehearsal_db" <<'SQL'
+missing_schema="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$restore_db" <<'SQL'
 WITH required(name) AS (
     VALUES
         ('users'), ('sessions'), ('refresh_tokens'), ('oauth_clients'),
@@ -91,19 +91,19 @@ if [ "$missing_schema" != "0" ]; then
     exit 1
 fi
 
-extension_ok="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$rehearsal_db" --command="SELECT count(*) FROM pg_extension WHERE extname = 'pgcrypto'")"
+extension_ok="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$restore_db" --command="SELECT count(*) FROM pg_extension WHERE extname = 'pgcrypto'")"
 if [ "$extension_ok" != "1" ]; then
     echo "Restored database does not contain pgcrypto" >&2
     exit 1
 fi
 
-seed_ok="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$rehearsal_db" --command="SELECT (SELECT count(*) FROM roles WHERE code IN ('admin','user')) = 2 AND (SELECT count(*) FROM permissions) > 0")"
+seed_ok="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$restore_db" --command="SELECT (SELECT count(*) FROM roles WHERE code IN ('admin','user')) = 2 AND (SELECT count(*) FROM permissions) > 0")"
 if [ "$seed_ok" != "t" ]; then
     echo "Restored database has incomplete seed data" >&2
     exit 1
 fi
 
-restored_counts="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$rehearsal_db" --command="$business_counts_sql")"
+restored_counts="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$restore_db" --command="$business_counts_sql")"
 if [ "$before_counts" != "$restored_counts" ]; then
     echo "Restored business row counts differ from the backup source" >&2
     exit 1
@@ -122,7 +122,7 @@ FROM (
     SELECT mfa_secret FROM users WHERE mfa_secret <> ''
 ) encrypted_secrets;"
 source_secret_formats="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$source_db" --command="$secret_formats_sql")"
-restored_secret_formats="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$rehearsal_db" --command="$secret_formats_sql")"
+restored_secret_formats="$(psql -XAt --set=ON_ERROR_STOP=1 --dbname="$restore_db" --command="$secret_formats_sql")"
 if [ "$source_secret_formats" != "$restored_secret_formats" ]; then
     echo "Restored encrypted-secret format inventory differs from the backup source" >&2
     exit 1
@@ -135,6 +135,6 @@ fi
 encrypted_secret_count="${restored_secret_formats%%|*}"
 
 archive_checksum="$(sha256sum "$dump_path" | awk '{print $1}')"
-echo "Rollback rehearsal passed: dump restored into an isolated database"
+echo "Backup restore test passed: dump restored into an isolated database"
 echo "Verified critical schema, pgcrypto, seed data, business row counts and ${encrypted_secret_count} enc:v1 secrets"
 echo "Ephemeral archive SHA-256: ${archive_checksum}"

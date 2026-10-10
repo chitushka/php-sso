@@ -41,7 +41,7 @@ class HealthControllerTest extends TestCase
         parent::tearDown();
     }
 
-    public function testReadyReturnsGoCompatibleServiceUnavailableResponse(): void
+    public function testReadyReturnsContractCompliantServiceUnavailableResponse(): void
     {
         Yii::$app->db->available = false;
 

@@ -1,7 +1,7 @@
 <?php
 
 $root = dirname(__DIR__, 2);
-foreach (['README.md', 'PLAN.md', 'ARCHITECTURE.md', 'ENDPOINT_CONTRACTS.md', 'SECURITY.md', 'OPERATIONS.md', 'VENDORED_ASSETS.md'] as $file) {
+foreach (['README.md', 'PLAN.md', 'AGENTS.md', 'ARCHITECTURE.md'] as $file) {
     if (!is_file($root . '/' . $file)) {
         fwrite(STDERR, "Missing required documentation: {$file}\n");
         exit(1);

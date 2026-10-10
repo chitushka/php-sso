@@ -39,7 +39,7 @@ class JsonBodyContractTest extends TestCase
     /**
      * @dataProvider invalidTypedBodyProvider
      */
-    public function testRejectsJsonTypesRejectedByGoDecoder(string $raw, array $schema): void
+    public function testRejectsJsonTypesRejectedByApiContract(string $raw, array $schema): void
     {
         $this->expectException(BadRequestHttpException::class);
         $this->expectExceptionMessage('invalid json body');
@@ -63,7 +63,7 @@ class JsonBodyContractTest extends TestCase
         ];
     }
 
-    public function testAcceptsNullLikeGoDecoderAndCanonicalizesUuidForms(): void
+    public function testAcceptsNullLikeApiContractAndCanonicalizesUuidForms(): void
     {
         $this->assertSame([], $this->decode('null', ['name' => 'string']));
 

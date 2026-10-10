@@ -4,11 +4,28 @@ namespace app\controllers;
 
 use app\services\AuthService;
 use app\services\OAuthService;
+use app\services\OAuthClientService;
 use Yii;
+use yii\base\Module;
 use yii\web\BadRequestHttpException;
 
 class OAuthController extends ApiController
 {
+    private OAuthService $oauth;
+    private OAuthClientService $clients;
+
+    public function __construct(
+        string $id,
+        Module $module,
+        OAuthService $oauth,
+        OAuthClientService $clients,
+        array $config = []
+    ) {
+        $this->oauth = $oauth;
+        $this->clients = $clients;
+        parent::__construct($id, $module, $config);
+    }
+
     private const CREATE_CLIENT_FIELDS = [
         'client_id',
         'name',
@@ -64,7 +81,7 @@ class OAuthController extends ApiController
             return $auth;
         }
 
-        return (new OAuthService())->listClients();
+        return $this->clients->list();
     }
 
     public function actionCreateClient(): array
@@ -74,7 +91,7 @@ class OAuthController extends ApiController
             return $auth;
         }
 
-        $result = (new OAuthService())->createClient(
+        $result = $this->clients->create(
             $this->body(self::CREATE_CLIENT_FIELDS, self::CREATE_CLIENT_TYPES)
         );
         Yii::$app->response->statusCode = $result['status'];
@@ -105,7 +122,7 @@ class OAuthController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $client = (new OAuthService())->getClient($id);
+        $client = $this->clients->get($id);
         if (!$client) {
             return $this->fail(404, 'client not found');
         }
@@ -125,7 +142,7 @@ class OAuthController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $result = (new OAuthService())->updateClient(
+        $result = $this->clients->update(
             $id,
             $this->body(self::UPDATE_CLIENT_FIELDS, self::UPDATE_CLIENT_TYPES)
         );
@@ -145,7 +162,7 @@ class OAuthController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        return (new OAuthService())->deleteClient($id)
+        return $this->clients->delete($id)
             ? ['status' => 'deleted']
             : $this->fail(404, 'client not found');
     }
@@ -162,46 +179,46 @@ class OAuthController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $result = (new OAuthService())->rotateSecret($id);
+        $result = $this->clients->rotateSecret($id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
 
     public function actionAuthorize()
     {
-        $result = (new OAuthService())->authorize(Yii::$app->request);
+        $result = $this->oauth->authorize(Yii::$app->request);
 
-        if (!$result['ok']) {
-            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        if (!$result->isSuccess()) {
+            return $this->oauthError($result->status, $result->error->code, $result->error->message);
         }
 
-        return $this->redirect($result['redirect']);
+        return $this->redirect($result->metadata['redirect']);
     }
 
     public function actionToken(): array
     {
-        $result = (new OAuthService())->token(Yii::$app->request);
-        if (!$result['ok']) {
-            if ($result['error'] === 'invalid_client') {
+        $result = $this->oauth->token(Yii::$app->request);
+        if (!$result->isSuccess()) {
+            if ($result->error->code === 'invalid_client') {
                 Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
             }
-            return $this->oauthError($result['status'], $result['error'], $result['description']);
+            return $this->oauthError($result->status, $result->error->code, $result->error->message);
         }
 
-        return $result['data'];
+        return $result->data;
     }
 
     public function actionRevoke()
     {
-        $result = (new OAuthService())->revoke(Yii::$app->request);
-        if (!$result['ok']) {
-            if (($result['error'] ?? '') === 'invalid_client' || !isset($result['error'])) {
+        $result = $this->oauth->revoke(Yii::$app->request);
+        if (!$result->isSuccess()) {
+            if ($result->error->code === 'invalid_client') {
                 Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
             }
             return $this->oauthError(
-                (int)($result['status'] ?? 401),
-                (string)($result['error'] ?? 'invalid_client'),
-                (string)($result['description'] ?? 'client authentication failed')
+                $result->status,
+                $result->error->code,
+                $result->error->message
             );
         }
 
@@ -211,23 +228,23 @@ class OAuthController extends ApiController
 
     public function actionIntrospect(): array
     {
-        $result = (new OAuthService())->introspect(Yii::$app->request);
-        if (!$result['ok']) {
+        $result = $this->oauth->introspect(Yii::$app->request);
+        if (!$result->isSuccess()) {
             Yii::$app->response->headers->set('WWW-Authenticate', 'Basic realm="sso"');
             return $this->oauthError(401, 'invalid_client', 'client authentication failed');
         }
 
-        return $result['data'];
+        return $result->data;
     }
 
     public function actionConsent(): array
     {
-        $result = (new OAuthService())->consentInfo(Yii::$app->request);
-        if (!$result['ok']) {
-            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        $result = $this->oauth->consentInfo(Yii::$app->request);
+        if (!$result->isSuccess()) {
+            return $this->oauthError($result->status, $result->error->code, $result->error->message);
         }
 
-        return $result['data'];
+        return $result->data;
     }
 
     public function actionListUserConsents(): array
@@ -237,7 +254,7 @@ class OAuthController extends ApiController
             return $user;
         }
 
-        return (new OAuthService())->listUserConsents($user->id);
+        return $this->oauth->listUserConsents($user->id);
     }
 
     public function actionRevokeUserConsent(string $clientId): array
@@ -247,7 +264,7 @@ class OAuthController extends ApiController
             return $user;
         }
 
-        if (!(new OAuthService())->revokeUserConsent($user->id, $clientId)) {
+        if (!$this->oauth->revokeUserConsent($user->id, $clientId)) {
             return $this->fail(404, 'consent not found');
         }
 
@@ -265,29 +282,29 @@ class OAuthController extends ApiController
             return $this->oauthError(400, 'invalid_request', 'invalid json body');
         }
 
-        $result = (new OAuthService())->grantConsent(Yii::$app->request, $body);
-        if (!$result['ok']) {
-            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        $result = $this->oauth->grantConsent(Yii::$app->request, $body);
+        if (!$result->isSuccess()) {
+            return $this->oauthError($result->status, $result->error->code, $result->error->message);
         }
 
-        return ['status' => 'granted'];
+        return $result->data;
     }
 
     public function actionLogout()
     {
-        $result = (new OAuthService())->logout(Yii::$app->request);
-        if (!$result['ok']) {
-            return $this->oauthError($result['status'], $result['error'], $result['description']);
+        $result = $this->oauth->logout(Yii::$app->request);
+        if (!$result->isSuccess()) {
+            return $this->oauthError($result->status, $result->error->code, $result->error->message);
         }
 
         Yii::$app->response->cookies->remove('sso_session');
         Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
 
-        if (isset($result['redirect'])) {
-            return $this->redirect($result['redirect']);
+        if (isset($result->metadata['redirect'])) {
+            return $this->redirect($result->metadata['redirect']);
         }
 
-        return $result['data'];
+        return $result->data;
     }
 
     private function oauthError(int $status, string $error, string $description): array

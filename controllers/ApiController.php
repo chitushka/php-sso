@@ -2,12 +2,14 @@
 
 namespace app\controllers;
 
-use app\components\GoJson;
+use app\components\JsonStream;
 use app\services\RateLimitService;
 use app\services\AuditService;
 use app\services\AuthService;
 use app\services\BrowserSecurityService;
 use app\services\RbacService;
+use app\services\results\HttpResultMapper;
+use app\services\results\ServiceResult;
 use Yii;
 use yii\web\BadRequestHttpException;
 use yii\web\Controller;
@@ -57,12 +59,12 @@ class ApiController extends Controller
     }
 
     /**
-     * Декодирует тело так же строго, как Go encoding/json для типизированной структуры.
-     * null допустим: для непointer-полей Go оставляет нулевое значение без ошибки.
+     * Декодирует тело согласно строгому JSON-контракту API.
+     * null допустим и означает отсутствие значений тела запроса.
      */
     protected function body(array $allowedFields = [], array $fieldTypes = []): array
     {
-        $rawBody = GoJson::firstValue(Yii::$app->request->rawBody);
+        $rawBody = JsonStream::firstValue(Yii::$app->request->rawBody);
         $decoded = json_decode($rawBody);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new BadRequestHttpException('invalid json body');
@@ -154,9 +156,14 @@ class ApiController extends Controller
         return array_merge(['error' => $message], $extra);
     }
 
+    protected function respond(ServiceResult $result): array
+    {
+        return (new HttpResultMapper())->map($result, Yii::$app->response);
+    }
+
     protected function isUuid(string $value): bool
     {
-        // google/uuid.Parse принимает стандартную, raw-hex, URN и Microsoft-формы.
+        // Контракт принимает стандартную, raw-hex, URN и фигурную формы UUID.
         return (bool)preg_match('/^[0-9a-fA-F]{32}$/', $value)
             || (bool)preg_match('/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/', $value)
             || (bool)preg_match('/^\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}$/', $value)
@@ -200,7 +207,7 @@ class ApiController extends Controller
             && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
     }
 
-    protected function parseGoInt(string $value): int
+    protected function parseQueryInteger(string $value): int
     {
         if (!preg_match('/^[+-]?\d+$/D', $value)) {
             return 0;

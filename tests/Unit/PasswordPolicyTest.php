@@ -30,7 +30,7 @@ class PasswordPolicyTest extends TestCase
         );
     }
 
-    public function testHasherUsesGoCompatibleArgon2idParameters(): void
+    public function testHasherUsesContractCompliantArgon2idParameters(): void
     {
         $hash = PasswordHasher::hash('compatible-password');
 

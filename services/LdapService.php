@@ -2,73 +2,47 @@
 
 namespace app\services;
 
-use app\components\Rfc3339;
 use app\models\LdapGroupMapping;
 use app\models\LdapProvider;
 use app\models\User;
-use Yii;
-use yii\db\Expression;
-use yii\db\IntegrityException;
+use app\services\results\ServiceError;
+use app\services\results\ServiceResult;
 
 class LdapService
 {
+    private ?CryptoService $crypto;
+    private ?LdapProviderAdminService $providers;
+
+    public function __construct(?CryptoService $crypto = null, ?LdapProviderAdminService $providers = null)
+    {
+        $this->crypto = $crypto;
+        $this->providers = $providers;
+    }
+
     public function listProviders(): array
     {
-        return array_map(function (LdapProvider $provider) {
-            return $this->publicProvider($provider);
-        }, LdapProvider::find()->orderBy(['created_at' => SORT_DESC])->all());
+        return $this->providers()->list();
     }
 
-    public function createProvider(array $body, ?string $actorId): array
+    public function createProvider(array $body, ?string $actorId): ServiceResult
     {
-        $provider = new LdapProvider();
-        try {
-            $this->fillProvider($provider, $body, false);
-            if (!$provider->save()) {
-                return ['status' => 500, 'data' => ['error' => 'failed to create provider']];
-            }
-        } catch (\Throwable $exception) {
-            return ['status' => 500, 'data' => ['error' => 'failed to create provider']];
-        }
-        $provider->refresh();
-
-        return ['status' => 201, 'data' => $this->publicProvider($provider)];
+        return $this->providers()->create($body, $actorId);
     }
 
-    public function updateProvider(string $id, array $body, ?string $actorId): array
+    public function updateProvider(string $id, array $body, ?string $actorId): ServiceResult
     {
-        $provider = LdapProvider::findOne(['id' => $id]);
-        if (!$provider) {
-            return ['status' => 404, 'data' => ['error' => 'provider not found']];
-        }
-
-        try {
-            $this->fillProvider($provider, $body, true);
-            $provider->updated_at = new Expression('now()');
-            if (!$provider->save()) {
-                return ['status' => 500, 'data' => ['error' => 'failed to update provider']];
-            }
-        } catch (\Throwable $exception) {
-            return ['status' => 500, 'data' => ['error' => 'failed to update provider']];
-        }
-        $provider->refresh();
-
-        AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
-        return ['status' => 200, 'data' => $this->publicProvider($provider)];
+        return $this->providers()->update($id, $body, $actorId);
     }
 
     public function deleteProvider(string $id, ?string $actorId): bool
     {
-        // Go repository не различает удаление существующего и уже отсутствующего провайдера.
-        Yii::$app->db->createCommand()->delete('ldap_providers', ['id' => $id])->execute();
-        AuditService::record($actorId, 'ldap_provider_deleted', 'ldap_provider', $id);
-        return true;
+        return $this->providers()->delete($id, $actorId);
     }
 
-    public function test(array $body): array
+    public function test(array $body): ServiceResult
     {
         if (!function_exists('ldap_connect')) {
-            return ['ok' => false, 'error' => 'php ldap extension is not installed'];
+            return $this->testFailure('php_ldap_unavailable', 'php ldap extension is not installed');
         }
 
         $host = trim((string)($body['host'] ?? ''));
@@ -79,35 +53,35 @@ class LdapService
         $bindPassword = (string)($body['bind_password'] ?? '');
 
         if ($host === '' || $bindDn === '' || $bindPassword === '') {
-            return ['ok' => false, 'error' => 'host, bind_dn and bind_password are required'];
+            return $this->testFailure('invalid_ldap_configuration', 'host, bind_dn and bind_password are required');
         }
 
         if (!$this->ldapEndpointAllowed($host, $useTls, $startTls)) {
-            return ['ok' => false, 'error' => 'LDAP host or transport is not allowed'];
+            return $this->testFailure('ldap_endpoint_not_allowed', 'LDAP host or transport is not allowed');
         }
 
         $uri = ($useTls ? 'ldaps://' : 'ldap://') . $host . ':' . $port;
         $conn = @ldap_connect($uri);
         if (!$conn) {
-            return ['ok' => false, 'error' => 'ldap connection failed'];
+            return $this->testFailure('ldap_connection_failed', 'ldap connection failed');
         }
         if (!$this->configureTls($conn, $host)) {
-            return ['ok' => false, 'error' => 'ldap TLS configuration failed'];
+            return $this->testFailure('ldap_tls_configuration_failed', 'ldap TLS configuration failed');
         }
 
         ldap_set_option($conn, LDAP_OPT_PROTOCOL_VERSION, 3);
         ldap_set_option($conn, LDAP_OPT_REFERRALS, 0);
-        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)(Yii::$app->params['ldapNetworkTimeout'] ?? 5));
+        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)ApplicationRuntime::param('ldapNetworkTimeout', 5));
 
         if ($startTls && !@ldap_start_tls($conn)) {
-            return ['ok' => false, 'error' => 'ldap start_tls failed'];
+            return $this->testFailure('ldap_start_tls_failed', 'ldap start_tls failed');
         }
 
         if (!@ldap_bind($conn, $bindDn, $bindPassword)) {
-            return ['ok' => false, 'error' => 'ldap bind failed'];
+            return $this->testFailure('ldap_bind_failed', 'ldap bind failed');
         }
 
-        return ['ok' => true, 'data' => ['status' => 'ok']];
+        return ServiceResult::success(['status' => 'ok']);
     }
 
     public function authenticate(string $login, string $password): ?User
@@ -131,49 +105,17 @@ class LdapService
 
     public function listGroupMappings(string $providerId): array
     {
-        return array_map(function (LdapGroupMapping $mapping): array {
-            return $this->publicGroupMapping($mapping);
-        }, LdapGroupMapping::find()
-            ->where(['provider_id' => $providerId])
-            ->orderBy(['ldap_group' => SORT_ASC])
-            ->all());
+        return $this->providers()->listMappings($providerId);
     }
 
-    public function createGroupMapping(string $providerId, array $body, ?string $actorId): array
+    public function createGroupMapping(string $providerId, array $body, ?string $actorId): ServiceResult
     {
-        $mapping = new LdapGroupMapping();
-        $mapping->provider_id = $providerId;
-        $mapping->ldap_group = trim((string)($body['ldap_group'] ?? ''));
-        $mapping->group_id = (string)($body['group_id'] ?? '');
-
-        try {
-            if (!$mapping->save()) {
-                return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
-            }
-        } catch (IntegrityException $exception) {
-            if (($exception->errorInfo[0] ?? '') === '23505') {
-                return ['status' => 409, 'data' => ['error' => 'mapping already exists']];
-            }
-            return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
-        } catch (\Throwable $exception) {
-            return ['status' => 500, 'data' => ['error' => 'failed to create mapping']];
-        }
-        $mapping->refresh();
-
-        AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
-        return ['status' => 201, 'data' => $this->publicGroupMapping($mapping)];
+        return $this->providers()->createMapping($providerId, $body, $actorId);
     }
 
     public function deleteGroupMapping(string $mappingId, ?string $actorId): bool
     {
-        $mapping = LdapGroupMapping::findOne(['id' => $mappingId]);
-        if (!$mapping) {
-            return false;
-        }
-
-        $mapping->delete();
-        AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
-        return true;
+        return $this->providers()->deleteMapping($mappingId, $actorId);
     }
 
     private function authenticateWithProvider(LdapProvider $provider, string $login, string $password): ?User
@@ -183,7 +125,7 @@ class LdapService
             return null;
         }
 
-        $bindPassword = (new CryptoService())->decrypt((string)$provider->bind_password);
+        $bindPassword = $this->crypto()->decrypt((string)$provider->bind_password);
         if ($bindPassword === '' || !@ldap_bind($conn, (string)$provider->bind_dn, $bindPassword)) {
             return null;
         }
@@ -242,7 +184,7 @@ class LdapService
 
         ldap_set_option($conn, LDAP_OPT_PROTOCOL_VERSION, 3);
         ldap_set_option($conn, LDAP_OPT_REFERRALS, 0);
-        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)(Yii::$app->params['ldapNetworkTimeout'] ?? 5));
+        ldap_set_option($conn, LDAP_OPT_NETWORK_TIMEOUT, (int)ApplicationRuntime::param('ldapNetworkTimeout', 5));
 
         if ($provider->start_tls && !@ldap_start_tls($conn)) {
             return null;
@@ -264,14 +206,14 @@ class LdapService
         }
         $allowed = array_filter(array_map(static function (string $value): string {
             return strtolower(rtrim(trim($value), '.'));
-        }, explode(',', (string)(Yii::$app->params['ldapAllowedHosts'] ?? ''))));
+        }, explode(',', (string)ApplicationRuntime::param('ldapAllowedHosts', ''))));
         if ($allowed === [] && strtolower((string)getenv('SSO_ENV')) === 'prod') {
             return false;
         }
         if ($allowed !== [] && !in_array($host, $allowed, true)) {
             return false;
         }
-        if (!(bool)(Yii::$app->params['ldapAllowInsecure'] ?? false) && !$useTls && !$startTls) {
+        if (!(bool)ApplicationRuntime::param('ldapAllowInsecure', false) && !$useTls && !$startTls) {
             return false;
         }
         return true;
@@ -295,7 +237,7 @@ class LdapService
         ) {
             return false;
         }
-        $ca = (string)(Yii::$app->params['ldapCaCertificate'] ?? '');
+        $ca = (string)ApplicationRuntime::param('ldapCaCertificate', '');
         if ($ca !== '' && defined('LDAP_OPT_X_TLS_CACERTFILE')) {
             if (!@ldap_set_option($connection, LDAP_OPT_X_TLS_CACERTFILE, $ca)) {
                 return false;
@@ -337,7 +279,7 @@ class LdapService
 
     private function syncMappedGroups(LdapProvider $provider, User $user, array $ldapGroups): void
     {
-        Yii::$app->db->createCommand()->delete('user_groups', [
+        ApplicationRuntime::db()->createCommand()->delete('user_groups', [
             'user_id' => $user->id,
             'source' => 'ldap',
         ])->execute();
@@ -398,55 +340,19 @@ class LdapService
         ]);
     }
 
-    private function fillProvider(LdapProvider $provider, array $body, bool $isUpdate): void
+    private function crypto(): CryptoService
     {
-        foreach (['name', 'host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $field) {
-            // Go декодирует вход в новую Provider struct: отсутствующие поля получают zero values.
-            $provider->{$field} = (string)($body[$field] ?? '');
-        }
-
-        $provider->port = (int)($body['port'] ?? 0);
-        $provider->use_tls = (bool)($body['use_tls'] ?? false);
-        $provider->start_tls = (bool)($body['start_tls'] ?? false);
-        $provider->enabled = (bool)($body['enabled'] ?? false);
-
-        if (!$isUpdate) {
-            if ($provider->port === 0) {
-                $provider->port = 389;
-            }
-            if ($provider->user_filter === '') {
-                $provider->user_filter = '(&(objectClass=user)(sAMAccountName={username}))';
-            }
-            if ($provider->username_attribute === '') {
-                $provider->username_attribute = 'sAMAccountName';
-            }
-            if ($provider->email_attribute === '') {
-                $provider->email_attribute = 'mail';
-            }
-            if ($provider->display_name_attribute === '') {
-                $provider->display_name_attribute = 'displayName';
-            }
-        }
-
-        if (!$isUpdate || !empty($body['bind_password'])) {
-            $provider->bind_password = (new CryptoService())->encrypt((string)($body['bind_password'] ?? ''));
-        }
+        return $this->crypto ??= new CryptoService();
     }
 
-    private function publicProvider(LdapProvider $provider): array
+    private function providers(): LdapProviderAdminService
     {
-        $data = $provider->toArray();
-        unset($data['bind_password']);
-        $data['created_at'] = Rfc3339::format($provider->created_at);
-        $data['updated_at'] = Rfc3339::format($provider->updated_at);
-        return $data;
+        return $this->providers ??= new LdapProviderAdminService($this->crypto());
     }
 
-    private function publicGroupMapping(LdapGroupMapping $mapping): array
+    private function testFailure(string $code, string $message): ServiceResult
     {
-        $data = $mapping->toArray();
-        $data['created_at'] = Rfc3339::format($mapping->created_at);
-        return $data;
+        return ServiceResult::failure(new ServiceError($code, $message, 400));
     }
 
     private function insertIgnore(string $table, array $data): void
@@ -457,7 +363,7 @@ class LdapService
             $params[':' . $column] = $data[$column];
         }
 
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_keys($params)) . ') ON CONFLICT DO NOTHING',
             $params
         )->execute();

@@ -2,21 +2,19 @@
 
 namespace app\services;
 
-use Yii;
-
 class JwtService
 {
     private string $secret;
 
     public function __construct()
     {
-        $this->secret = Yii::$app->params['jwtSecret'];
+        $this->secret = (string)ApplicationRuntime::param('jwtSecret');
     }
 
     public function issue(string $subject, array $claims = [], ?int $ttl = null, ?int $issuedAt = null): string
     {
         $now = $issuedAt ?? time();
-        $ttl = $ttl ?? Yii::$app->params['accessTokenTtl'];
+        $ttl = $ttl ?? (int)ApplicationRuntime::param('accessTokenTtl');
         $payload = array_merge($claims, [
             'sub' => $subject,
             'jti' => $claims['jti'] ?? self::base64url(random_bytes(16)),

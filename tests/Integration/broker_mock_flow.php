@@ -118,7 +118,7 @@ try {
     assertTrue(
         $providerError['location'] === '/login?broker_error=access_denied'
             || $providerError['location'] === $baseUrl . '/login?broker_error=access_denied',
-        'broker provider error must redirect to the Go-compatible login route'
+        'broker provider error must redirect to the contract-compliant login route'
     );
 
     $failedCallback = httpRequest(
@@ -129,7 +129,7 @@ try {
     assertTrue(
         $failedCallback['location'] === '/login?broker_error=failed'
             || $failedCallback['location'] === $baseUrl . '/login?broker_error=failed',
-        'invalid broker callback must redirect to the Go-compatible login route'
+        'invalid broker callback must redirect to the contract-compliant login route'
     );
 
     $login = httpRequest('GET', $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/login?continue=' . rawurlencode('/broker-finished'));

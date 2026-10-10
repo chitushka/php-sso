@@ -3,7 +3,6 @@
 namespace app\services;
 
 use app\models\AuditLog;
-use Yii;
 
 class AuditService
 {
@@ -27,9 +26,9 @@ class AuditService
         $log->action = $action;
         $log->target_type = $targetType;
         $log->target_id = $targetId;
-        $hasRequest = $includeRequestContext && Yii::$app instanceof \yii\web\Application;
-        $log->ip = $hasRequest ? Yii::$app->request->userIP : null;
-        $log->user_agent = $hasRequest ? Yii::$app->request->userAgent : null;
+        $request = $includeRequestContext ? ApplicationRuntime::webRequest() : null;
+        $log->ip = $request?->userIP;
+        $log->user_agent = $request?->userAgent;
         if (!$log->save(false)) {
             throw new \RuntimeException('failed to persist audit event');
         }

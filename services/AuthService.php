@@ -7,92 +7,119 @@ use app\models\LoginAttempt;
 use app\models\OAuthClient;
 use app\models\Session;
 use app\models\User;
-use Yii;
+use app\services\contracts\ClockInterface;
+use app\services\contracts\RandomGeneratorInterface;
+use app\services\results\ServiceError;
+use app\services\results\ServiceResult;
 use yii\db\Expression;
 use yii\web\Cookie;
 use yii\web\Request;
 
 class AuthService
 {
-    public function login(array $body, Request $request): array
+    private LdapService $ldap;
+    private MetricsService $metrics;
+    private MfaService $mfa;
+    private JwtService $jwt;
+    private ClockInterface $clock;
+    private RandomGeneratorInterface $random;
+
+    public function __construct(
+        ?LdapService $ldap = null,
+        ?MetricsService $metrics = null,
+        ?MfaService $mfa = null,
+        ?JwtService $jwt = null,
+        ?ClockInterface $clock = null,
+        ?RandomGeneratorInterface $random = null
+    ) {
+        $this->ldap = $ldap ?? new LdapService();
+        $this->metrics = $metrics ?? new MetricsService();
+        $this->mfa = $mfa ?? new MfaService();
+        $this->jwt = $jwt ?? new JwtService();
+        $this->clock = $clock ?? new SystemClock();
+        $this->random = $random ?? new SecureRandomGenerator();
+    }
+
+    public function login(array $body, Request $request): ServiceResult
     {
         $login = trim((string)($body['username'] ?? ''));
         $password = (string)($body['password'] ?? '');
         $ip = (string)$request->userIP;
 
         if ($this->isLocked($login, $ip)) {
-            return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
+            return $this->failure('login_rate_limited', 'too many failed attempts, try again later', 429);
         }
 
         if ($password === '') {
             $this->registerLoginFailure($login, $ip);
-            return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+            return $this->failure('invalid_credentials', 'invalid credentials', 401);
         }
 
         $user = User::findOne(['username' => $login]);
 
         if ($user && $user->source === User::SOURCE_LOCAL) {
             if ($user->status !== User::STATUS_ACTIVE || !$user->password_hash) {
-                return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+                return $this->failure('invalid_credentials', 'invalid credentials', 401);
             }
             if (!PasswordHasher::verify($password, (string)$user->password_hash)) {
                 $this->registerLoginFailure($login, $ip);
-                return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+                return $this->failure('invalid_credentials', 'invalid credentials', 401);
             }
         } else {
-            $user = (new LdapService())->authenticate($login, $password);
-            (new MetricsService())->event('ldap', $user ? 'success' : 'failure');
+            $user = $this->ldap->authenticate($login, $password);
+            $this->metrics->event('ldap', $user ? 'success' : 'failure');
         }
 
         if (!$user || $user->status !== User::STATUS_ACTIVE) {
             $this->registerLoginFailure($login, $ip);
-            return ['ok' => false, 'status' => 401, 'error' => 'invalid credentials'];
+            return $this->failure('invalid_credentials', 'invalid credentials', 401);
         }
 
         if ($user->mfa_enabled) {
-            return ['ok' => true, 'data' => (new MfaService())->createLoginChallenge($user)];
+            return ServiceResult::success($this->mfa->createLoginChallenge($user));
         }
 
         $this->resetFailures($login, $ip);
         return $this->issueLogin($user, $request);
     }
 
-    public function verifyMfaLogin(array $body, Request $request): array
+    public function verifyMfaLogin(array $body, Request $request): ServiceResult
     {
         $mfaToken = (string)($body['mfa_token'] ?? $body['challenge_token'] ?? '');
-        $mfa = new MfaService();
+        $mfa = $this->mfa;
         $user = $mfa->loginChallengeUser($mfaToken);
         if (!$user) {
-            return ['ok' => false, 'status' => 401, 'error' => 'invalid mfa token'];
+            return $this->failure('invalid_mfa_token', 'invalid mfa token', 401);
         }
 
         $login = (string)$user->username;
         $ip = (string)$request->userIP;
         if ($this->isLocked($login, $ip)) {
-            return ['ok' => false, 'status' => 429, 'error' => 'too many failed attempts, try again later'];
+            return $this->failure('login_rate_limited', 'too many failed attempts, try again later', 429);
         }
 
         if (!$mfa->completeLoginChallenge($mfaToken, $user, (string)($body['code'] ?? ''))) {
             $this->registerLoginFailure($login, $ip);
-            return ['ok' => false, 'status' => 401, 'error' => 'invalid code'];
+            return $this->failure('invalid_mfa_code', 'invalid code', 401);
         }
 
         $this->resetFailures($login, $ip);
         return $this->issueLogin($user, $request);
     }
 
-    private function issueLogin(User $user, Request $request): array
+    private function issueLogin(User $user, Request $request): ServiceResult
     {
         $sessionToken = $this->randomToken();
         $csrfToken = $this->randomToken();
-        $sessionExpiresAt = time() + Yii::$app->params['sessionTtl'];
+        $now = $this->clock->now()->getTimestamp();
+        $sessionExpiresAt = $now + (int)ApplicationRuntime::param('sessionTtl');
         $session = new Session();
         $session->user_id = $user->id;
         $session->token_hash = hash('sha256', $sessionToken);
         $session->ip = $request->userIP;
         $session->user_agent = $request->userAgent;
         $session->expires_at = gmdate('Y-m-d H:i:sP', $sessionExpiresAt);
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$session->save(false)) {
                 throw new \RuntimeException('failed to persist session');
@@ -104,62 +131,60 @@ class AuthService
             if ($transaction->isActive) {
                 $transaction->rollBack();
             }
-            return ['ok' => false, 'status' => 500, 'error' => 'failed to create session'];
+            return $this->failure('session_create_failed', 'failed to create session', 500);
         }
 
-        $issuedAt = time();
+        $issuedAt = $now;
         if ($user->tokens_invalid_before) {
             $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
         }
 
         $jwt = $this->issueAccessToken($user, $issuedAt);
 
-        return [
-            'ok' => true,
+        return ServiceResult::success([
+            'access_token' => $jwt,
+            'access_token_expires_at' => gmdate(
+                'Y-m-d\\TH:i:s\\Z',
+                $issuedAt + (int)ApplicationRuntime::param('accessTokenTtl')
+            ),
+            'session_expires_at' => gmdate('Y-m-d\\TH:i:s\\Z', $sessionExpiresAt),
+            'csrf_token' => $csrfToken,
+            'user' => $user->publicData(),
+        ], 200, [
             'cookie' => new Cookie([
                 'name' => 'sso_session',
                 'value' => $sessionToken,
                 'httpOnly' => true,
-                'secure' => Yii::$app->params['cookieSecure'],
+                'secure' => (bool)ApplicationRuntime::param('cookieSecure'),
                 'sameSite' => Cookie::SAME_SITE_LAX,
                 'path' => '/',
-                'expire' => time() + Yii::$app->params['sessionTtl'],
+                'expire' => $sessionExpiresAt,
             ]),
             'csrf_cookie' => new Cookie([
                 'name' => BrowserSecurityService::CSRF_COOKIE,
                 'value' => $csrfToken,
                 'httpOnly' => false,
-                'secure' => Yii::$app->params['cookieSecure'],
+                'secure' => (bool)ApplicationRuntime::param('cookieSecure'),
                 'sameSite' => Cookie::SAME_SITE_LAX,
                 'path' => '/',
-                'expire' => time() + Yii::$app->params['sessionTtl'],
+                'expire' => $sessionExpiresAt,
             ]),
-            'data' => [
-                'access_token' => $jwt,
-                'access_token_expires_at' => gmdate(
-                    'Y-m-d\\TH:i:s\\Z',
-                    $issuedAt + Yii::$app->params['accessTokenTtl']
-                ),
-                'session_expires_at' => gmdate('Y-m-d\\TH:i:s\\Z', $sessionExpiresAt),
-                'csrf_token' => $csrfToken,
-                'user' => $user->publicData(),
-            ],
-        ];
+        ]);
     }
 
-    public function issueFederatedLogin(User $user, Request $request): array
+    public function issueFederatedLogin(User $user, Request $request): ServiceResult
     {
         return $this->issueLogin($user, $request);
     }
 
     public function issueAccessToken(User $user, ?int $issuedAt = null): string
     {
-        $issuedAt = $issuedAt ?? time();
+        $issuedAt = $issuedAt ?? $this->clock->now()->getTimestamp();
         if ($user->tokens_invalid_before) {
             $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
         }
 
-        return (new JwtService())->issue($user->id, [
+        return $this->jwt->issue($user->id, [
             'username' => $user->username,
             'email' => $user->email,
             'source' => $user->source,
@@ -178,13 +203,13 @@ class AuthService
             return ['user' => null, 'claims' => null, 'error' => 'missing bearer token'];
         }
 
-        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        $claims = $this->jwt->verify(trim(substr($header, 7)));
         if (!$claims || empty($claims['sub']) || empty($claims['jti'])) {
             return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
         }
 
         if (
-            (bool)Yii::$app->db->createCommand(
+            (bool)ApplicationRuntime::db()->createCommand(
                 'SELECT EXISTS(SELECT 1 FROM revoked_access_tokens WHERE jti = :jti AND expires_at > now())',
                 [':jti' => (string)$claims['jti']]
             )->queryScalar()
@@ -200,8 +225,8 @@ class AuthService
             ]);
             if (
                 !$client
-                || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']
-                || ($claims['iss'] ?? '') !== Yii::$app->params['issuer']
+                || ($claims['aud'] ?? '') !== ApplicationRuntime::param('apiAudience')
+                || ($claims['iss'] ?? '') !== ApplicationRuntime::param('issuer')
             ) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
@@ -219,8 +244,8 @@ class AuthService
             ]);
             if (
                 !$client
-                || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']
-                || ($claims['iss'] ?? '') !== Yii::$app->params['issuer']
+                || ($claims['aud'] ?? '') !== ApplicationRuntime::param('apiAudience')
+                || ($claims['iss'] ?? '') !== ApplicationRuntime::param('issuer')
             ) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
@@ -250,11 +275,11 @@ class AuthService
         if (stripos($header, 'Bearer ') !== 0) {
             return;
         }
-        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        $claims = $this->jwt->verify(trim(substr($header, 7)));
         if (!$claims || empty($claims['jti']) || empty($claims['exp'])) {
             return;
         }
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'INSERT INTO revoked_access_tokens(jti, expires_at) VALUES (:jti, to_timestamp(:exp)) ON CONFLICT (jti) DO NOTHING',
             [':jti' => (string)$claims['jti'], ':exp' => (int)$claims['exp']]
         )->execute();
@@ -267,7 +292,7 @@ class AuthService
             return null;
         }
 
-        $claims = (new JwtService())->verify(trim(substr($header, 7)));
+        $claims = $this->jwt->verify(trim(substr($header, 7)));
         if (!$claims || empty($claims['sub'])) {
             return null;
         }
@@ -308,9 +333,9 @@ class AuthService
             return;
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $session = Yii::$app->db->createCommand(
+            $session = ApplicationRuntime::db()->createCommand(
                 'SELECT id, user_id FROM sessions
                  WHERE token_hash = :token_hash AND revoked_at IS NULL
                  FOR UPDATE',
@@ -348,7 +373,7 @@ class AuthService
 
     public function revokeSession(string $userId, string $sessionId): bool
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $updated = Session::updateAll(['revoked_at' => new Expression('now()')], [
                 'id' => $sessionId,
@@ -370,7 +395,7 @@ class AuthService
 
     public function revokeAllSessions(User $user): void
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             Session::updateAll(['revoked_at' => new Expression('now()')], ['user_id' => $user->id, 'revoked_at' => null]);
             $user->tokens_invalid_before = new Expression('now()');
@@ -389,7 +414,7 @@ class AuthService
 
     public function randomToken(int $bytes = 32): string
     {
-        return JwtService::base64url(random_bytes($bytes));
+        return $this->random->token($bytes);
     }
 
     private function isLocked(string $username, string $ip): bool
@@ -403,7 +428,7 @@ class AuthService
             return false;
         }
 
-        return strtotime($attempt->locked_until) > time();
+        return strtotime($attempt->locked_until) > $this->clock->now()->getTimestamp();
     }
 
     private function recordFailure(string $username, string $ip): int
@@ -413,7 +438,7 @@ class AuthService
         }
 
         // Один UPSERT не теряет инкременты при параллельных неуспешных входах.
-        return (int)Yii::$app->db->createCommand(
+        return (int)ApplicationRuntime::db()->createCommand(
             'INSERT INTO login_attempts(username, ip, attempts, locked_until, updated_at)
              VALUES (:username, :ip, 1, NULL, now())
              ON CONFLICT (username, ip) DO UPDATE SET
@@ -433,7 +458,7 @@ class AuthService
 
     public function registerLoginFailure(string $username, string $ip): void
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             AuditService::record(null, 'login_failed', 'user', $username, true);
             $attempts = $this->recordFailure($username, $ip);
@@ -456,5 +481,10 @@ class AuthService
         }
 
         LoginAttempt::deleteAll(['username' => $username, 'ip' => $ip]);
+    }
+
+    private function failure(string $code, string $message, int $status): ServiceResult
+    {
+        return ServiceResult::failure(new ServiceError($code, $message, $status));
     }
 }

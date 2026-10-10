@@ -7,6 +7,12 @@ return [
     'id' => 'sso-php',
     'basePath' => dirname(__DIR__),
     'language' => 'ru-RU',
+    'container' => [
+        'definitions' => [
+            app\services\contracts\ClockInterface::class => app\services\SystemClock::class,
+            app\services\contracts\RandomGeneratorInterface::class => app\services\SecureRandomGenerator::class,
+        ],
+    ],
     'bootstrap' => ['log'],
     'on beforeRequest' => static function (): void {
         app\components\CorrelationId::begin(Yii::$app->request);

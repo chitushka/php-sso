@@ -82,7 +82,7 @@ class OAuthTokenServiceTest extends TestCase
         $token = $flow['token'];
         $service = new OAuthService();
 
-        $this->assertTrue($token['ok']);
+        $this->assertTrue($token->isSuccess());
         $this->assertSame('Bearer', $token['data']['token_type']);
         $this->assertSame('profile', $token['data']['scope']);
         $this->assertNotEmpty($token['data']['access_token']);
@@ -104,9 +104,9 @@ class OAuthTokenServiceTest extends TestCase
             'code_verifier' => $verifier,
         ]));
 
-        $this->assertFalse($reuse['ok']);
+        $this->assertFalse($reuse->isSuccess());
         $this->assertSame(400, $reuse['status']);
-        $this->assertSame('invalid_grant', $reuse['error']);
+        $this->assertSame('invalid_grant', $reuse->error->code);
     }
 
     public function testFailedPkceExchangeDoesNotConsumeAuthorizationCode(): void
@@ -124,14 +124,14 @@ class OAuthTokenServiceTest extends TestCase
         $invalid = $service->token($this->postRequest(array_merge($request, [
             'code_verifier' => 'wrong-verifier',
         ])));
-        $this->assertFalse($invalid['ok']);
-        $this->assertSame('invalid_grant', $invalid['error']);
+        $this->assertFalse($invalid->isSuccess());
+        $this->assertSame('invalid_grant', $invalid->error->code);
         $this->assertSame(0, $this->usedAuthorizationCodeCount($flow['client_id']));
 
         $retry = $service->token($this->postRequest(array_merge($request, [
             'code_verifier' => $flow['verifier'],
         ])));
-        $this->assertTrue($retry['ok']);
+        $this->assertTrue($retry->isSuccess());
         $this->assertSame(1, $this->usedAuthorizationCodeCount($flow['client_id']));
         $this->assertSame(1, $this->refreshTokenCount($flow['client_id']));
     }
@@ -165,7 +165,7 @@ class OAuthTokenServiceTest extends TestCase
         ]));
         $refreshClaims = $this->jwtPayload($refresh['data']['id_token']);
 
-        $this->assertTrue($refresh['ok']);
+        $this->assertTrue($refresh->isSuccess());
         $this->assertSame('', $refreshClaims['nonce']);
         $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
     }
@@ -210,7 +210,7 @@ class OAuthTokenServiceTest extends TestCase
         );
         $token = (new OAuthService())->token($request);
 
-        $this->assertTrue($token['ok']);
+        $this->assertTrue($token->isSuccess());
         $this->assertSame('profile', $token['data']['scope']);
         $tokenClaims = $this->jwtPayload($token['data']['access_token']);
         $this->assertSame($clientId, $tokenClaims['client_id']);
@@ -227,7 +227,7 @@ class OAuthTokenServiceTest extends TestCase
         );
         $emptyScopeToken = (new OAuthService())->token($emptyScopeRequest);
 
-        $this->assertTrue($emptyScopeToken['ok']);
+        $this->assertTrue($emptyScopeToken->isSuccess());
         $this->assertArrayNotHasKey('scope', $emptyScopeToken['data']);
         $this->assertArrayNotHasKey('scope', $this->jwtPayload($emptyScopeToken['data']['access_token']));
     }
@@ -247,8 +247,8 @@ class OAuthTokenServiceTest extends TestCase
             'code_challenge' => $challenge,
             'code_challenge_method' => 'S256',
         ], ['sso_session' => $this->loginSessionToken()]));
-        $this->assertTrue($missingState['ok']);
-        parse_str((string)parse_url($missingState['redirect'], PHP_URL_QUERY), $errorQuery);
+        $this->assertTrue($missingState->isSuccess());
+        parse_str((string)parse_url($missingState->metadata['redirect'], PHP_URL_QUERY), $errorQuery);
         $this->assertSame('invalid_request', $errorQuery['error']);
         $this->assertSame(Yii::$app->params['issuer'], $errorQuery['iss']);
 
@@ -261,8 +261,8 @@ class OAuthTokenServiceTest extends TestCase
             'code_challenge' => $challenge,
             'code_challenge_method' => 'S256',
         ]));
-        $this->assertFalse($unregistered['ok']);
-        $this->assertArrayNotHasKey('redirect', $unregistered);
+        $this->assertFalse($unregistered->isSuccess());
+        $this->assertArrayNotHasKey('redirect', $unregistered->metadata);
     }
 
     public function testOpenidAuthorizeRequiresNonceAndAllClientsRequirePkceS256(): void
@@ -280,7 +280,7 @@ class OAuthTokenServiceTest extends TestCase
         $missingPkce = $service->authorize($this->getRequest(array_merge($base, [
             'scope' => 'profile',
         ]), $cookie));
-        parse_str((string)parse_url($missingPkce['redirect'], PHP_URL_QUERY), $pkceError);
+        parse_str((string)parse_url($missingPkce->metadata['redirect'], PHP_URL_QUERY), $pkceError);
         $this->assertSame('invalid_request', $pkceError['error']);
 
         $verifier = 'nonce-verifier-' . bin2hex(random_bytes(20));
@@ -289,7 +289,7 @@ class OAuthTokenServiceTest extends TestCase
             'code_challenge' => JwtService::base64url(hash('sha256', $verifier, true)),
             'code_challenge_method' => 'S256',
         ]), $cookie));
-        parse_str((string)parse_url($missingNonce['redirect'], PHP_URL_QUERY), $nonceError);
+        parse_str((string)parse_url($missingNonce->metadata['redirect'], PHP_URL_QUERY), $nonceError);
         $this->assertSame('invalid_request', $nonceError['error']);
         $this->assertStringContainsString('nonce', $nonceError['error_description']);
     }
@@ -311,8 +311,8 @@ class OAuthTokenServiceTest extends TestCase
         );
 
         $result = (new OAuthService())->token($request);
-        $this->assertFalse($result['ok']);
-        $this->assertSame('invalid_client', $result['error']);
+        $this->assertFalse($result->isSuccess());
+        $this->assertSame('invalid_client', $result->error->code);
     }
 
     public function testUserCanListAndRevokeConsentWithRefreshTokens(): void
@@ -324,7 +324,7 @@ class OAuthTokenServiceTest extends TestCase
             'client_id' => $flow['client_id'],
             'scope' => 'profile',
         ]);
-        $this->assertTrue($granted['ok']);
+        $this->assertTrue($granted->isSuccess());
 
         $consents = $service->listUserConsents($this->userId);
         $this->assertSame($flow['client_id'], $consents[0]['client_id']);
@@ -348,7 +348,7 @@ class OAuthTokenServiceTest extends TestCase
             'refresh_token' => $flow['token']['data']['refresh_token'],
         ]));
 
-        $this->assertTrue($refresh['ok']);
+        $this->assertTrue($refresh->isSuccess());
         $this->assertNotSame($flow['token']['data']['refresh_token'], $refresh['data']['refresh_token']);
         $this->assertSame(2, $this->refreshTokenCount($flow['client_id']));
         $this->assertSame(1, $this->rotatedRefreshTokenCount($flow['client_id']));
@@ -360,8 +360,8 @@ class OAuthTokenServiceTest extends TestCase
             'refresh_token' => $flow['token']['data']['refresh_token'],
         ]));
 
-        $this->assertFalse($reuse['ok']);
-        $this->assertSame('invalid_grant', $reuse['error']);
+        $this->assertFalse($reuse->isSuccess());
+        $this->assertSame('invalid_grant', $reuse->error->code);
         $this->assertSame(2, $this->revokedRefreshTokenCount($flow['client_id']));
         $this->assertSame(1, $this->auditCount('refresh_token_reuse_detected', $flow['client_id']));
 
@@ -372,8 +372,8 @@ class OAuthTokenServiceTest extends TestCase
             'refresh_token' => $refresh['data']['refresh_token'],
         ]));
 
-        $this->assertFalse($descendant['ok']);
-        $this->assertSame('invalid_grant', $descendant['error']);
+        $this->assertFalse($descendant->isSuccess());
+        $this->assertSame('invalid_grant', $descendant->error->code);
     }
 
     public function testConcurrentRefreshRotationIssuesOnlyOneDescendant(): void
@@ -406,7 +406,7 @@ class OAuthTokenServiceTest extends TestCase
             'token' => $flow['token']['data']['refresh_token'],
         ]));
 
-        $this->assertTrue($revoke['ok']);
+        $this->assertTrue($revoke->isSuccess());
         $this->assertSame(1, $this->revokedRefreshTokenCount($flow['client_id']));
 
         $refresh = $service->token($this->postRequest([
@@ -416,8 +416,8 @@ class OAuthTokenServiceTest extends TestCase
             'refresh_token' => $flow['token']['data']['refresh_token'],
         ]));
 
-        $this->assertFalse($refresh['ok']);
-        $this->assertSame('invalid_grant', $refresh['error']);
+        $this->assertFalse($refresh->isSuccess());
+        $this->assertSame('invalid_grant', $refresh->error->code);
     }
 
     public function testRefreshIntrospectionAndRevocationCoverEntireFamily(): void
@@ -432,7 +432,7 @@ class OAuthTokenServiceTest extends TestCase
         $active = $service->introspect($this->postRequest(array_merge($credentials, [
             'token' => $flow['token']['data']['refresh_token'],
         ])));
-        $this->assertTrue($active['ok']);
+        $this->assertTrue($active->isSuccess());
         $this->assertTrue($active['data']['active']);
         $this->assertSame('refresh_token', $active['data']['token_type']);
         $this->assertSame($this->userId, $active['data']['sub']);
@@ -441,7 +441,7 @@ class OAuthTokenServiceTest extends TestCase
             'grant_type' => 'refresh_token',
             'refresh_token' => $flow['token']['data']['refresh_token'],
         ])));
-        $this->assertTrue($rotated['ok']);
+        $this->assertTrue($rotated->isSuccess());
 
         $old = $service->introspect($this->postRequest(array_merge($credentials, [
             'token' => $flow['token']['data']['refresh_token'],
@@ -451,7 +451,7 @@ class OAuthTokenServiceTest extends TestCase
         $revoke = $service->revoke($this->postRequest(array_merge($credentials, [
             'token' => $rotated['data']['refresh_token'],
         ])));
-        $this->assertTrue($revoke['ok']);
+        $this->assertTrue($revoke->isSuccess());
         $this->assertSame(2, $this->revokedRefreshTokenCount($flow['client_id']));
         $this->assertSame(1, $this->auditCount('refresh_token_revoked', $flow['client_id']));
 
@@ -487,9 +487,9 @@ class OAuthTokenServiceTest extends TestCase
             'token' => $flow['token']['data']['refresh_token'],
         ])));
 
-        $this->assertTrue($access['ok']);
+        $this->assertTrue($access->isSuccess());
         $this->assertFalse($access['data']['active']);
-        $this->assertTrue($refresh['ok']);
+        $this->assertTrue($refresh->isSuccess());
         $this->assertFalse($refresh['data']['active']);
     }
 
@@ -528,8 +528,8 @@ class OAuthTokenServiceTest extends TestCase
             'nonce' => $nonce,
         ], ['sso_session' => $this->loginSessionToken()]));
 
-        $this->assertTrue($authorize['ok']);
-        $redirect = parse_url($authorize['redirect']);
+        $this->assertTrue($authorize->isSuccess());
+        $redirect = parse_url($authorize->metadata['redirect']);
         parse_str($redirect['query'] ?? '', $query);
         $this->assertNotEmpty($query['code']);
         $this->assertSame('state-123', $query['state']);
@@ -551,7 +551,7 @@ class OAuthTokenServiceTest extends TestCase
             'code' => $query['code'],
             'verifier' => $verifier,
             'token' => $token,
-            'authorize_redirect' => $authorize['redirect'],
+            'authorize_redirect' => $authorize->metadata['redirect'],
         ];
     }
 
@@ -562,8 +562,8 @@ class OAuthTokenServiceTest extends TestCase
             'password' => 'correct-password-123',
         ], $this->getRequest());
 
-        $this->assertTrue($login['ok']);
-        return (string)$login['cookie']->value;
+        $this->assertTrue($login->isSuccess());
+        return (string)$login->metadata['cookie']->value;
     }
 
     private function getRequest(array $query = [], array $cookies = []): Request

@@ -7,51 +7,73 @@ use app\services\AuthService;
 use app\services\MfaService;
 use app\services\MetricsService;
 use Yii;
+use yii\base\Module;
 use yii\web\BadRequestHttpException;
 
 class AuthController extends ApiController
 {
+    private AuthService $auth;
+    private AccountService $accounts;
+    private MfaService $mfa;
+    private MetricsService $metrics;
+
+    public function __construct(
+        string $id,
+        Module $module,
+        AuthService $auth,
+        AccountService $accounts,
+        MfaService $mfa,
+        MetricsService $metrics,
+        array $config = []
+    ) {
+        $this->auth = $auth;
+        $this->accounts = $accounts;
+        $this->mfa = $mfa;
+        $this->metrics = $metrics;
+        parent::__construct($id, $module, $config);
+    }
+
     public function actionLogin(): array
     {
         $fields = ['username', 'password'];
-        $result = (new AuthService())->login($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
+        $result = $this->auth->login($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
-        (new MetricsService())->event(
+        $this->metrics->event(
             'auth',
-            !$result['ok'] ? 'failure' : (isset($result['cookie']) ? 'success' : 'mfa_required')
+            !$result->isSuccess() ? 'failure' : (isset($result->metadata['cookie']) ? 'success' : 'mfa_required')
         );
 
-        if (!$result['ok']) {
-            return $this->fail($result['status'], $result['error']);
+        if (!$result->isSuccess()) {
+            return $this->fail($result->status, $result->error->message);
         }
 
-        if (isset($result['cookie'])) {
-            Yii::$app->response->cookies->add($result['cookie']);
-            Yii::$app->response->cookies->add($result['csrf_cookie']);
+        if (isset($result->metadata['cookie'])) {
+            Yii::$app->response->cookies->add($result->metadata['cookie']);
+            Yii::$app->response->cookies->add($result->metadata['csrf_cookie']);
         }
-        return $result['data'];
+        return $result->data;
     }
 
     public function actionVerifyMfa(): array
     {
         $fields = ['mfa_token', 'code'];
-        $result = (new AuthService())->verifyMfaLogin($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
+        $result = $this->auth->verifyMfaLogin($this->body($fields, array_fill_keys($fields, 'string')), Yii::$app->request);
 
-        (new MetricsService())->event('auth', $result['ok'] ? 'success' : 'failure');
+        $this->metrics->event('auth', $result->isSuccess() ? 'success' : 'failure');
 
-        if (!$result['ok']) {
-            return $this->fail($result['status'], $result['error']);
+        if (!$result->isSuccess()) {
+            return $this->fail($result->status, $result->error->message);
         }
 
-        Yii::$app->response->cookies->add($result['cookie']);
-        Yii::$app->response->cookies->add($result['csrf_cookie']);
-        return $result['data'];
+        Yii::$app->response->cookies->add($result->metadata['cookie']);
+        Yii::$app->response->cookies->add($result->metadata['csrf_cookie']);
+        return $result->data;
     }
 
     public function actionLogout(): array
     {
         $token = Yii::$app->request->cookies->getValue('sso_session', '');
-        $auth = new AuthService();
+        $auth = $this->auth;
         $auth->logout($token);
         $auth->revokeAccessToken(Yii::$app->request);
         Yii::$app->response->cookies->remove('sso_session');
@@ -61,7 +83,7 @@ class AuthController extends ApiController
 
     public function actionSessionToken(): array
     {
-        $auth = new AuthService();
+        $auth = $this->auth;
         $user = $auth->userBySession((string)Yii::$app->request->cookies->getValue('sso_session', ''));
         if (!$user) {
             return $this->fail(401, 'invalid session');
@@ -90,7 +112,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        return (new AuthService())->listSessions($user->id);
+        return $this->auth->listSessions($user->id);
     }
 
     public function actionRevokeSession(string $id): array
@@ -105,7 +127,7 @@ class AuthController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        if (!(new AuthService())->revokeSession($user->id, $id)) {
+        if (!$this->auth->revokeSession($user->id, $id)) {
             return $this->fail(404, 'session not found');
         }
 
@@ -119,7 +141,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        (new AuthService())->revokeAllSessions($user);
+        $this->auth->revokeAllSessions($user);
         Yii::$app->response->cookies->remove('sso_session');
         Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
         return ['status' => 'all_revoked'];
@@ -136,14 +158,14 @@ class AuthController extends ApiController
             return $this->fail(400, 'login is required');
         }
 
-        (new AccountService())->forgotPassword($login);
+        $this->accounts->forgotPassword($login);
         return ['status' => 'ok'];
     }
 
     public function actionResetPassword(): array
     {
         $body = $this->body(['token', 'password'], ['token' => 'string', 'password' => 'string']);
-        $result = (new AccountService())->resetPassword(
+        $result = $this->accounts->resetPassword(
             (string)($body['token'] ?? ''),
             (string)($body['password'] ?? '')
         );
@@ -163,7 +185,7 @@ class AuthController extends ApiController
             ['old_password', 'new_password'],
             ['old_password' => 'string', 'new_password' => 'string']
         );
-        $result = (new AccountService())->changePassword(
+        $result = $this->accounts->changePassword(
             $user,
             (string)($body['old_password'] ?? ''),
             (string)($body['new_password'] ?? '')
@@ -184,7 +206,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new AccountService())->updateProfile(
+        $result = $this->accounts->updateProfile(
             $user,
             $this->body(
                 ['first_name', 'last_name', 'attributes'],
@@ -202,14 +224,14 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new AccountService())->requestEmailVerification($user);
+        $result = $this->accounts->requestEmailVerification($user);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
 
     public function actionVerifyEmail(): array
     {
-        $result = (new AccountService())->verifyEmail(
+        $result = $this->accounts->verifyEmail(
             (string)($this->body(['token'], ['token' => 'string'])['token'] ?? '')
         );
         Yii::$app->response->statusCode = $result['status'];
@@ -227,7 +249,7 @@ class AuthController extends ApiController
             return $this->fail(409, 'mfa already enabled');
         }
 
-        return (new MfaService())->setup($user);
+        return $this->mfa->setup($user);
     }
 
     public function actionMfaEnable(): array
@@ -238,7 +260,7 @@ class AuthController extends ApiController
         }
 
         $body = $this->body(['code'], ['code' => 'string']);
-        $result = (new MfaService())->enable(
+        $result = $this->mfa->enable(
             $user,
             '',
             (string)($body['code'] ?? '')
@@ -254,7 +276,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new MfaService())->disable(
+        $result = $this->mfa->disable(
             $user,
             (string)($this->body(['code'], ['code' => 'string'])['code'] ?? '')
         );
@@ -269,7 +291,7 @@ class AuthController extends ApiController
             return $user;
         }
 
-        $result = (new MfaService())->regenerateRecoveryCodes(
+        $result = $this->mfa->regenerateRecoveryCodes(
             $user,
             (string)($this->body(['code'], ['code' => 'string'])['code'] ?? '')
         );

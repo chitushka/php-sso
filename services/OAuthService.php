@@ -7,130 +7,64 @@ use app\models\OAuthClient;
 use app\models\RefreshToken;
 use app\models\Session;
 use app\models\User;
-use Yii;
+use app\services\results\ServiceError;
+use app\services\results\ServiceResult;
 use yii\db\Expression;
 use yii\web\Request;
 
 class OAuthService
 {
+    private OAuthClientService $clients;
+    private AuthService $auth;
+    private JwtService $jwt;
+    private OidcService $oidc;
+    private OutboundHttpService $outboundHttp;
+
+    public function __construct(
+        ?OAuthClientService $clients = null,
+        ?AuthService $auth = null,
+        ?JwtService $jwt = null,
+        ?OidcService $oidc = null,
+        ?OutboundHttpService $outboundHttp = null
+    ) {
+        $this->clients = $clients ?? new OAuthClientService();
+        $this->auth = $auth ?? new AuthService();
+        $this->jwt = $jwt ?? new JwtService();
+        $this->oidc = $oidc ?? new OidcService();
+        $this->outboundHttp = $outboundHttp ?? new OutboundHttpService();
+    }
+
     public function listClients(): array
     {
-        return array_map(static function (OAuthClient $client) {
-            return $client->publicData();
-        }, OAuthClient::find()->orderBy(['created_at' => SORT_DESC])->all());
+        return $this->clients->list();
     }
 
     public function getClient(string $id): ?array
     {
-        $client = OAuthClient::findOne(['id' => $id]);
-        return $client ? $client->publicData() : null;
+        return $this->clients->get($id);
     }
 
-    public function createClient(array $body): array
+    public function createClient(array $body): ServiceResult
     {
-        $client = new OAuthClient();
-        $client->client_id = (string)($body['client_id'] ?? '');
-        $client->name = (string)($body['name'] ?? '');
-        $client->type = (string)($body['type'] ?? OAuthClient::TYPE_CONFIDENTIAL);
-        $client->redirect_uris = OAuthClient::toPgArray((array)($body['redirect_uris'] ?? []));
-        $client->allowed_scopes = OAuthClient::toPgArray((array)($body['allowed_scopes'] ?? []));
-        $client->post_logout_redirect_uris = OAuthClient::toPgArray((array)($body['post_logout_redirect_uris'] ?? []));
-        $client->backchannel_logout_uri = (string)($body['backchannel_logout_uri'] ?? '');
-        $client->skip_consent = (bool)($body['skip_consent'] ?? false);
-        $client->allow_loopback_redirects = (bool)($body['allow_loopback_redirects'] ?? false);
-        $client->enabled = (bool)($body['enabled'] ?? false);
-
-        if (!$this->redirectUrisAreSafe($client)) {
-            return ['status' => 400, 'data' => ['error' => 'redirect URIs violate the client redirect policy']];
-        }
-        if (!$this->backchannelLogoutUriIsSafe((string)$client->backchannel_logout_uri)) {
-            return ['status' => 400, 'data' => ['error' => 'backchannel_logout_uri must be a trusted HTTPS URL']];
-        }
-
-        $plainSecret = null;
-        if ($client->type === OAuthClient::TYPE_CONFIDENTIAL) {
-            $plainSecret = (new AuthService())->randomToken(32);
-            $client->client_secret_hash = PasswordHasher::hash($plainSecret);
-        }
-
-        if (!$client->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];
-        }
-        $client->refresh();
-
-        $data = $client->publicData();
-        if ($plainSecret !== null) {
-            $data['client_secret'] = $plainSecret;
-        }
-
-        return ['status' => 201, 'data' => $data];
+        return $this->clients->create($body);
     }
 
-    public function updateClient(string $id, array $body): array
+    public function updateClient(string $id, array $body): ServiceResult
     {
-        $client = OAuthClient::findOne(['id' => $id]);
-        if (!$client) {
-            return ['status' => 404, 'data' => ['error' => 'client not found']];
-        }
-
-        $client->name = (string)($body['name'] ?? '');
-        $client->redirect_uris = OAuthClient::toPgArray((array)($body['redirect_uris'] ?? []));
-        $client->allowed_scopes = OAuthClient::toPgArray((array)($body['allowed_scopes'] ?? []));
-        $client->post_logout_redirect_uris = OAuthClient::toPgArray((array)($body['post_logout_redirect_uris'] ?? []));
-        $client->backchannel_logout_uri = (string)($body['backchannel_logout_uri'] ?? '');
-        $client->skip_consent = (bool)($body['skip_consent'] ?? false);
-        $client->allow_loopback_redirects = (bool)($body['allow_loopback_redirects'] ?? false);
-        $client->enabled = (bool)($body['enabled'] ?? false);
-        $client->updated_at = new Expression('now()');
-
-        if (!$this->redirectUrisAreSafe($client)) {
-            return ['status' => 400, 'data' => ['error' => 'redirect URIs violate the client redirect policy']];
-        }
-        if (!$this->backchannelLogoutUriIsSafe((string)$client->backchannel_logout_uri)) {
-            return ['status' => 400, 'data' => ['error' => 'backchannel_logout_uri must be a trusted HTTPS URL']];
-        }
-
-        if (!$client->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid client payload', 'details' => $client->errors]];
-        }
-        $client->refresh();
-
-        AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->client_id);
-        return ['status' => 200, 'data' => $client->publicData()];
+        return $this->clients->update($id, $body);
     }
 
     public function deleteClient(string $id): bool
     {
-        $client = OAuthClient::findOne(['id' => $id]);
-        if (!$client) {
-            return false;
-        }
-
-        $client->delete();
-        AuditService::record(null, 'oauth_client_deleted', 'oauth_client', $id);
-        return true;
+        return $this->clients->delete($id);
     }
 
-    public function rotateSecret(string $id): array
+    public function rotateSecret(string $id): ServiceResult
     {
-        $client = OAuthClient::findOne(['id' => $id, 'type' => OAuthClient::TYPE_CONFIDENTIAL]);
-        if (!$client) {
-            return ['status' => 404, 'data' => ['error' => 'confidential client not found']];
-        }
-
-        $secret = (new AuthService())->randomToken(32);
-        OAuthClient::updateAll([
-            'client_secret_hash' => PasswordHasher::hash($secret),
-            'updated_at' => new Expression('now()'),
-        ], ['id' => $client->id]);
-        $client->refresh();
-
-        AuditService::record(null, 'oauth_client_secret_rotated', 'oauth_client', $client->client_id);
-
-        return ['status' => 200, 'data' => array_merge($client->publicData(), ['client_secret' => $secret])];
+        return $this->clients->rotateSecret($id);
     }
 
-    public function authorize(Request $request): array
+    public function authorize(Request $request): ServiceResult
     {
         $client = OAuthClient::findOne(['client_id' => $request->get('client_id'), 'enabled' => true]);
         if (!$client) {
@@ -186,7 +120,7 @@ class OAuthService
             );
         }
 
-        $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
+        $user = $this->auth->userBySession($request->cookies->getValue('sso_session', ''));
         if (!$user) {
             return $this->authorizeRedirectError(
                 $redirectUri,
@@ -205,8 +139,8 @@ class OAuthService
             );
         }
 
-        $code = (new AuthService())->randomToken(32);
-        $query = ['code' => $code, 'state' => $state, 'iss' => (string)Yii::$app->params['issuer']];
+        $code = $this->auth->randomToken(32);
+        $query = ['code' => $code, 'state' => $state, 'iss' => (string)ApplicationRuntime::param('issuer')];
         $redirect = $this->withQueryParameters($redirectUri, $query);
         if ($redirect === null) {
             return $this->oauthFail(400, 'invalid_request', 'redirect_uri is invalid');
@@ -222,7 +156,7 @@ class OAuthService
         $model->code_challenge_method = 'S256';
         $model->nonce = $nonce;
         $model->expires_at = gmdate('Y-m-d H:i:sP', time() + 300);
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$model->save(false)) {
                 throw new \RuntimeException('failed to persist authorization code');
@@ -241,10 +175,10 @@ class OAuthService
             );
         }
 
-        return ['ok' => true, 'redirect' => $redirect];
+        return ServiceResult::success([], 302, ['redirect' => $redirect]);
     }
 
-    public function token(Request $request): array
+    public function token(Request $request): ServiceResult
     {
         $grantType = (string)$request->post('grant_type');
         $client = $this->clientFromRequest($request);
@@ -268,21 +202,21 @@ class OAuthService
         return $this->oauthFail(400, 'unsupported_grant_type', 'grant_type is not supported');
     }
 
-    public function revoke(Request $request): array
+    public function revoke(Request $request): ServiceResult
     {
         $client = $this->clientFromRequest($request);
         if (!$client) {
-            return ['ok' => false];
+            return $this->oauthFail(401, 'invalid_client', 'client authentication failed');
         }
 
         $token = RefreshToken::findOne([
             'token_hash' => hash('sha256', (string)$request->post('token')),
         ]);
         if (!$token || $token->client_id !== $client->client_id) {
-            return ['ok' => true];
+            return ServiceResult::success([]);
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             RefreshToken::updateAll(
                 ['revoked_at' => new Expression('now()')],
@@ -297,31 +231,31 @@ class OAuthService
             return $this->oauthFail(500, 'server_error', 'token revocation failed');
         }
 
-        return ['ok' => true];
+        return ServiceResult::success([]);
     }
 
-    public function introspect(Request $request): array
+    public function introspect(Request $request): ServiceResult
     {
         $caller = $this->clientFromRequest($request);
         if (!$caller) {
-            return ['ok' => false];
+            return $this->oauthFail(401, 'invalid_client', 'client authentication failed');
         }
 
         $rawToken = (string)$request->post('token');
         $refreshToken = RefreshToken::findOne(['token_hash' => hash('sha256', $rawToken)]);
         if ($refreshToken) {
             if ($refreshToken->client_id !== $caller->client_id) {
-                return ['ok' => true, 'data' => ['active' => false]];
+                return ServiceResult::success(['active' => false]);
             }
             if (
                 $refreshToken->revoked_at
                 || $refreshToken->rotated_at
                 || strtotime((string)$refreshToken->expires_at) <= time()
             ) {
-                return ['ok' => true, 'data' => ['active' => false]];
+                return ServiceResult::success(['active' => false]);
             }
 
-            return ['ok' => true, 'data' => [
+            return ServiceResult::success([
                 'active' => true,
                 'token_type' => 'refresh_token',
                 'client_id' => $refreshToken->client_id,
@@ -329,21 +263,21 @@ class OAuthService
                 'scope' => $refreshToken->scope,
                 'exp' => strtotime((string)$refreshToken->expires_at),
                 'iat' => strtotime((string)$refreshToken->created_at),
-            ]];
+            ]);
         }
 
-        $claims = (new JwtService())->verify($rawToken);
+        $claims = $this->jwt->verify($rawToken);
         if (
             !$claims
             || ($claims['client_id'] ?? '') !== $caller->client_id
-            || ($claims['aud'] ?? '') !== Yii::$app->params['apiAudience']
+            || ($claims['aud'] ?? '') !== ApplicationRuntime::param('apiAudience')
         ) {
-            return ['ok' => true, 'data' => ['active' => false]];
+            return ServiceResult::success(['active' => false]);
         }
 
         $authentication = $this->authenticateRawAccessToken($rawToken);
         if (!$authentication) {
-            return ['ok' => true, 'data' => ['active' => false]];
+            return ServiceResult::success(['active' => false]);
         }
 
         $data = [
@@ -358,15 +292,12 @@ class OAuthService
             $data['exp'] = (int)$claims['exp'];
         }
 
-        return [
-            'ok' => true,
-            'data' => $data,
-        ];
+        return ServiceResult::success($data);
     }
 
-    public function consentInfo(Request $request): array
+    public function consentInfo(Request $request): ServiceResult
     {
-        $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
+        $user = $this->auth->userBySession($request->cookies->getValue('sso_session', ''));
         if (!$user) {
             return $this->oauthFail(401, 'login_required', 'no active session');
         }
@@ -384,25 +315,22 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
         }
 
-        $granted = Yii::$app->db->createCommand(
+        $granted = ApplicationRuntime::db()->createCommand(
             'SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id',
             [':user_id' => $user->id, ':client_id' => $client->client_id]
         )->queryScalar();
 
-        return [
-            'ok' => true,
-            'data' => [
+        return ServiceResult::success([
                 'client_id' => $client->client_id,
                 'client_name' => $client->name,
                 'requested_scopes' => $this->splitScopes($scope),
                 'granted_scopes' => $this->splitScopes($granted === false ? '' : (string)$granted),
-            ],
-        ];
+        ]);
     }
 
     public function listUserConsents(string $userId): array
     {
-        $rows = Yii::$app->db->createCommand(
+        $rows = ApplicationRuntime::db()->createCommand(
             'SELECT c.client_id, c.scopes, c.granted_at, c.updated_at, oc.name AS client_name
              FROM user_consents c
              JOIN oauth_clients oc ON oc.client_id = c.client_id
@@ -424,9 +352,9 @@ class OAuthService
 
     public function revokeUserConsent(string $userId, string $clientId): bool
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $deleted = Yii::$app->db->createCommand()->delete('user_consents', [
+            $deleted = ApplicationRuntime::db()->createCommand()->delete('user_consents', [
                 'user_id' => $userId,
                 'client_id' => $clientId,
             ])->execute();
@@ -447,9 +375,9 @@ class OAuthService
         }
     }
 
-    public function grantConsent(Request $request, array $body): array
+    public function grantConsent(Request $request, array $body): ServiceResult
     {
-        $user = (new AuthService())->userBySession($request->cookies->getValue('sso_session', ''));
+        $user = $this->auth->userBySession($request->cookies->getValue('sso_session', ''));
         if (!$user) {
             return $this->oauthFail(401, 'login_required', 'no active session');
         }
@@ -467,9 +395,9 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_scope', 'requested scope is not allowed for this client');
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $existing = Yii::$app->db->createCommand(
+            $existing = ApplicationRuntime::db()->createCommand(
                 'SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id FOR UPDATE',
                 [':user_id' => $user->id, ':client_id' => $client->client_id]
             )->queryScalar();
@@ -477,7 +405,7 @@ class OAuthService
                 $this->splitScopes($existing === false ? '' : (string)$existing),
                 $this->splitScopes($scope)
             )));
-            Yii::$app->db->createCommand(
+            ApplicationRuntime::db()->createCommand(
                 'INSERT INTO user_consents(user_id, client_id, scopes) VALUES (:user_id, :client_id, :scopes)
                  ON CONFLICT (user_id, client_id) DO UPDATE SET scopes = :scopes, updated_at = now()',
                 [':user_id' => $user->id, ':client_id' => $client->client_id, ':scopes' => $scopes]
@@ -491,13 +419,13 @@ class OAuthService
             return $this->oauthFail(500, 'server_error', 'consent could not be persisted');
         }
 
-        return ['ok' => true];
+        return ServiceResult::success(['status' => 'granted']);
     }
 
-    public function logout(Request $request): array
+    public function logout(Request $request): ServiceResult
     {
         $sessionToken = $request->cookies->getValue('sso_session', '');
-        $user = (new AuthService())->userBySession($sessionToken);
+        $user = $this->auth->userBySession($sessionToken);
         $hint = $this->logoutParameter($request, 'id_token_hint');
         $redirect = $this->logoutParameter($request, 'post_logout_redirect_uri');
         $state = $this->logoutParameter($request, 'state');
@@ -506,7 +434,7 @@ class OAuthService
         $hintClaims = null;
 
         if ($hint !== '') {
-            $hintClaims = (new OidcService())->verifyIdTokenHint($hint);
+            $hintClaims = $this->oidc->verifyIdTokenHint($hint);
             if ($hintClaims) {
                 $subject = (string)$hintClaims['sub'];
                 $client = OAuthClient::findOne(['client_id' => (string)$hintClaims['aud'], 'enabled' => true]);
@@ -533,7 +461,7 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_request', 'invalid state');
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if ($sessionToken !== '') {
                 Session::updateAll(
@@ -560,7 +488,7 @@ class OAuthService
         }
 
         if ($client && $client->backchannel_logout_uri && $subject !== '') {
-            (new OidcService())->sendBackchannelLogout(
+            $this->oidc->sendBackchannelLogout(
                 $subject,
                 $client->client_id,
                 (string)$client->backchannel_logout_uri
@@ -568,7 +496,7 @@ class OAuthService
         }
 
         if ($redirect === '') {
-            return ['ok' => true, 'data' => ['status' => 'logged_out']];
+            return ServiceResult::success(['status' => 'logged_out']);
         }
 
         if ($state !== '') {
@@ -578,7 +506,7 @@ class OAuthService
             }
         }
 
-        return ['ok' => true, 'redirect' => $redirect];
+        return ServiceResult::success([], 302, ['redirect' => $redirect]);
     }
 
     private function authorizeRedirectError(
@@ -586,18 +514,18 @@ class OAuthService
         string $state,
         string $error,
         string $description
-    ): array {
+    ): ServiceResult {
         $redirect = $this->withQueryParameters($redirectUri, [
             'error' => $error,
             'error_description' => $description,
             'state' => $state,
-            'iss' => (string)Yii::$app->params['issuer'],
+            'iss' => (string)ApplicationRuntime::param('issuer'),
         ]);
         if ($redirect === null) {
             return $this->oauthFail(400, $error, $description);
         }
 
-        return ['ok' => true, 'redirect' => $redirect];
+        return ServiceResult::success([], 302, ['redirect' => $redirect]);
     }
 
     private function redirectUriAllowed(OAuthClient $client, string $requested): bool
@@ -676,11 +604,11 @@ class OAuthService
         return $base . '?' . implode('&', $parts) . $fragment;
     }
 
-    private function authorizationCodeToken(Request $request, OAuthClient $client): array
+    private function authorizationCodeToken(Request $request, OAuthClient $client): ServiceResult
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $code = Yii::$app->db->createCommand(
+            $code = ApplicationRuntime::db()->createCommand(
                 'SELECT id, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, created_at
                  FROM oauth_authorization_codes
                  WHERE code_hash = :code_hash AND used_at IS NULL AND expires_at > now()
@@ -694,7 +622,7 @@ class OAuthService
                 $transaction->rollBack();
                 return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
             }
-            $consumed = Yii::$app->db->createCommand()->update(
+            $consumed = ApplicationRuntime::db()->createCommand()->update(
                 'oauth_authorization_codes',
                 ['used_at' => new Expression('now()')],
                 ['id' => $code['id'], 'used_at' => null]
@@ -720,15 +648,15 @@ class OAuthService
         }
     }
 
-    private function refreshToken(Request $request, OAuthClient $client): array
+    private function refreshToken(Request $request, OAuthClient $client): ServiceResult
     {
         $refreshToken = (string)$request->post('refresh_token');
         if ($refreshToken === '') {
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
-        $oldId = Yii::$app->db->createCommand(
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        $oldId = ApplicationRuntime::db()->createCommand(
             'SELECT id FROM refresh_tokens WHERE token_hash = :hash AND client_id = :client_id FOR UPDATE',
             [':hash' => hash('sha256', $refreshToken), ':client_id' => $client->client_id]
         )->queryScalar();
@@ -791,7 +719,7 @@ class OAuthService
         }
     }
 
-    private function clientCredentialsToken(Request $request, OAuthClient $client): array
+    private function clientCredentialsToken(Request $request, OAuthClient $client): ServiceResult
     {
         if ($client->type !== OAuthClient::TYPE_CONFIDENTIAL) {
             return $this->oauthFail(401, 'invalid_client', 'client authentication failed');
@@ -803,9 +731,9 @@ class OAuthService
         }
 
         $claims = [
-            'iss' => Yii::$app->params['issuer'],
+            'iss' => ApplicationRuntime::param('issuer'),
             'client_id' => $client->client_id,
-            'aud' => Yii::$app->params['apiAudience'],
+            'aud' => ApplicationRuntime::param('apiAudience'),
             'username' => $client->client_id,
             'email' => '',
             'source' => 'client',
@@ -814,18 +742,18 @@ class OAuthService
         if ($scope !== '') {
             $claims['scope'] = $scope;
         }
-        $token = (new JwtService())->issue($client->id, $claims);
+        $token = $this->jwt->issue($client->id, $claims);
 
         $data = [
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'expires_in' => Yii::$app->params['accessTokenTtl'],
+            'expires_in' => ApplicationRuntime::param('accessTokenTtl'),
         ];
         if ($scope !== '') {
             $data['scope'] = $scope;
         }
 
-        return ['ok' => true, 'data' => $data];
+        return ServiceResult::success($data);
     }
 
     private function tokenResponse(
@@ -835,12 +763,12 @@ class OAuthService
         string $nonce,
         ?string $familyId,
         int $authTime
-    ): array {
+    ): ServiceResult {
         $user = User::findOne(['id' => $userId]);
         $claims = [
-            'iss' => Yii::$app->params['issuer'],
+            'iss' => ApplicationRuntime::param('issuer'),
             'client_id' => $client->client_id,
-            'aud' => Yii::$app->params['apiAudience'],
+            'aud' => ApplicationRuntime::param('apiAudience'),
             'username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
             'source' => $user ? $user->source : '',
@@ -848,16 +776,16 @@ class OAuthService
         if ($scope !== '') {
             $claims['scope'] = $scope;
         }
-        $accessToken = (new JwtService())->issue($userId, $claims);
-        $refreshToken = (new AuthService())->randomToken(32);
+        $accessToken = $this->jwt->issue($userId, $claims);
+        $refreshToken = $this->auth->randomToken(32);
 
         $rt = new RefreshToken();
         $rt->token_hash = hash('sha256', $refreshToken);
-        $rt->family_id = $familyId ?: Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
+        $rt->family_id = $familyId ?: ApplicationRuntime::db()->createCommand('SELECT gen_random_uuid()')->queryScalar();
         $rt->user_id = $userId;
         $rt->client_id = $client->client_id;
         $rt->scope = $scope;
-        $rt->expires_at = gmdate('Y-m-d H:i:sP', time() + Yii::$app->params['refreshTokenTtl']);
+        $rt->expires_at = gmdate('Y-m-d H:i:sP', time() + (int)ApplicationRuntime::param('refreshTokenTtl'));
         if (!$rt->save(false)) {
             throw new \RuntimeException('failed to persist refresh token');
         }
@@ -865,13 +793,13 @@ class OAuthService
         $data = [
             'access_token' => $accessToken,
             'token_type' => 'Bearer',
-            'expires_in' => Yii::$app->params['accessTokenTtl'],
+            'expires_in' => ApplicationRuntime::param('accessTokenTtl'),
             'refresh_token' => $refreshToken,
             'scope' => $scope,
         ];
 
         if (in_array('openid', preg_split('/\s+/', trim($scope)), true)) {
-            $data['id_token'] = (new OidcService())->issueIdToken(
+            $data['id_token'] = $this->oidc->issueIdToken(
                 $userId,
                 $client->client_id,
                 $nonce,
@@ -879,7 +807,7 @@ class OAuthService
             );
         }
 
-        return ['ok' => true, 'data' => $data];
+        return ServiceResult::success($data);
     }
 
     private function revokeRefreshFamily(string $familyId, OAuthClient $client): void
@@ -959,7 +887,7 @@ class OAuthService
 
     private function backchannelLogoutUriIsSafe(string $uri): bool
     {
-        return $uri === '' || (new OutboundHttpService())->isValidEndpoint($uri);
+        return $uri === '' || $this->outboundHttp->isValidEndpoint($uri);
     }
 
     private function redirectUrisAreSafe(OAuthClient $client): bool
@@ -1011,7 +939,7 @@ class OAuthService
 
     private function hasConsent(string $userId, string $clientId, string $scope): bool
     {
-        $row = Yii::$app->db->createCommand('SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id', [
+        $row = ApplicationRuntime::db()->createCommand('SELECT scopes FROM user_consents WHERE user_id = :user_id AND client_id = :client_id', [
             ':user_id' => $userId,
             ':client_id' => $clientId,
         ])->queryOne();
@@ -1040,16 +968,16 @@ class OAuthService
         );
     }
 
-    private function oauthFail(int $status, string $error, string $description): array
+    private function oauthFail(int $status, string $error, string $description): ServiceResult
     {
-        return ['ok' => false, 'status' => $status, 'error' => $error, 'description' => $description];
+        return ServiceResult::failure(new ServiceError($error, $description, $status));
     }
 
     private function authenticateRawAccessToken(string $token): bool
     {
         $request = new Request();
         $request->headers->set('Authorization', 'Bearer ' . $token);
-        $authentication = (new AuthService())->authenticate($request);
+        $authentication = $this->auth->authenticate($request);
         return !empty($authentication['user']) || !empty($authentication['client']);
     }
 }

@@ -2,7 +2,7 @@
 
 namespace app\components;
 
-final class GoJson
+final class JsonStream
 {
     public static function firstValue(string $rawBody): string
     {
@@ -38,7 +38,7 @@ final class GoJson
             } elseif ($character === '}' || $character === ']') {
                 $depth--;
                 if ($depth === 0) {
-                    // json.Decoder.Decode читает только первое значение JSON-потока.
+                    // Контракт API допускает только первое значение JSON-потока.
                     return substr($value, 0, $index + 1);
                 }
             }

@@ -4,7 +4,7 @@ namespace app\services;
 
 use yii\db\Connection;
 
-class CutoverCheckService
+class DeploymentCheckService
 {
     public const PASS = 'PASS';
     public const WARN = 'WARN';
@@ -65,7 +65,7 @@ class CutoverCheckService
         $results[] = $this->result(
             $isProduction ? self::PASS : self::WARN,
             'config.environment',
-            $isProduction ? 'SSO_ENV is prod' : 'SSO_ENV is not prod; this is only a rehearsal'
+            $isProduction ? 'SSO_ENV is prod' : 'SSO_ENV is not prod; this is a non-production check'
         );
 
         foreach (['SSO_DATABASE_URL', 'SSO_ISSUER', 'SSO_JWT_SECRET', 'SSO_ENCRYPTION_KEY'] as $name) {
@@ -102,14 +102,14 @@ class CutoverCheckService
             $isProduction && !$httpsIssuer ? 'production SSO_ISSUER must use HTTPS' : 'issuer scheme is suitable for the environment'
         );
 
-        $expectedIssuer = rtrim(trim((string)($this->environment['SSO_CUTOVER_EXPECTED_ISSUER'] ?? '')), '/');
+        $expectedIssuer = rtrim(trim((string)($this->environment['SSO_DEPLOYMENT_EXPECTED_ISSUER'] ?? '')), '/');
         if ($expectedIssuer === '') {
-            $results[] = $this->result(self::WARN, 'config.issuer_match', 'SSO_CUTOVER_EXPECTED_ISSUER is not set; Go issuer was not compared');
+            $results[] = $this->result(self::WARN, 'config.issuer_match', 'SSO_DEPLOYMENT_EXPECTED_ISSUER is not set');
         } else {
             $results[] = $this->result(
                 hash_equals($expectedIssuer, $issuer) ? self::PASS : self::FAIL,
                 'config.issuer_match',
-                hash_equals($expectedIssuer, $issuer) ? 'PHP issuer matches the expected Go issuer' : 'PHP issuer differs from the expected Go issuer'
+                hash_equals($expectedIssuer, $issuer) ? 'issuer matches the deployment expectation' : 'issuer differs from the deployment expectation'
             );
         }
 
@@ -269,8 +269,6 @@ class CutoverCheckService
             ['oidc_signing_keys', 'id', 'private_key_pem'],
         ];
         $checked = 0;
-        $legacyPhp = 0;
-        $plaintext = 0;
 
         foreach ($sources as [$table, $idColumn, $secretColumn]) {
             $rows = $this->db->createCommand(
@@ -288,35 +286,14 @@ class CutoverCheckService
                         'cannot decrypt ' . $table . ' secret for id ' . (string)$row['id']
                     )];
                 }
-                if (strpos($secret, 'v1:') === 0) {
-                    $legacyPhp++;
-                } elseif (strpos($secret, 'enc:v1:') !== 0) {
-                    $plaintext++;
-                }
             }
         }
 
-        $results = [$this->result(
+        return [$this->result(
             self::PASS,
             'secrets.decrypt',
             $checked === 0 ? 'no encrypted secrets are stored' : 'all ' . $checked . ' stored secrets are decryptable'
         )];
-        if ($legacyPhp > 0) {
-            $results[] = $this->result(
-                self::FAIL,
-                'secrets.legacy_php_format',
-                $legacyPhp . ' secrets use the PHP-only v1 format and block safe Go rollback'
-            );
-        }
-        if ($plaintext > 0) {
-            $results[] = $this->result(
-                self::WARN,
-                'secrets.plaintext',
-                $plaintext . ' legacy secrets are stored as plaintext'
-            );
-        }
-
-        return $results;
     }
 
     private function result(string $status, string $check, string $message): array

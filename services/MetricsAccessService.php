@@ -2,14 +2,13 @@
 
 namespace app\services;
 
-use Yii;
 use yii\web\Request;
 
 class MetricsAccessService
 {
     public function allowed(Request $request): bool
     {
-        $configuredToken = (string)(Yii::$app->params['metricsBearerToken'] ?? '');
+        $configuredToken = (string)ApplicationRuntime::param('metricsBearerToken', '');
         $authorization = (string)$request->headers->get('Authorization', '');
         if (
             $configuredToken !== '' && stripos($authorization, 'Bearer ') === 0
@@ -18,7 +17,7 @@ class MetricsAccessService
             return true;
         }
 
-        foreach (array_filter(array_map('trim', explode(',', (string)(Yii::$app->params['metricsAllowedCidrs'] ?? '')))) as $cidr) {
+        foreach (array_filter(array_map('trim', explode(',', (string)ApplicationRuntime::param('metricsAllowedCidrs', '')))) as $cidr) {
             if ($this->contains($cidr, (string)$request->userIP)) {
                 return true;
             }

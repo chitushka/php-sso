@@ -39,7 +39,7 @@ Test behavior against the repository's own API contract and OAuth/OIDC standards
 
 ## Documentation and Planning
 
-`PLAN.md` is the single active backlog and must contain only incomplete or explicitly deferred work. Update it when a finding is fixed or invalidated. Keep `ARCHITECTURE.md`, `README.md` and `ENDPOINT_CONTRACTS.md` aligned with every important functional change. `MIGRATION_NOTES.md` describes deployment and database upgrade operations only.
+`PLAN.md` is the single active backlog and must contain only incomplete or explicitly deferred work. Update it when a finding is fixed or invalidated. Keep `ARCHITECTURE.md` and `README.md` aligned with every important functional change. `README.md` owns setup, configuration and operational runbooks; `ARCHITECTURE.md` owns stable system boundaries, the security model and the documented HTTP/API contract. Keep root documentation limited to `README.md`, `PLAN.md`, `AGENTS.md` and `ARCHITECTURE.md`.
 
 ## Security & Configuration
 

@@ -1,4 +1,4 @@
-.PHONY: build build-test runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external ci cutover-check cutover-rewrap-dry-run cutover-rewrap cutover-rotate-key-dry-run cutover-rotate-key cutover-generate-local-key cutover-configure-local-secure-runtime cutover-rehearse-rollback cutover-maintenance-on cutover-maintenance-off cutover-smoke cutover-smoke-authenticated cutover-smoke-authenticated-local cutover-smoke-local
+.PHONY: build build-test runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external ci deployment-check encryption-key-rotate-dry-run encryption-key-rotate local-encryption-key-generate local-secure-runtime-configure backup-restore-test maintenance-on maintenance-off smoke smoke-authenticated smoke-authenticated-local smoke-local
 
 TEST_RUN = docker compose --profile test run --rm test
 TEST_RUN_NODEPS = docker compose --profile test run --rm --no-deps test
@@ -81,44 +81,38 @@ integration-ldap-external:
 
 ci: build build-test runtime-check quality migration-check unit phpunit-integration coverage integration integration-client integration-broker integration-ldap audit
 
-cutover-check:
-	docker compose run --rm app php yii cutover/check
+deployment-check:
+	docker compose run --rm app php yii deployment/check
 
-cutover-rewrap-dry-run:
-	docker compose run --rm app php yii cutover/rewrap-secrets
+encryption-key-rotate-dry-run:
+	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii deployment/rotate-encryption-key
 
-cutover-rewrap:
-	docker compose run --rm app php yii cutover/rewrap-secrets --apply=1
+encryption-key-rotate:
+	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii deployment/rotate-encryption-key --apply=1
 
-cutover-rotate-key-dry-run:
-	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii cutover/rotate-encryption-key
+local-encryption-key-generate:
+	docker compose run --rm app php yii deployment/generate-local-encryption-key
 
-cutover-rotate-key:
-	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii cutover/rotate-encryption-key --apply=1
+local-secure-runtime-configure:
+	docker compose run --rm app php yii deployment/configure-local-secure-runtime
 
-cutover-generate-local-key:
-	docker compose run --rm app php yii cutover/generate-local-encryption-key
+backup-restore-test:
+	docker compose --profile operations run --rm backup-restore-test
 
-cutover-configure-local-secure-runtime:
-	docker compose run --rm app php yii cutover/configure-local-secure-runtime
+maintenance-on:
+	docker compose --profile operations run --rm maintenance-on
 
-cutover-rehearse-rollback:
-	docker compose --profile cutover run --rm rollback-rehearsal
+maintenance-off:
+	docker compose --profile operations run --rm maintenance-off
 
-cutover-maintenance-on:
-	docker compose --profile cutover run --rm maintenance-on
+smoke:
+	docker compose --profile test run --rm --no-deps test php tests/Integration/deployment_smoke.php
 
-cutover-maintenance-off:
-	docker compose --profile cutover run --rm maintenance-off
+smoke-authenticated:
+	docker compose --profile test run --rm --no-deps test php tests/Integration/deployment_authenticated_smoke.php
 
-cutover-smoke:
-	docker compose --profile test run --rm --no-deps test php tests/Integration/cutover_smoke.php
+smoke-authenticated-local:
+	docker compose --profile test run --rm --no-deps test php tests/Integration/deployment_authenticated_smoke_local.php
 
-cutover-smoke-authenticated:
-	docker compose --profile test run --rm --no-deps test php tests/Integration/cutover_authenticated_smoke.php
-
-cutover-smoke-authenticated-local:
-	docker compose --profile test run --rm --no-deps test php tests/Integration/cutover_authenticated_smoke_local.php
-
-cutover-smoke-local:
-	docker compose --profile test run --rm --no-deps -e SSO_TEST_BASE_URL=https://https-proxy:8443 -e SSO_TEST_EXPECTED_ISSUER=https://localhost:8443 -e SSO_TEST_TLS_INSECURE=true test php tests/Integration/cutover_smoke.php
+smoke-local:
+	docker compose --profile test run --rm --no-deps -e SSO_TEST_BASE_URL=https://https-proxy:8443 -e SSO_TEST_EXPECTED_ISSUER=https://localhost:8443 -e SSO_TEST_TLS_INSECURE=true test php tests/Integration/deployment_smoke.php

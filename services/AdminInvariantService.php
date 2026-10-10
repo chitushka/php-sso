@@ -3,7 +3,6 @@
 namespace app\services;
 
 use app\models\User;
-use Yii;
 
 class AdminInvariantService
 {
@@ -11,7 +10,7 @@ class AdminInvariantService
 
     public function lock(): void
     {
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'SELECT pg_advisory_xact_lock(:lock_id)',
             [':lock_id' => self::LOCK_ID]
         )->queryScalar();
@@ -19,7 +18,7 @@ class AdminInvariantService
 
     public function userIsActiveAdmin(string $userId): bool
     {
-        return (bool)Yii::$app->db->createCommand(
+        return (bool)ApplicationRuntime::db()->createCommand(
             "SELECT EXISTS(
                 SELECT 1
                 FROM users u
@@ -47,7 +46,7 @@ class AdminInvariantService
 
     public function hasActiveAdmin(): bool
     {
-        return (bool)Yii::$app->db->createCommand(
+        return (bool)ApplicationRuntime::db()->createCommand(
             "SELECT EXISTS(
                 SELECT 1
                 FROM users u

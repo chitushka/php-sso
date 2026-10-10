@@ -6,7 +6,7 @@ class m260907_000001_init_sso_schema extends Migration
 {
     public function safeUp()
     {
-        // Базовая схема собрана из Go-миграций 000001-000010.
+        // Базовая схема новой установки SSO.
         $this->db->pdo->exec(<<<'SQL'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

@@ -2,20 +2,24 @@
 
 namespace app\controllers;
 
-use app\services\RbacService;
+use app\services\GroupService;
 use Yii;
+use yii\base\Module;
 
 class GroupsController extends ApiController
 {
-    private function service(): RbacService
+    private GroupService $groups;
+
+    public function __construct(string $id, Module $module, GroupService $groups, array $config = [])
     {
-        return new RbacService();
+        $this->groups = $groups;
+        parent::__construct($id, $module, $config);
     }
 
     public function actionIndex(): array
     {
         $auth = $this->requirePermission('groups', 'read');
-        return is_array($auth) ? $auth : $this->service()->listGroups();
+        return is_array($auth) ? $auth : $this->groups->list();
     }
 
     public function actionCreate(): array
@@ -26,7 +30,7 @@ class GroupsController extends ApiController
         }
 
         $fields = ['code', 'name', 'description'];
-        $result = $this->service()->createGroup($this->body($fields, array_fill_keys($fields, 'string')));
+        $result = $this->groups->create($this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -44,7 +48,7 @@ class GroupsController extends ApiController
         $groupID = $this->canonicalUuid($groupID);
 
         $fields = ['name', 'description'];
-        $result = $this->service()->updateGroup($groupID, $this->body($fields, array_fill_keys($fields, 'string')));
+        $result = $this->groups->update($groupID, $this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -61,7 +65,7 @@ class GroupsController extends ApiController
         }
         $groupID = $this->canonicalUuid($groupID);
 
-        $result = $this->service()->deleteGroup($groupID);
+        $result = $this->groups->delete($groupID);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -78,7 +82,7 @@ class GroupsController extends ApiController
         }
         $groupID = $this->canonicalUuid($groupID);
 
-        return $this->service()->listGroupRoles($groupID);
+        return $this->groups->listRoles($groupID);
     }
 
     public function actionAssignRole(string $groupID): array
@@ -95,7 +99,7 @@ class GroupsController extends ApiController
 
         $roleId = (string)($this->body(['role_id'], ['role_id' => 'uuid'])['role_id'] ?? '');
 
-        $this->service()->assignRoleToGroup($groupID, $roleId);
+        $this->groups->assignRole($groupID, $roleId);
         return ['status' => 'assigned'];
     }
 
@@ -115,7 +119,7 @@ class GroupsController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        return $this->service()->removeRoleFromGroup($groupID, $roleID)
+        return $this->groups->removeRole($groupID, $roleID)
             ? ['status' => 'removed']
             : $this->fail(409, 'at least one active administrator is required');
     }
@@ -132,7 +136,7 @@ class GroupsController extends ApiController
         }
         $userID = $this->canonicalUuid($userID);
 
-        return $this->service()->listUserGroups($userID);
+        return $this->groups->listForUser($userID);
     }
 
     public function actionAssignUserGroup(string $userID): array
@@ -149,7 +153,7 @@ class GroupsController extends ApiController
 
         $groupId = (string)($this->body(['group_id'], ['group_id' => 'uuid'])['group_id'] ?? '');
 
-        $this->service()->assignGroupToUser($userID, $groupId);
+        $this->groups->assignToUser($userID, $groupId);
         return ['status' => 'assigned'];
     }
 
@@ -169,7 +173,7 @@ class GroupsController extends ApiController
         }
         $groupID = $this->canonicalUuid($groupID);
 
-        return $this->service()->removeGroupFromUser($userID, $groupID)
+        return $this->groups->removeFromUser($userID, $groupID)
             ? ['status' => 'removed']
             : $this->fail(409, 'at least one active administrator is required');
     }

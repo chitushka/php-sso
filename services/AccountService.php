@@ -6,7 +6,6 @@ use app\models\OneTimeToken;
 use app\models\RefreshToken;
 use app\models\Session;
 use app\models\User;
-use Yii;
 use yii\db\Expression;
 
 class AccountService
@@ -31,7 +30,7 @@ class AccountService
             return;
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $token = $this->createToken($user, OneTimeToken::PURPOSE_PASSWORD_RESET, self::RESET_TTL);
             AuditService::record($user->id, 'password_reset_requested', 'user', $user->id, true);
@@ -59,7 +58,7 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => $passwordError]];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $user = $this->consumeToken(OneTimeToken::PURPOSE_PASSWORD_RESET, $token);
             if (!$user || $user->source !== User::SOURCE_LOCAL) {
@@ -103,7 +102,7 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'current password is incorrect']];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $user->password_hash = PasswordHasher::hash($newPassword);
             $user->tokens_invalid_before = new Expression('now()');
@@ -175,7 +174,7 @@ class AccountService
             return ['status' => 400, 'data' => ['error' => 'email already verified']];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $token = $this->createToken($user, OneTimeToken::PURPOSE_EMAIL_VERIFY, self::VERIFY_TTL);
             AuditService::record($user->id, 'email_verification_requested', 'user', $user->id);
@@ -202,7 +201,7 @@ class AccountService
 
     public function verifyEmail(string $token): array
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $user = $this->consumeToken(OneTimeToken::PURPOSE_EMAIL_VERIFY, $token);
             if (!$user) {
@@ -253,7 +252,7 @@ class AccountService
             return null;
         }
 
-        $userId = Yii::$app->db->createCommand(
+        $userId = ApplicationRuntime::db()->createCommand(
             'UPDATE one_time_tokens SET used_at = now() WHERE purpose = :purpose AND token_hash = :hash AND used_at IS NULL AND expires_at > now() RETURNING user_id',
             [
                 ':purpose' => $purpose,
@@ -266,6 +265,6 @@ class AccountService
 
     private function issuerUrl(string $path): string
     {
-        return rtrim((string)Yii::$app->params['issuer'], '/') . $path;
+        return rtrim((string)ApplicationRuntime::param('issuer'), '/') . $path;
     }
 }

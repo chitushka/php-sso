@@ -2,8 +2,6 @@
 
 namespace app\services;
 
-use Yii;
-
 class OutboundHttpService
 {
     private const DEFAULT_MAX_RESPONSE_BYTES = 1048576;
@@ -95,7 +93,7 @@ class OutboundHttpService
                     'method' => strtoupper($method),
                     'header' => implode("\r\n", $headers),
                     'content' => $body ?? '',
-                    'timeout' => max(1, (int)(Yii::$app->params['outboundConnectTimeout'] ?? 5)),
+                    'timeout' => max(1, (int)ApplicationRuntime::param('outboundConnectTimeout', 5)),
                     'ignore_errors' => true,
                     'follow_location' => 0,
                     'max_redirects' => 0,
@@ -113,8 +111,11 @@ class OutboundHttpService
                 continue;
             }
             try {
-                stream_set_timeout($stream, max(1, (int)(Yii::$app->params['outboundReadTimeout'] ?? 10)));
-                $limit = max(1, (int)(Yii::$app->params['outboundMaxResponseBytes'] ?? self::DEFAULT_MAX_RESPONSE_BYTES));
+                stream_set_timeout($stream, max(1, (int)ApplicationRuntime::param('outboundReadTimeout', 10)));
+                $limit = max(
+                    1,
+                    (int)ApplicationRuntime::param('outboundMaxResponseBytes', self::DEFAULT_MAX_RESPONSE_BYTES)
+                );
                 $raw = stream_get_contents($stream, $limit + 1);
                 $metadata = stream_get_meta_data($stream);
                 if ($raw === false || strlen($raw) > $limit || !empty($metadata['timed_out'])) {
@@ -175,7 +176,7 @@ class OutboundHttpService
 
     private function isAllowlisted(string $host): bool
     {
-        $configured = (string)(Yii::$app->params['outboundHostAllowlist'] ?? '');
+        $configured = (string)ApplicationRuntime::param('outboundHostAllowlist', '');
         $hosts = array_filter(array_map(function (string $value): string {
             return $this->normalizeHost($value);
         }, explode(',', $configured)));

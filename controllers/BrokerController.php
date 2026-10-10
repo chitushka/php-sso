@@ -4,11 +4,31 @@ namespace app\controllers;
 
 use app\services\BrokerService;
 use app\services\MetricsService;
+use app\services\IdentityProviderAdminService;
 use Yii;
+use yii\base\Module;
 use yii\web\Response;
 
 class BrokerController extends ApiController
 {
+    private BrokerService $broker;
+    private MetricsService $metrics;
+    private IdentityProviderAdminService $providers;
+
+    public function __construct(
+        string $id,
+        Module $module,
+        BrokerService $broker,
+        MetricsService $metrics,
+        IdentityProviderAdminService $providers,
+        array $config = []
+    ) {
+        $this->broker = $broker;
+        $this->metrics = $metrics;
+        $this->providers = $providers;
+        parent::__construct($id, $module, $config);
+    }
+
     private const PROVIDER_FIELDS = [
         'id',
         'code',
@@ -43,15 +63,15 @@ class BrokerController extends ApiController
 
     public function actionPublicProviders(): array
     {
-        return (new BrokerService())->publicProviders();
+        return $this->providers->publicProviders();
     }
 
     public function actionLogin(string $providerCode): Response
     {
         $continue = (string)Yii::$app->request->get('continue', '/');
-        $redirect = (new BrokerService())->start($providerCode, $continue);
+        $redirect = $this->broker->start($providerCode, $continue);
         if (!$redirect) {
-            (new MetricsService())->event('provider', 'failure');
+            $this->metrics->event('provider', 'failure');
             Yii::$app->response->statusCode = 404;
             Yii::$app->response->format = Response::FORMAT_JSON;
             Yii::$app->response->data = ['error' => 'unknown identity provider'];
@@ -64,26 +84,26 @@ class BrokerController extends ApiController
     public function actionCallback(string $providerCode): Response
     {
         if ((string)Yii::$app->request->get('error', '') !== '') {
-            (new MetricsService())->event('provider', 'failure');
+            $this->metrics->event('provider', 'failure');
             return Yii::$app->response->redirect('/login?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
         }
 
-        $result = (new BrokerService())->callback(
+        $result = $this->broker->callback(
             $providerCode,
             (string)Yii::$app->request->get('state', ''),
             (string)Yii::$app->request->get('code', '')
         );
-        if (!$result['ok']) {
-            (new MetricsService())->event('provider', 'failure');
+        if (!$result->isSuccess()) {
+            $this->metrics->event('provider', 'failure');
             return Yii::$app->response->redirect('/login?broker_error=failed', 302);
         }
 
-        (new MetricsService())->event('provider', 'success');
+        $this->metrics->event('provider', 'success');
 
-        Yii::$app->response->cookies->add($result['cookie']);
-        Yii::$app->response->cookies->add($result['csrf_cookie']);
+        Yii::$app->response->cookies->add($result->metadata['cookie']);
+        Yii::$app->response->cookies->add($result->metadata['csrf_cookie']);
 
-        return Yii::$app->response->redirect($result['continue'], 302);
+        return Yii::$app->response->redirect($result->data['continue'], 302);
     }
 
     public function actionListProviders(): array
@@ -93,7 +113,7 @@ class BrokerController extends ApiController
             return $user;
         }
 
-        return (new BrokerService())->listProviders();
+        return $this->providers->list();
     }
 
     public function actionCreateProvider(): array
@@ -103,7 +123,7 @@ class BrokerController extends ApiController
             return $user;
         }
 
-        $result = (new BrokerService())->createProvider(
+        $result = $this->providers->create(
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES)
         );
         Yii::$app->response->statusCode = $result['status'];
@@ -122,7 +142,7 @@ class BrokerController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $result = (new BrokerService())->updateProvider(
+        $result = $this->providers->update(
             $id,
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES)
         );
@@ -142,7 +162,7 @@ class BrokerController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $result = (new BrokerService())->deleteProvider($id);
+        $result = $this->providers->delete($id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }

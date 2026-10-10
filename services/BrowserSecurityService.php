@@ -2,7 +2,6 @@
 
 namespace app\services;
 
-use Yii;
 use yii\web\Request;
 
 class BrowserSecurityService
@@ -39,7 +38,10 @@ class BrowserSecurityService
         }
 
         $origin = trim((string)$request->headers->get('Origin', ''));
-        return $origin === '' || hash_equals($this->origin((string)Yii::$app->params['issuer']), $this->origin($origin));
+        return $origin === '' || hash_equals(
+            $this->origin((string)ApplicationRuntime::param('issuer')),
+            $this->origin($origin)
+        );
     }
 
     private function origin(string $url): string

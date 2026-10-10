@@ -66,7 +66,7 @@ if ($production) {
 }
 
 return [
-    'version' => '0.1.0-port',
+    'version' => '1.0.0',
     'environment' => $environment,
     'issuer' => $issuer,
     'apiAudience' => $audience,

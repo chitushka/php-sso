@@ -8,7 +8,7 @@ use yii\web\BadRequestHttpException;
 
 class JsonParserTest extends TestCase
 {
-    public function testParsesJsonObjectAndNullLikeGoStructDecoder(): void
+    public function testParsesJsonObjectAndNullLikeApiContract(): void
     {
         $parser = new JsonParser();
 

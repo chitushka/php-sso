@@ -6,17 +6,105 @@ use app\models\OneTimeToken;
 use app\models\RefreshToken;
 use app\models\Session;
 use app\models\User;
-use Yii;
-use yii\db\Expression;
+use app\services\contracts\ClockInterface;
+use app\services\results\ServiceError;
+use app\services\results\ServiceResult;
 use yii\db\IntegrityException;
 
-class UserService
+final class UserService
 {
-    public function update(string $id, array $body): array
+    private AdminInvariantService $adminInvariant;
+    private ClockInterface $clock;
+
+    public function __construct(
+        ?AdminInvariantService $adminInvariant = null,
+        ?ClockInterface $clock = null
+    ) {
+        $this->adminInvariant = $adminInvariant ?? new AdminInvariantService();
+        $this->clock = $clock ?? new SystemClock();
+    }
+
+    public function list(int $limit, int $offset): ServiceResult
+    {
+        $users = User::find()
+            ->orderBy(['created_at' => SORT_DESC])
+            ->limit($limit)
+            ->offset($offset)
+            ->all();
+
+        return ServiceResult::success(array_map(static function (User $user): array {
+            return $user->publicData();
+        }, $users));
+    }
+
+    public function find(string $id): ServiceResult
+    {
+        $user = User::findOne(['id' => $id]);
+        return $user
+            ? ServiceResult::success($user->publicData())
+            : $this->failure('user_not_found', 'user not found', 404);
+    }
+
+    public function create(array $body): ServiceResult
+    {
+        $username = trim((string)($body['username'] ?? ''));
+        $email = User::normalizeEmail((string)($body['email'] ?? ''));
+        if ($username === '' || $email === '') {
+            return $this->failure('invalid_user', 'username and email are required', 400);
+        }
+
+        if (
+            User::find()->where(['username' => $username])->exists()
+            || User::find()->where(['email' => $email])->exists()
+        ) {
+            return $this->failure('user_conflict', 'user already exists', 409);
+        }
+
+        $password = (string)($body['password'] ?? '');
+        $passwordError = PasswordPolicy::validate($password);
+        if ($passwordError !== null) {
+            return $this->failure('invalid_password', $passwordError, 400);
+        }
+
+        $user = new User();
+        $this->fillUser($user, $body);
+        $user->email = $email;
+        $user->password_hash = PasswordHasher::hash($password);
+        $user->source = User::SOURCE_LOCAL;
+
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            if (!$user->save()) {
+                $transaction->rollBack();
+                return $this->failure(
+                    'invalid_user',
+                    'invalid user payload',
+                    400,
+                    ['details' => $user->errors]
+                );
+            }
+            AuditService::record(null, 'user_created', 'user', $user->id, true);
+            $transaction->commit();
+        } catch (IntegrityException $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->failure('user_conflict', 'user already exists', 409);
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->failure('user_create_failed', 'failed to create user', 500);
+        }
+
+        return ServiceResult::success($user->publicData(), 201);
+    }
+
+    public function update(string $id, array $body): ServiceResult
     {
         $user = User::findOne(['id' => $id]);
         if (!$user) {
-            return ['status' => 404, 'data' => ['error' => 'user not found']];
+            return $this->failure('user_not_found', 'user not found', 404);
         }
 
         $previousStatus = (string)$user->status;
@@ -26,15 +114,11 @@ class UserService
         $statusChanged = $previousStatus !== trim((string)($body['status'] ?? ''));
         $removesAdminAccess = $previousStatus === User::STATUS_ACTIVE
             && trim((string)($body['status'] ?? '')) !== User::STATUS_ACTIVE
-            && (new AdminInvariantService())->userIsActiveAdmin($id);
+            && $this->adminInvariant->userIsActiveAdmin($id);
 
-        $user->username = trim((string)($body['username'] ?? ''));
+        $this->fillUser($user, $body);
         $user->email = $nextEmail;
-        $user->status = trim((string)($body['status'] ?? ''));
-        $user->first_name = trim((string)($body['first_name'] ?? ''));
-        $user->last_name = trim((string)($body['last_name'] ?? ''));
-        $user->attributes = json_encode((array)($body['attributes'] ?? []));
-        $user->updated_at = new Expression('now()');
+        $user->updated_at = $this->databaseNow();
         if ($emailChanged) {
             $user->email_verified = false;
         }
@@ -42,21 +126,25 @@ class UserService
             User::find()->where(['username' => $user->username])->andWhere(['<>', 'id', $id])->exists()
             || User::find()->where(['email' => $user->email])->andWhere(['<>', 'id', $id])->exists()
         ) {
-            return ['status' => 409, 'data' => ['error' => 'username or email already exists']];
-        }
-        if ($statusChanged || $emailChanged) {
-            $this->revokeCredentials($user);
+            return $this->failure('user_conflict', 'username or email already exists', 409);
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $guard = new AdminInvariantService();
             if ($removesAdminAccess) {
-                $guard->lock();
+                $this->adminInvariant->lock();
+            }
+            if ($statusChanged || $emailChanged) {
+                $this->revokeCredentials($user);
             }
             if (!$user->save()) {
                 $transaction->rollBack();
-                return ['status' => 400, 'data' => ['error' => 'invalid user payload', 'details' => $user->errors]];
+                return $this->failure(
+                    'invalid_user',
+                    'invalid user payload',
+                    400,
+                    ['details' => $user->errors]
+                );
             }
 
             if ($emailChanged) {
@@ -66,9 +154,13 @@ class UserService
                 ]);
             }
 
-            if ($removesAdminAccess && !$guard->hasActiveAdmin()) {
+            if ($removesAdminAccess && !$this->adminInvariant->hasActiveAdmin()) {
                 $transaction->rollBack();
-                return ['status' => 409, 'data' => ['error' => 'at least one active administrator is required']];
+                return $this->failure(
+                    'last_administrator',
+                    'at least one active administrator is required',
+                    409
+                );
             }
 
             AuditService::record(null, 'user_updated', 'user', $id, true);
@@ -78,40 +170,43 @@ class UserService
             if ($transaction->isActive) {
                 $transaction->rollBack();
             }
-            return ['status' => 409, 'data' => ['error' => 'username or email already exists']];
+            return $this->failure('user_conflict', 'username or email already exists', 409);
         } catch (\Throwable $exception) {
             if ($transaction->isActive) {
                 $transaction->rollBack();
             }
-            return ['status' => 500, 'data' => ['error' => 'failed to update user']];
+            return $this->failure('user_update_failed', 'failed to update user', 500);
         }
 
-        return ['status' => 200, 'data' => $user->publicData()];
+        return ServiceResult::success($user->publicData());
     }
 
-    public function delete(string $id): array
+    public function delete(string $id): ServiceResult
     {
         $user = User::findOne(['id' => $id]);
         if (!$user) {
-            return ['status' => 404, 'data' => ['error' => 'user not found']];
+            return $this->failure('user_not_found', 'user not found', 404);
         }
 
-        $guard = new AdminInvariantService();
-        $removesAdminAccess = $guard->userIsActiveAdmin($id);
-        $transaction = Yii::$app->db->beginTransaction();
+        $removesAdminAccess = $this->adminInvariant->userIsActiveAdmin($id);
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if ($removesAdminAccess) {
-                $guard->lock();
+                $this->adminInvariant->lock();
             }
             $user->status = User::STATUS_DELETED;
-            $user->updated_at = new Expression('now()');
+            $user->updated_at = $this->databaseNow();
             $this->revokeCredentials($user);
             if (!$user->save(false, ['status', 'tokens_invalid_before', 'updated_at'])) {
                 throw new \RuntimeException('failed to delete user');
             }
-            if ($removesAdminAccess && !$guard->hasActiveAdmin()) {
+            if ($removesAdminAccess && !$this->adminInvariant->hasActiveAdmin()) {
                 $transaction->rollBack();
-                return ['status' => 409, 'data' => ['error' => 'at least one active administrator is required']];
+                return $this->failure(
+                    'last_administrator',
+                    'at least one active administrator is required',
+                    409
+                );
             }
             AuditService::record(null, 'user_deleted', 'user', $id, true);
             $transaction->commit();
@@ -119,22 +214,47 @@ class UserService
             if ($transaction->isActive) {
                 $transaction->rollBack();
             }
-            return ['status' => 500, 'data' => ['error' => 'failed to delete user']];
+            return $this->failure('user_delete_failed', 'failed to delete user', 500);
         }
 
-        return ['status' => 200, 'data' => ['status' => 'deleted']];
+        return ServiceResult::success(['status' => 'deleted']);
+    }
+
+    private function fillUser(User $user, array $body): void
+    {
+        foreach (['username', 'email', 'first_name', 'last_name', 'status'] as $field) {
+            if (array_key_exists($field, $body)) {
+                $user->{$field} = trim((string)$body[$field]);
+            }
+        }
+
+        if (!$user->status) {
+            $user->status = User::STATUS_ACTIVE;
+        }
+        if (array_key_exists('attributes', $body)) {
+            $user->attributes = json_encode((array)$body['attributes']);
+        }
     }
 
     private function revokeCredentials(User $user): void
     {
-        $user->tokens_invalid_before = new Expression('now()');
-        Session::updateAll(
-            ['revoked_at' => new Expression('now()')],
-            ['user_id' => $user->id, 'revoked_at' => null]
-        );
-        RefreshToken::updateAll(
-            ['revoked_at' => new Expression('now()')],
-            ['user_id' => $user->id, 'revoked_at' => null]
-        );
+        $now = $this->databaseNow();
+        $user->tokens_invalid_before = $now;
+        Session::updateAll(['revoked_at' => $now], ['user_id' => $user->id, 'revoked_at' => null]);
+        RefreshToken::updateAll(['revoked_at' => $now], ['user_id' => $user->id, 'revoked_at' => null]);
+    }
+
+    private function databaseNow(): string
+    {
+        return $this->clock->now()->format('Y-m-d H:i:sP');
+    }
+
+    private function failure(
+        string $code,
+        string $message,
+        int $status,
+        array $details = []
+    ): ServiceResult {
+        return ServiceResult::failure(new ServiceError($code, $message, $status, $details));
     }
 }

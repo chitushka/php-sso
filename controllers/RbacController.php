@@ -2,20 +2,24 @@
 
 namespace app\controllers;
 
-use app\services\RbacService;
+use app\services\RoleService;
 use Yii;
+use yii\base\Module;
 
 class RbacController extends ApiController
 {
-    private function service(): RbacService
+    private RoleService $roles;
+
+    public function __construct(string $id, Module $module, RoleService $roles, array $config = [])
     {
-        return new RbacService();
+        $this->roles = $roles;
+        parent::__construct($id, $module, $config);
     }
 
     public function actionListRoles(): array
     {
         $auth = $this->requirePermission('roles', 'read');
-        return is_array($auth) ? $auth : $this->service()->listRoles();
+        return is_array($auth) ? $auth : $this->roles->list();
     }
 
     public function actionCreateRole(): array
@@ -26,7 +30,7 @@ class RbacController extends ApiController
         }
 
         $fields = ['code', 'name', 'description'];
-        $result = $this->service()->createRole($this->body($fields, array_fill_keys($fields, 'string')));
+        $result = $this->roles->create($this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -44,7 +48,7 @@ class RbacController extends ApiController
         $roleID = $this->canonicalUuid($roleID);
 
         $fields = ['name', 'description'];
-        $result = $this->service()->updateRole($roleID, $this->body($fields, array_fill_keys($fields, 'string')));
+        $result = $this->roles->update($roleID, $this->body($fields, array_fill_keys($fields, 'string')));
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -61,7 +65,7 @@ class RbacController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        $result = $this->service()->deleteRole($roleID);
+        $result = $this->roles->delete($roleID);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -69,7 +73,7 @@ class RbacController extends ApiController
     public function actionListPermissions(): array
     {
         $auth = $this->requirePermission('permissions', 'read');
-        return is_array($auth) ? $auth : $this->service()->listPermissions();
+        return is_array($auth) ? $auth : $this->roles->listPermissions();
     }
 
     public function actionListRolePermissions(string $roleID): array
@@ -84,7 +88,7 @@ class RbacController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        return $this->service()->listRolePermissions($roleID);
+        return $this->roles->listPermissionsForRole($roleID);
     }
 
     public function actionAssignPermission(string $roleID): array
@@ -101,7 +105,7 @@ class RbacController extends ApiController
 
         $permissionId = (string)($this->body(['permission_id'], ['permission_id' => 'uuid'])['permission_id'] ?? '');
 
-        $this->service()->assignPermissionToRole($roleID, $permissionId);
+        $this->roles->assignPermission($roleID, $permissionId);
         return ['status' => 'assigned'];
     }
 
@@ -121,7 +125,7 @@ class RbacController extends ApiController
         }
         $permissionID = $this->canonicalUuid($permissionID);
 
-        return $this->service()->removePermissionFromRole($roleID, $permissionID)
+        return $this->roles->removePermission($roleID, $permissionID)
             ? ['status' => 'removed']
             : $this->fail(409, 'built-in admin permissions cannot be removed');
     }
@@ -138,7 +142,7 @@ class RbacController extends ApiController
         }
         $userID = $this->canonicalUuid($userID);
 
-        return $this->service()->listUserRoles($userID);
+        return $this->roles->listForUser($userID);
     }
 
     public function actionAssignUserRole(string $userID): array
@@ -155,7 +159,7 @@ class RbacController extends ApiController
 
         $roleId = (string)($this->body(['role_id'], ['role_id' => 'uuid'])['role_id'] ?? '');
 
-        $this->service()->assignRoleToUser($userID, $roleId);
+        $this->roles->assignToUser($userID, $roleId);
         return ['status' => 'assigned'];
     }
 
@@ -175,7 +179,7 @@ class RbacController extends ApiController
         }
         $roleID = $this->canonicalUuid($roleID);
 
-        return $this->service()->removeRoleFromUser($userID, $roleID)
+        return $this->roles->removeFromUser($userID, $roleID)
             ? ['status' => 'removed']
             : $this->fail(409, 'at least one active administrator is required');
     }

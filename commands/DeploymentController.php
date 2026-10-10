@@ -4,13 +4,12 @@ namespace app\commands;
 
 use app\components\Environment;
 use app\services\CryptoService;
-use app\services\CutoverCheckService;
+use app\services\DeploymentCheckService;
 use app\services\SecretKeyRotationService;
-use app\services\SecretRewrapService;
 use Yii;
 use yii\console\Controller;
 
-class CutoverController extends Controller
+class DeploymentController extends Controller
 {
     /** @var bool|string */
     public $apply = false;
@@ -18,7 +17,7 @@ class CutoverController extends Controller
     public function options($actionID): array
     {
         $options = parent::options($actionID);
-        if (in_array($actionID, ['rewrap-secrets', 'rotate-encryption-key'], true)) {
+        if ($actionID === 'rotate-encryption-key') {
             $options[] = 'apply';
         }
 
@@ -31,7 +30,7 @@ class CutoverController extends Controller
             'SSO_ENV',
             'SSO_DATABASE_URL',
             'SSO_ISSUER',
-            'SSO_CUTOVER_EXPECTED_ISSUER',
+            'SSO_DEPLOYMENT_EXPECTED_ISSUER',
             'SSO_JWT_SECRET',
             'SSO_ENCRYPTION_KEY',
             'SSO_ACCESS_TOKEN_TTL',
@@ -46,9 +45,9 @@ class CutoverController extends Controller
             $environment[$name] = getenv($name) === false ? '' : (string)getenv($name);
         }
 
-        $service = new CutoverCheckService(Yii::$app->db, $environment, new CryptoService());
+        $service = new DeploymentCheckService(Yii::$app->db, $environment, new CryptoService());
         $results = $service->check();
-        $counts = [CutoverCheckService::PASS => 0, CutoverCheckService::WARN => 0, CutoverCheckService::FAIL => 0];
+        $counts = [DeploymentCheckService::PASS => 0, DeploymentCheckService::WARN => 0, DeploymentCheckService::FAIL => 0];
 
         foreach ($results as $result) {
             $status = (string)$result['status'];
@@ -57,49 +56,15 @@ class CutoverController extends Controller
         }
 
         $this->stdout(sprintf(
-            "Cutover readiness: %d passed, %d warnings, %d failures\n",
-            $counts[CutoverCheckService::PASS],
-            $counts[CutoverCheckService::WARN],
-            $counts[CutoverCheckService::FAIL]
+            "Deployment readiness: %d passed, %d warnings, %d failures\n",
+            $counts[DeploymentCheckService::PASS],
+            $counts[DeploymentCheckService::WARN],
+            $counts[DeploymentCheckService::FAIL]
         ));
 
-        return CutoverCheckService::hasFailures($results)
+        return DeploymentCheckService::hasFailures($results)
             ? self::EXIT_CODE_ERROR
             : self::EXIT_CODE_NORMAL;
-    }
-
-    public function actionRewrapSecrets(): int
-    {
-        $apply = filter_var($this->apply, FILTER_VALIDATE_BOOLEAN);
-        $key = (string)Environment::value('SSO_ENCRYPTION_KEY', '');
-        $insecureKey = strlen($key) < 32 || stripos($key, 'change-me') !== false;
-        if ($apply && $insecureKey) {
-            $this->stderr("SSO_ENCRYPTION_KEY must be at least 32 characters and not a placeholder\n");
-            return self::EXIT_CODE_ERROR;
-        }
-        if ($insecureKey) {
-            $this->stdout("[WARN] dry-run uses an insecure SSO_ENCRYPTION_KEY; apply mode would refuse it\n");
-        }
-
-        try {
-            $result = (new SecretRewrapService(Yii::$app->db, new CryptoService()))->rewrap($apply);
-        } catch (\Throwable $exception) {
-            $this->stderr('Secret rewrap failed: ' . $exception->getMessage() . "\n");
-            return self::EXIT_CODE_ERROR;
-        }
-
-        $mode = $apply ? 'APPLIED' : 'DRY-RUN';
-        foreach ($result['sources'] as $source => $count) {
-            $this->stdout(sprintf("[%s] %s: %d legacy secrets\n", $mode, $source, $count));
-        }
-        $this->stdout(sprintf(
-            "%s complete: %d secrets %s\n",
-            $mode,
-            $result['total'],
-            $apply ? 'rewrapped' : 'would be rewrapped'
-        ));
-
-        return self::EXIT_CODE_NORMAL;
     }
 
     public function actionRotateEncryptionKey(): int
@@ -172,7 +137,7 @@ class CutoverController extends Controller
         }
 
         $envPath = dirname(__DIR__) . '/.env';
-        $recoveryPath = dirname(__DIR__) . '/runtime/cutover-new-encryption-key';
+        $recoveryPath = dirname(__DIR__) . '/runtime/new-encryption-key';
         $contents = @file_get_contents($envPath);
         if ($contents === false) {
             $this->stderr("cannot read local .env\n");
@@ -218,7 +183,7 @@ class CutoverController extends Controller
 
         if (@file_put_contents($envPath, $updatedContents, LOCK_EX) === false) {
             $this->stderr(
-                "database was rotated, but .env update failed; recover the key from runtime/cutover-new-encryption-key\n"
+                "database was rotated, but .env update failed; recover the key from runtime/new-encryption-key\n"
             );
             return self::EXIT_CODE_ERROR;
         }
@@ -226,7 +191,7 @@ class CutoverController extends Controller
         $saved = @file_get_contents($envPath);
         if ($saved === false || strpos($saved, 'SSO_ENCRYPTION_KEY=' . $newKey) === false) {
             $this->stderr(
-                "database was rotated, but .env verification failed; recover the key from runtime/cutover-new-encryption-key\n"
+                "database was rotated, but .env verification failed; recover the key from runtime/new-encryption-key\n"
             );
             return self::EXIT_CODE_ERROR;
         }
@@ -267,7 +232,7 @@ class CutoverController extends Controller
         $values = [
             'SSO_ENV' => 'prod',
             'SSO_ISSUER' => 'https://localhost:8443',
-            'SSO_CUTOVER_EXPECTED_ISSUER' => 'https://localhost:8443',
+            'SSO_DEPLOYMENT_EXPECTED_ISSUER' => 'https://localhost:8443',
             'SSO_JWT_SECRET' => $jwtSecret,
             'SSO_COOKIE_SECURE' => 'true',
             'SSO_CACHE_DRIVER' => 'db',

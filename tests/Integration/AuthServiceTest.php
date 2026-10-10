@@ -70,7 +70,7 @@ class AuthServiceTest extends TestCase
             'username' => $this->username,
             'password' => 'wrong-password',
         ], $request);
-        $this->assertFalse($failed['ok']);
+        $this->assertFalse($failed->isSuccess());
         $this->assertSame(401, $failed['status']);
         $this->assertSame(1, $this->loginAttemptCount());
 
@@ -79,13 +79,13 @@ class AuthServiceTest extends TestCase
             'password' => 'correct-password-123',
         ], $request);
 
-        $this->assertTrue($login['ok']);
+        $this->assertTrue($login->isSuccess());
         $this->assertArrayNotHasKey('token_type', $login['data']);
         $this->assertArrayNotHasKey('expires_in', $login['data']);
         $this->assertArrayNotHasKey('session_token', $login['data']);
-        $this->assertSame($login['csrf_cookie']->value, $login['data']['csrf_token']);
-        $this->assertTrue($login['cookie']->httpOnly);
-        $this->assertFalse($login['csrf_cookie']->httpOnly);
+        $this->assertSame($login->metadata['csrf_cookie']->value, $login['data']['csrf_token']);
+        $this->assertTrue($login->metadata['cookie']->httpOnly);
+        $this->assertFalse($login->metadata['csrf_cookie']->httpOnly);
         $this->assertNotFalse(strtotime($login['data']['access_token_expires_at']));
         $this->assertNotFalse(strtotime($login['data']['session_expires_at']));
         $this->assertSame($this->userId, $login['data']['user']['id']);
@@ -103,7 +103,7 @@ class AuthServiceTest extends TestCase
         );
         $this->assertSame(0, $this->loginAttemptCount());
 
-        $sessionToken = $login['cookie']->value;
+        $sessionToken = $login->metadata['cookie']->value;
         $this->assertSame($this->userId, $service->userBySession($sessionToken)->id);
         $this->assertSame(1, $this->activeSessionCount());
 
@@ -155,7 +155,7 @@ class AuthServiceTest extends TestCase
                 'password' => 'correct-password-123',
             ], $this->request());
 
-            $this->assertFalse($result['ok']);
+            $this->assertFalse($result->isSuccess());
             $this->assertSame(500, $result['status']);
             $this->assertSame(0, $this->activeSessionCount());
             $this->assertSame(0, $this->auditCount('login_success'));
@@ -245,7 +245,7 @@ class AuthServiceTest extends TestCase
         $this->assertTrue($service->revokeSession($this->userId, $expiredSessionId));
         $this->assertTrue($service->revokeSession($this->userId, $activeSessionId));
         $this->assertSame([], $service->listSessions($this->userId));
-        $this->assertNull($service->userBySession($login['cookie']->value));
+        $this->assertNull($service->userBySession($login->metadata['cookie']->value));
     }
 
     public function testJwtVerificationRejectsInvalidRegisteredClaimsAndEncoding(): void
@@ -323,7 +323,7 @@ class AuthServiceTest extends TestCase
             'code' => $recoveryCode,
         ], $request);
         $this->assertSame(401, $invalidToken['status']);
-        $this->assertSame('invalid mfa token', $invalidToken['error']);
+        $this->assertSame('invalid mfa token', $invalidToken->error->message);
         $this->assertSame(0, $this->loginAttemptCount());
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
@@ -332,7 +332,7 @@ class AuthServiceTest extends TestCase
                 'code' => 'not-a-code',
             ], $request);
             $this->assertSame(401, $invalidCode['status']);
-            $this->assertSame('invalid code', $invalidCode['error']);
+            $this->assertSame('invalid code', $invalidCode->error->message);
         }
         $this->assertSame(1, $this->loginAttemptCount());
 
@@ -341,7 +341,7 @@ class AuthServiceTest extends TestCase
             'code' => $recoveryCode,
         ], $request);
         $this->assertSame(429, $locked['status']);
-        $this->assertSame('too many failed attempts, try again later', $locked['error']);
+        $this->assertSame('too many failed attempts, try again later', $locked->error->message);
 
         Yii::$app->db->createCommand()->delete('login_attempts', [
             'username' => $this->username,
@@ -351,7 +351,7 @@ class AuthServiceTest extends TestCase
             'mfa_token' => $challenge['mfa_token'],
             'code' => $recoveryCode,
         ], $request);
-        $this->assertTrue($verified['ok']);
+        $this->assertTrue($verified->isSuccess());
         $this->assertSame($this->userId, $verified['data']['user']['id']);
         $this->assertSame(0, $this->loginAttemptCount());
     }
@@ -396,8 +396,8 @@ class AuthServiceTest extends TestCase
         ], $this->request());
 
         $logoutResults = $this->runConcurrentWorkers([
-            ['logout', $first['cookie']->value],
-            ['logout', $first['cookie']->value],
+            ['logout', $first->metadata['cookie']->value],
+            ['logout', $first->metadata['cookie']->value],
         ]);
         $this->assertSame(['success', 'success'], $logoutResults);
         $this->assertSame(1, $this->activeSessionCount());

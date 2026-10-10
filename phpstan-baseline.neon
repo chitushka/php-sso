@@ -1,1363 +1,1621 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$first_name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$last_name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$password_hash\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 2
-			path: controllers/UsersController.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
-			identifier: property.notFound
-			count: 1
-			path: controllers/UsersController.php
-
-		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$action\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$actor_user_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$ip\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$target_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$target_type\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$user_agent\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/AuditLog.php
+			path: /app/models/AuditLog.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$description\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Group.php
+			path: /app/models/Group.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allowed_scopes\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$backchannel_logout_uri\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$client_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$enabled\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$post_logout_redirect_uris\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$skip_consent\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$type\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/OAuthClient.php
+			path: /app/models/OAuthClient.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$action\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$description\.$#'
 			identifier: property.notFound
 			count: 2
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Permission\:\:\$resource\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Permission.php
+			path: /app/models/Permission.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$description\.$#'
 			identifier: property.notFound
 			count: 2
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/Role.php
+			path: /app/models/Role.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 5
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$first_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$last_login_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$last_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$ldap_dn\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$ldap_provider_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$mfa_enabled\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: models/User.php
+			path: /app/models/User.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$expires_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$purpose\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$token_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$first_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 17
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$last_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$password_hash\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$tokens_invalid_before\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AccountService.php
+			path: /app/services/AccountService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$action\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$actor_user_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$ip\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$target_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$target_type\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\AuditLog\:\:\$user_agent\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuditService.php
+			path: /app/services/AuditService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LoginAttempt\:\:\$locked_until\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Session\:\:\$expires_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Session\:\:\$ip\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Session\:\:\$token_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Session\:\:\$user_agent\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Session\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 8
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$mfa_enabled\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$password_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$tokens_invalid_before\.$#'
 			identifier: property.notFound
 			count: 4
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/AuthService.php
+			path: /app/services/AuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/AuthorizationService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$password_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BootstrapService.php
+			path: /app/services/BootstrapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\FederatedIdentity\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BrokerService.php
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\FederatedIdentity\:\:\$external_subject\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BrokerService.php
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\FederatedIdentity\:\:\$provider_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BrokerService.php
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\FederatedIdentity\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/BrokerService.php
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$authorize_url\.$#'
 			identifier: property.notFound
-			count: 11
-			path: services/BrokerService.php
+			count: 7
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$client_id\.$#'
 			identifier: property.notFound
-			count: 6
-			path: services/BrokerService.php
+			count: 2
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$client_secret\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/BrokerService.php
+			count: 1
+			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$code\.$#'
 			identifier: property.notFound
-			count: 10
-			path: services/BrokerService.php
+			count: 5
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$enabled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$scopes\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$token_url\.$#'
+			identifier: property.notFound
+			count: 7
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$userinfo_url\.$#'
+			identifier: property.notFound
+			count: 7
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 5
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/BrokerService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$authorize_url\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$client_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$client_secret\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 4
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$enabled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$scopes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$token_url\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$userinfo_url\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/IdentityProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$authorize_url\.$#'
+			identifier: property.notFound
+			count: 7
+			path: /app/services/IdentityProviderPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$client_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/BrokerService.php
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$enabled\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/BrokerService.php
+			count: 2
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 5
-			path: services/BrokerService.php
+			count: 1
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$name\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/BrokerService.php
+			count: 1
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$scopes\.$#'
 			identifier: property.notFound
-			count: 5
-			path: services/BrokerService.php
+			count: 2
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$token_url\.$#'
 			identifier: property.notFound
-			count: 11
-			path: services/BrokerService.php
+			count: 7
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 6
-			path: services/BrokerService.php
+			count: 2
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$updated_at\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/BrokerService.php
+			count: 1
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$userinfo_url\.$#'
 			identifier: property.notFound
-			count: 11
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 5
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/BrokerService.php
+			count: 7
+			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapGroupMapping\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapGroupMapping\:\:\$group_id\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapGroupMapping\:\:\$ldap_group\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapGroupMapping\:\:\$provider_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$base_dn\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$bind_dn\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$bind_password\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$display_name_attribute\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$email_attribute\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/LdapService.php
+			count: 3
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$enabled\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$group_attribute\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$host\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$port\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$start_tls\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$use_tls\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/LdapService.php
+			count: 1
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$user_filter\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/LdapService.php
+			path: /app/services/LdapProviderAdminService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$username_attribute\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/LdapService.php
+			count: 3
+			path: /app/services/LdapProviderAdminService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapGroupMapping\:\:\$group_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$base_dn\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$bind_dn\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$bind_password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$display_name_attribute\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$email_attribute\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$group_attribute\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$host\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$port\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$start_tls\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$use_tls\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$user_filter\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/LdapService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\LdapProvider\:\:\$username_attribute\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 4
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$ldap_dn\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$ldap_provider_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/LdapService.php
+			path: /app/services/LdapService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\MfaRecoveryCode\:\:\$code_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\MfaRecoveryCode\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$expires_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$purpose\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$token_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OneTimeToken\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 14
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$mfa_enabled\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$mfa_last_used_counter\.$#'
 			identifier: property.notFound
 			count: 6
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$mfa_secret\.$#'
 			identifier: property.notFound
 			count: 5
-			path: services/MfaService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/MfaService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$client_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_challenge\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_challenge_method\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_hash\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$expires_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$nonce\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$redirect_uri\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$scope\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$user_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/OAuthService.php
+			path: /app/services/MfaService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
 			identifier: property.notFound
-			count: 5
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allowed_scopes\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$backchannel_logout_uri\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/OAuthService.php
+			count: 2
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$client_id\.$#'
 			identifier: property.notFound
-			count: 23
-			path: services/OAuthService.php
+			count: 3
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$client_secret_hash\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$enabled\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$name\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/OAuthService.php
+			count: 2
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$post_logout_redirect_uris\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$skip_consent\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/OAuthService.php
+			count: 1
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 4
-			path: services/OAuthService.php
+			count: 2
+			path: /app/services/OAuthClientService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthClientService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/OAuthRedirectPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$post_logout_redirect_uris\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthRedirectPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthRedirectPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthRedirectPolicy.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$client_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_challenge\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_challenge_method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$code_hash\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$expires_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$nonce\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$redirect_uri\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$scope\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthAuthorizationCode\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allowed_scopes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$backchannel_logout_uri\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$client_id\.$#'
+			identifier: property.notFound
+			count: 20
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$client_secret_hash\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$post_logout_redirect_uris\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
+			identifier: property.notFound
+			count: 2
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$skip_consent\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/OAuthService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 3
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$client_id\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$created_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$expires_at\.$#'
 			identifier: property.notFound
 			count: 4
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$family_id\.$#'
 			identifier: property.notFound
 			count: 6
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$revoked_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$rotated_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$scope\.$#'
 			identifier: property.notFound
 			count: 3
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$token_hash\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$user_id\.$#'
 			identifier: property.notFound
 			count: 4
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 12
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OAuthService.php
+			path: /app/services/OAuthService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OidcService.php
+			path: /app/services/OidcService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/OidcService.php
+			path: /app/services/OidcService.php
 
 		-
 			message: '#^Variable \$http_response_header on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.variable
 			count: 1
-			path: services/OutboundHttpService.php
+			path: /app/services/OutboundHttpService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$description\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$description\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\Role\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/RbacService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: services/RbacService.php
+			path: /app/services/RbacService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email\.$#'
 			identifier: property.notFound
-			count: 2
-			path: services/UserService.php
+			count: 4
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$email_verified\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/UserService.php
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$first_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/UserService.php
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/UserService.php
+			count: 4
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$last_name\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/UserService.php
+			path: /app/services/UserService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$password_hash\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/UserService.php
+
+		-
+			message: '#^Access to an undefined property app\\models\\User\:\:\$source\.$#'
+			identifier: property.notFound
+			count: 1
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$status\.$#'
 			identifier: property.notFound
-			count: 3
-			path: services/UserService.php
+			count: 4
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$tokens_invalid_before\.$#'
 			identifier: property.notFound
 			count: 1
-			path: services/UserService.php
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$updated_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: services/UserService.php
+			path: /app/services/UserService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\User\:\:\$username\.$#'
 			identifier: property.notFound
-			count: 1
-			path: services/UserService.php
+			count: 2
+			path: /app/services/UserService.php

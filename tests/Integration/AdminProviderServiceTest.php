@@ -143,7 +143,7 @@ class AdminProviderServiceTest extends TestCase
         $this->identityProviderIds = [];
     }
 
-    public function testBrokerStateMatchesGoWireContract(): void
+    public function testBrokerStateMatchesSignedStateContract(): void
     {
         $jwtSecret = 'phpunit-jwt-secret-32-characters-long';
         $encryptionKey = 'different-encryption-key-32-chars';
@@ -175,10 +175,10 @@ class AdminProviderServiceTest extends TestCase
 
             $expiredState = $state;
             $expiredState['e'] = gmdate('Y-m-d\TH:i:s\Z', time() - 60);
-            $this->assertNull($verifyState->invoke($service, $this->goSignedState($expiredState, $jwtSecret)));
+            $this->assertNull($verifyState->invoke($service, $this->signedStateForTest($expiredState, $jwtSecret)));
 
-            $legacyState = $this->goSignedState($state, $encryptionKey);
-            $this->assertNull($verifyState->invoke($service, $legacyState));
+            $stateSignedWithWrongKey = $this->signedStateForTest($state, $encryptionKey);
+            $this->assertNull($verifyState->invoke($service, $stateSignedWithWrongKey));
             $this->assertNull($verifyState->invoke($service, $encodedPayload . '=.' . $encodedSignature));
         } finally {
             Yii::$app->params['jwtSecret'] = $originalJwtSecret;
@@ -312,7 +312,7 @@ class AdminProviderServiceTest extends TestCase
         ])->execute();
     }
 
-    private function goSignedState(array $state, string $secret): string
+    private function signedStateForTest(array $state, string $secret): string
     {
         $payload = json_encode($state);
 

@@ -78,7 +78,7 @@ class AccountServiceTest extends TestCase
             'username' => $this->username,
             'password' => 'old-password-123',
         ], $this->request());
-        $this->assertTrue($login['ok']);
+        $this->assertTrue($login->isSuccess());
         $this->assertSame(1, $this->activeSessionCount());
         $externalAccessToken = (new JwtService())->issue($this->userId, [
             'client_id' => 'external-account-test-client',

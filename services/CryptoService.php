@@ -2,26 +2,16 @@
 
 namespace app\services;
 
-use Yii;
-
 class CryptoService
 {
-    private const GO_PREFIX = 'enc:v1:';
-    private const LEGACY_PHP_PREFIX = 'v1:';
+    private const ENCRYPTED_PREFIX = 'enc:v1:';
 
     /** @var string */
     private $encryptionKey;
 
-    /** @var bool */
-    private $allowPlaintext;
-
-    public function __construct(?string $encryptionKey = null, ?bool $allowPlaintext = null)
+    public function __construct(?string $encryptionKey = null)
     {
-        $this->encryptionKey = $encryptionKey ?? (string)Yii::$app->params['encryptionKey'];
-        $this->allowPlaintext = $allowPlaintext ?? filter_var(
-            getenv('SSO_ALLOW_PLAINTEXT_SECRETS') ?: false,
-            FILTER_VALIDATE_BOOLEAN
-        );
+        $this->encryptionKey = $encryptionKey ?? (string)ApplicationRuntime::param('encryptionKey');
     }
 
     public function encrypt(string $plain): string
@@ -38,34 +28,25 @@ class CryptoService
             throw new \RuntimeException('failed to encrypt secret');
         }
 
-        // Go cipher.GCM хранит nonce, затем ciphertext и authentication tag.
-        return self::GO_PREFIX . rtrim(base64_encode($iv . $cipher . $tag), '=');
+        // Формат хранит nonce, затем ciphertext и authentication tag.
+        return self::ENCRYPTED_PREFIX . rtrim(base64_encode($iv . $cipher . $tag), '=');
     }
 
     public function decrypt(string $value): string
     {
-        if (
-            $value === '' || (
-            strpos($value, self::GO_PREFIX) !== 0
-            && strpos($value, self::LEGACY_PHP_PREFIX) !== 0
-            )
-        ) {
-            if ($value === '' || $this->allowPlaintext) {
-                return $value;
-            }
+        if ($value === '') {
+            return '';
+        }
+        if (strpos($value, self::ENCRYPTED_PREFIX) !== 0) {
             throw new \RuntimeException('plaintext secret is not allowed');
         }
 
-        if (strpos($value, self::GO_PREFIX) === 0) {
-            return $this->decryptGoFormat(substr($value, strlen(self::GO_PREFIX)));
-        }
-
-        return $this->decryptLegacyPhpFormat(substr($value, strlen(self::LEGACY_PHP_PREFIX)));
+        return $this->decryptEncryptedFormat(substr($value, strlen(self::ENCRYPTED_PREFIX)));
     }
 
-    private function decryptGoFormat(string $encoded): string
+    private function decryptEncryptedFormat(string $encoded): string
     {
-        // Go base64.RawStdEncoding запрещает padding и принимает стандартный alphabet +/.
+        // Формат использует стандартный Base64 alphabet без padding.
         if ($encoded === '' || strpos($encoded, '=') !== false || !preg_match('/^[A-Za-z0-9+\/]+$/', $encoded)) {
             throw new \RuntimeException('invalid encrypted secret');
         }
@@ -83,20 +64,6 @@ class CryptoService
         $iv = substr($raw, 0, 12);
         $tag = substr($raw, -16);
         $cipher = substr($raw, 12, -16);
-        return $this->open($cipher, $iv, $tag);
-    }
-
-    private function decryptLegacyPhpFormat(string $encoded): string
-    {
-        // Этот reader нужен только для записей, созданных ранними версиями PHP-порта.
-        $raw = base64_decode($encoded, true);
-        if ($raw === false || strlen($raw) < 28) {
-            throw new \RuntimeException('invalid encrypted secret');
-        }
-
-        $iv = substr($raw, 0, 12);
-        $tag = substr($raw, 12, 16);
-        $cipher = substr($raw, 28);
         return $this->open($cipher, $iv, $tag);
     }
 

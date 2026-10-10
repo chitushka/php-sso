@@ -3,7 +3,6 @@
 namespace app\services;
 
 use app\models\User;
-use Yii;
 
 class OidcService
 {
@@ -15,7 +14,7 @@ class OidcService
 
     public function configuration(): array
     {
-        $issuer = Yii::$app->params['issuer'];
+        $issuer = ApplicationRuntime::param('issuer');
 
         return [
             'issuer' => $issuer,
@@ -41,7 +40,7 @@ class OidcService
     public function jwks(): array
     {
         $this->activeKey();
-        $keys = Yii::$app->db->createCommand(
+        $keys = ApplicationRuntime::db()->createCommand(
             "SELECT kid, public_key_pem FROM oidc_signing_keys
              WHERE status IN ('active', 'retiring')
              ORDER BY created_at DESC"
@@ -94,12 +93,12 @@ class OidcService
         $user = User::findOne(['id' => $userId]);
         $now = time();
         $payload = [
-            'iss' => Yii::$app->params['issuer'],
+            'iss' => ApplicationRuntime::param('issuer'),
             'sub' => $userId,
             'aud' => $audience,
             'azp' => $audience,
             'iat' => $now,
-            'exp' => $now + Yii::$app->params['accessTokenTtl'],
+            'exp' => $now + (int)ApplicationRuntime::param('accessTokenTtl'),
             'auth_time' => $authTime ?? $now,
             'nonce' => $nonce,
             'preferred_username' => $user ? $user->username : '',
@@ -120,12 +119,12 @@ class OidcService
         $key = $this->activeKey();
         $now = time();
         $payload = [
-            'iss' => Yii::$app->params['issuer'],
+            'iss' => ApplicationRuntime::param('issuer'),
             'sub' => $subject,
             'aud' => $clientId,
             'iat' => $now,
             'exp' => $now + 120,
-            'jti' => (string)Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar(),
+            'jti' => (string)ApplicationRuntime::db()->createCommand('SELECT gen_random_uuid()')->queryScalar(),
             'events' => [
                 'http://schemas.openid.net/event/backchannel-logout' => new \stdClass(),
             ],
@@ -170,7 +169,7 @@ class OidcService
             return null;
         }
 
-        $key = Yii::$app->db->createCommand(
+        $key = ApplicationRuntime::db()->createCommand(
             "SELECT public_key_pem FROM oidc_signing_keys WHERE kid = :kid AND status IN ('active', 'retiring')",
             [':kid' => (string)($header['kid'] ?? '')]
         )->queryOne();
@@ -189,7 +188,7 @@ class OidcService
             return null;
         }
 
-        if (($payload['iss'] ?? '') !== Yii::$app->params['issuer']) {
+        if (($payload['iss'] ?? '') !== ApplicationRuntime::param('issuer')) {
             return null;
         }
         if (empty($payload['sub']) || !is_string($payload['aud']) || $payload['aud'] === '') {
@@ -218,16 +217,16 @@ class OidcService
 
     private function activeKey(): array
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             // Advisory lock не даёт нескольким PHP workers одновременно создать active key.
-            Yii::$app->db->createCommand(
+            ApplicationRuntime::db()->createCommand(
                 'SELECT pg_advisory_xact_lock(:lock_id)',
                 [':lock_id' => self::KEY_ROTATION_LOCK]
             )->queryScalar();
             $this->retireExpiredKeys();
 
-            $row = Yii::$app->db->createCommand(
+            $row = ApplicationRuntime::db()->createCommand(
                 "SELECT * FROM oidc_signing_keys
                  WHERE status = 'active'
                    AND created_at > now() - interval '" . self::KEY_MAX_AGE_DAYS . " days'
@@ -241,9 +240,9 @@ class OidcService
             // Старый ключ остаётся в JWKS на время жизни уже выданных токенов.
             $retiringSeconds = max(
                 self::RETIRING_GRACE_HOURS * 3600,
-                (int)Yii::$app->params['accessTokenTtl'] + self::CLOCK_SKEW
+                (int)ApplicationRuntime::param('accessTokenTtl') + self::CLOCK_SKEW
             );
-            Yii::$app->db->createCommand(
+            ApplicationRuntime::db()->createCommand(
                 "UPDATE oidc_signing_keys
                  SET status = 'retiring', expires_at = now() + make_interval(secs => :seconds)
                  WHERE status = 'active'",
@@ -263,7 +262,7 @@ class OidcService
 
     private function retireExpiredKeys(): void
     {
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             "UPDATE oidc_signing_keys
              SET status = 'retired'
              WHERE status = 'retiring' AND expires_at IS NOT NULL AND expires_at < now()"
@@ -283,9 +282,9 @@ class OidcService
         if (!is_array($details) || empty($details['key'])) {
             throw new \RuntimeException('failed to read OIDC signing key');
         }
-        $kid = (string)Yii::$app->db->createCommand('SELECT gen_random_uuid()')->queryScalar();
+        $kid = (string)ApplicationRuntime::db()->createCommand('SELECT gen_random_uuid()')->queryScalar();
 
-        Yii::$app->db->createCommand()->insert('oidc_signing_keys', [
+        ApplicationRuntime::db()->createCommand()->insert('oidc_signing_keys', [
             'kid' => $kid,
             'alg' => 'RS256',
             'private_key_pem' => (new CryptoService())->encrypt($private),
@@ -293,7 +292,7 @@ class OidcService
             'status' => 'active',
         ])->execute();
 
-        return Yii::$app->db->createCommand(
+        return ApplicationRuntime::db()->createCommand(
             'SELECT * FROM oidc_signing_keys WHERE kid = :kid',
             [':kid' => $kid]
         )->queryOne();

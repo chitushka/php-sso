@@ -3,10 +3,27 @@
 namespace app\controllers;
 
 use app\services\LdapService;
+use app\services\LdapProviderAdminService;
 use Yii;
+use yii\base\Module;
 
 class LdapController extends ApiController
 {
+    private LdapService $ldap;
+    private LdapProviderAdminService $providers;
+
+    public function __construct(
+        string $id,
+        Module $module,
+        LdapService $ldap,
+        LdapProviderAdminService $providers,
+        array $config = []
+    ) {
+        $this->ldap = $ldap;
+        $this->providers = $providers;
+        parent::__construct($id, $module, $config);
+    }
+
     private const PROVIDER_FIELDS = [
         'id',
         'name',
@@ -63,15 +80,10 @@ class LdapController extends ApiController
         'created_at' => 'time',
     ];
 
-    private function service(): LdapService
-    {
-        return new LdapService();
-    }
-
     public function actionListProviders(): array
     {
         $auth = $this->requirePermission('ldap', 'read');
-        return is_array($auth) ? $auth : $this->service()->listProviders();
+        return is_array($auth) ? $auth : $this->providers->list();
     }
 
     public function actionCreateProvider(): array
@@ -81,7 +93,7 @@ class LdapController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->createProvider(
+        $result = $this->providers->create(
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES),
             $auth->id
         );
@@ -101,7 +113,7 @@ class LdapController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        $result = $this->service()->updateProvider(
+        $result = $this->providers->update(
             $id,
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES),
             $auth->id
@@ -122,7 +134,7 @@ class LdapController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        return $this->service()->deleteProvider($id, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'provider not found');
+        return $this->providers->delete($id, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'provider not found');
     }
 
     public function actionTest(): array
@@ -132,12 +144,12 @@ class LdapController extends ApiController
             return $auth;
         }
 
-        $result = $this->service()->test($this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES));
-        if (!$result['ok']) {
-            return $this->fail(400, $result['error']);
+        $result = $this->ldap->test($this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES));
+        if (!$result->isSuccess()) {
+            return $this->fail($result->status, $result->error->message);
         }
 
-        return $result['data'];
+        return $result->data;
     }
 
     public function actionListGroupMappings(string $id): array
@@ -152,7 +164,7 @@ class LdapController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        return $this->service()->listGroupMappings($id);
+        return $this->providers->listMappings($id);
     }
 
     public function actionCreateGroupMapping(string $id): array
@@ -169,7 +181,7 @@ class LdapController extends ApiController
 
         $body = $this->body(self::GROUP_MAPPING_FIELDS, self::GROUP_MAPPING_TYPES);
 
-        $result = $this->service()->createGroupMapping($id, $body, $auth->id);
+        $result = $this->providers->createMapping($id, $body, $auth->id);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -186,6 +198,6 @@ class LdapController extends ApiController
         }
         $mappingID = $this->canonicalUuid($mappingID);
 
-        return $this->service()->deleteGroupMapping($mappingID, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
+        return $this->providers->deleteMapping($mappingID, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
     }
 }

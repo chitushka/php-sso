@@ -236,8 +236,8 @@ class OidcServiceTest extends TestCase
             ]
         ));
 
-        $this->assertTrue($logout['ok']);
-        $redirect = parse_url($logout['redirect']);
+        $this->assertTrue($logout->isSuccess());
+        $redirect = parse_url($logout->metadata['redirect']);
         parse_str($redirect['query'] ?? '', $query);
         $this->assertSame('one', $query['tenant']);
         $this->assertSame('logout-state', $query['state']);
@@ -250,8 +250,8 @@ class OidcServiceTest extends TestCase
             'post_logout_redirect_uri' => 'https://rp.example.test/not-registered',
         ]));
 
-        $this->assertFalse($badRedirect['ok']);
-        $this->assertSame('invalid_request', $badRedirect['error']);
+        $this->assertFalse($badRedirect->isSuccess());
+        $this->assertSame('invalid_request', $badRedirect->error->code);
     }
 
     private function getRequest(array $query = [], array $body = []): Request

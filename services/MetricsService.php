@@ -11,7 +11,6 @@ class MetricsService
 {
     private const KEY_REQUESTS = 'metrics:v2:http_requests';
     private const KEY_INFLIGHT = 'metrics:http_inflight';
-    private const KEY_DURATION_SUM = 'metrics:http_duration_sum';
     private const KEY_ROUTE_DURATION_SUM = 'metrics:v3:http_duration_sum';
     private const KEY_ROUTE_DURATION_COUNT = 'metrics:v3:http_duration_count';
     private const KEY_TOTAL = 'metrics:http_total';
@@ -29,13 +28,13 @@ class MetricsService
 
     public function begin(): void
     {
-        Yii::$app->params['_metricsStartedAt'] = microtime(true);
+        ApplicationRuntime::setState('metricsStartedAt', microtime(true));
         $this->increment(self::KEY_INFLIGHT, 1);
     }
 
     public function end(Request $request, Response $response): void
     {
-        $startedAt = (float)(Yii::$app->params['_metricsStartedAt'] ?? microtime(true));
+        $startedAt = (float)ApplicationRuntime::state('metricsStartedAt', microtime(true));
         $duration = max(0.0, microtime(true) - $startedAt);
         $route = $this->routeLabel();
         $status = (string)$response->statusCode;
@@ -45,7 +44,6 @@ class MetricsService
         $deltas = [
             self::KEY_REQUESTS . ':' . $key => 1,
             self::KEY_TOTAL => 1,
-            self::KEY_DURATION_SUM => $duration,
             self::KEY_ROUTE_DURATION_SUM . ':' . $method . ' ' . $route => $duration,
             self::KEY_ROUTE_DURATION_COUNT . ':' . $method . ' ' . $route => 1,
             self::KEY_INFLIGHT => -1,
@@ -79,7 +77,7 @@ class MetricsService
         if (preg_match('/^[a-z_]{1,64}$/D', $name) !== 1) {
             throw new \InvalidArgumentException('invalid gauge name');
         }
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'INSERT INTO metric_counters(metric_key, metric_value) VALUES (:key, :value)
              ON CONFLICT (metric_key) DO UPDATE SET metric_value = EXCLUDED.metric_value, updated_at = now()',
             [':key' => 'operations:' . $name, ':value' => $value]
@@ -88,7 +86,7 @@ class MetricsService
 
     public function expose(): string
     {
-        $requests = Yii::$app->db->createCommand(
+        $requests = ApplicationRuntime::db()->createCommand(
             'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
             [':prefix' => self::KEY_REQUESTS . ':%']
         )->queryAll();
@@ -114,7 +112,7 @@ class MetricsService
             );
         }
 
-        $buckets = Yii::$app->db->createCommand(
+        $buckets = ApplicationRuntime::db()->createCommand(
             'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
             [':prefix' => self::KEY_DURATION_BUCKET . ':%']
         )->queryAll();
@@ -141,7 +139,7 @@ class MetricsService
             '_count' => self::KEY_ROUTE_DURATION_COUNT,
             ] as $suffix => $prefix
         ) {
-            $values = Yii::$app->db->createCommand(
+            $values = ApplicationRuntime::db()->createCommand(
                 'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
                 [':prefix' => $prefix . ':%']
             )->queryAll();
@@ -163,13 +161,10 @@ class MetricsService
 
         $lines[] = '# TYPE sso_http_inflight gauge';
         $lines[] = 'sso_http_inflight ' . max(0, (int)$this->value(self::KEY_INFLIGHT));
-        $lines[] = '# TYPE sso_http_request_duration_seconds_legacy_sum counter';
-        $lines[] = 'sso_http_request_duration_seconds_legacy_sum '
-            . sprintf('%.6F', $this->value(self::KEY_DURATION_SUM));
         $lines[] = '# TYPE sso_http_requests_processed_total counter';
         $lines[] = 'sso_http_requests_processed_total ' . (int)$this->value(self::KEY_TOTAL);
 
-        $events = Yii::$app->db->createCommand(
+        $events = ApplicationRuntime::db()->createCommand(
             'SELECT metric_key, metric_value FROM metric_counters WHERE metric_key LIKE :prefix ORDER BY metric_key',
             [':prefix' => self::KEY_EVENTS . ':%']
         )->queryAll();
@@ -201,7 +196,7 @@ class MetricsService
 
     private function increment(string $key, $delta): void
     {
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'INSERT INTO metric_counters(metric_key, metric_value) VALUES (:key, :delta)
              ON CONFLICT (metric_key) DO UPDATE SET metric_value = metric_counters.metric_value + :delta, updated_at = now()',
             [':key' => $key, ':delta' => $delta]
@@ -219,7 +214,7 @@ class MetricsService
             $params[":delta{$index}"] = $delta;
             $index++;
         }
-        Yii::$app->db->createCommand(
+        ApplicationRuntime::db()->createCommand(
             'INSERT INTO metric_counters(metric_key, metric_value) VALUES ' . implode(', ', $values)
             . ' ON CONFLICT (metric_key) DO UPDATE SET '
             . 'metric_value = metric_counters.metric_value + EXCLUDED.metric_value, updated_at = now()',
@@ -229,7 +224,7 @@ class MetricsService
 
     private function value(string $key): float
     {
-        $value = Yii::$app->db->createCommand(
+        $value = ApplicationRuntime::db()->createCommand(
             'SELECT metric_value FROM metric_counters WHERE metric_key = :key',
             [':key' => $key]
         )->queryScalar();
@@ -239,8 +234,8 @@ class MetricsService
     private function routeLabel(): string
     {
         return MetricRoute::label(
-            (string)Yii::$app->requestedRoute,
-            (string)Yii::$app->request->pathInfo
+            ApplicationRuntime::requestedRoute(),
+            (string)ApplicationRuntime::request()->pathInfo
         );
     }
 

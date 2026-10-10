@@ -5,7 +5,6 @@ namespace app\services;
 use app\models\MfaRecoveryCode;
 use app\models\OneTimeToken;
 use app\models\User;
-use Yii;
 use yii\db\Expression;
 
 class MfaService
@@ -38,7 +37,7 @@ class MfaService
 
     private function enrollmentPayload(User $user, string $secret): array
     {
-        $issuer = parse_url((string)Yii::$app->params['issuer'], PHP_URL_HOST) ?: 'SSO';
+        $issuer = parse_url((string)ApplicationRuntime::param('issuer'), PHP_URL_HOST) ?: 'SSO';
         $label = rawurlencode($issuer . ':' . $user->username);
         $query = http_build_query([
             'secret' => $secret,
@@ -68,7 +67,7 @@ class MfaService
             return ['status' => 409, 'data' => ['error' => 'enroll first']];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $counter = null;
             if (!$this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
@@ -100,7 +99,7 @@ class MfaService
             return ['status' => 400, 'data' => ['error' => 'mfa is not in the required state']];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$this->verifyUserCode($user, $code)) {
                 $transaction->rollBack();
@@ -127,7 +126,7 @@ class MfaService
 
     public function regenerateRecoveryCodes(User $user, string $code): array
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$this->verifyUserCode($user, $code)) {
                 $transaction->rollBack();
@@ -210,7 +209,7 @@ class MfaService
 
     public function completeLoginChallenge(string $challengeToken, User $user, string $code): bool
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $challengeUser = $this->loginChallengeUser($challengeToken);
             if (!$challengeUser || $challengeUser->id !== $user->id || !$this->verifyUserCode($user, $code)) {
@@ -298,8 +297,8 @@ class MfaService
 
     private function replaceRecoveryCodes(User $user): array
     {
-        $ownsTransaction = Yii::$app->db->getTransaction() === null;
-        $transaction = $ownsTransaction ? Yii::$app->db->beginTransaction() : null;
+        $ownsTransaction = ApplicationRuntime::db()->getTransaction() === null;
+        $transaction = $ownsTransaction ? ApplicationRuntime::db()->beginTransaction() : null;
 
         try {
             MfaRecoveryCode::deleteAll(['user_id' => $user->id]);

@@ -44,12 +44,12 @@ class AuditController extends ApiController
             $query->andWhere(['<=', 'created_at', $to->format('Y-m-d H:i:sP')]);
         }
 
-        $limit = $this->parseGoInt((string)$request->get('limit', ''));
+        $limit = $this->parseQueryInteger((string)$request->get('limit', ''));
         if ($limit <= 0 || $limit > 200) {
             $limit = 50;
         }
 
-        $offset = $this->parseGoInt((string)$request->get('offset', ''));
+        $offset = $this->parseQueryInteger((string)$request->get('offset', ''));
         if ($offset < 0) {
             $offset = 0;
         }

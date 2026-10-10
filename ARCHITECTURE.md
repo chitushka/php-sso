@@ -4,18 +4,14 @@
 
 SSO PHP — самостоятельный single-tenant Identity Provider. Система отвечает за аутентификацию пользователей, SSO-сессии, OAuth 2.0/OpenID Connect, MFA, LDAP и внешнюю федерацию, RBAC, аудит и административное управление.
 
-Multi-tenancy/realms, SCIM, SAML и high-assurance hardware authentication сейчас не входят в заявленный контракт. Их добавление требует отдельного продуктового решения и threat model.
+Multi-tenancy/realms, SCIM, SAML и high-assurance hardware authentication не входят в текущий контракт. Их добавление требует отдельного продуктового решения и threat model.
 
-## Технологический стек
+## Технологический стек и размещение кода
 
-- PHP 8.4 + PHP-FPM и Yii2.
-- PostgreSQL 17 и расширение `pgcrypto`.
+- PHP 8.4, PHP-FPM и Yii2.
+- PostgreSQL 17 с `pgcrypto`.
 - nginx и Docker Compose.
 - Self-hosted Vue 3 в Yii layout.
-
-Production image собирается отдельным multi-stage target без dev dependencies, Composer и тестовых файлов; test target содержит инструменты качества. Runtime работает без root, с read-only root filesystem и выделенными tmpfs. Миграции выполняются отдельным operations job, приложение не применяет их при старте. Production-конфигурация и secret-file mounts проверяются fail-closed.
-
-## Слои и размещение кода
 
 ```text
 HTTP Controller -> Application Service -> ActiveRecord/PostgreSQL
@@ -24,13 +20,13 @@ HTTP Controller -> Application Service -> ActiveRecord/PostgreSQL
 
 - `controllers/` — маршрутизация, HTTP validation, authentication/authorization и представление результата.
 - `services/` — auth, account, OAuth/OIDC, MFA, RBAC, LDAP, broker, mail, audit и operational use cases.
-- `models/` — ActiveRecord-представление таблиц.
+- `models/` — ActiveRecord-представления таблиц.
 - `components/` — request parsing, trusted proxy, RFC3339, maintenance и metric route helpers.
-- `migrations/` — schema и seed permissions.
+- `migrations/` — схема и seed permissions.
 - `views/admin/`, `web/js/`, `web/css/` — Vue admin UI.
 - `commands/` — cleanup, readiness и обслуживание секретов.
 
-Текущие крупные сервисы и глобальная зависимость от `Yii::$app` признаны техдолгом; направление декомпозиции зафиксировано в `PLAN.md`.
+Production image собирается отдельным multi-stage target без dev dependencies, Composer и тестовых файлов. Runtime работает без root, с read-only root filesystem и выделенными tmpfs. Миграции запускаются отдельной operations-задачей; приложение не применяет их при старте. Production-конфигурация проверяется fail-closed.
 
 ## Доменные модули
 
@@ -41,69 +37,78 @@ HTTP Controller -> Application Service -> ActiveRecord/PostgreSQL
 - Federation Broker: external providers, signed state, callback, identity linking и JIT provisioning.
 - Authorization: direct roles, group roles, permissions и scope checks.
 - Administration: users, roles, groups, clients, providers, LDAP mappings и audit.
-- Operations: health, metrics, cleanup, maintenance mode, secret re-encryption, backup/restore rehearsal и smoke checks.
+- Operations: health, metrics, cleanup, maintenance, secret re-encryption, backup rehearsal и smoke checks.
 
-## Данные и секреты
+Контроллеры получают application services через Yii DI и не содержат бизнес-правил. Крупные домены разделены по use cases: lifecycle пользователей отделён от HTTP, управление OAuth-клиентами и identity providers — от protocol flow, LDAP provider administration — от LDAP authentication, а роли, группы и проверка permissions представлены отдельными границами. Application services не обращаются к глобальному Yii application: БД, настройки и текущий request доступны через заменяемый `ApplicationRuntimeInterface`, а Yii-адаптер находится в инфраструктурном слое `components/`. Время и криптографическая случайность доступны через `ClockInterface` и `RandomGeneratorInterface`.
+
+Auth, OAuth/OIDC, broker, LDAP test и новые изменяющие use cases возвращают типизированный `ServiceResult` с `ServiceError`. Полезная нагрузка хранится в `data`, а транспортные cookies и redirect — отдельно в `metadata`. Контроллер преобразует результат в публичный HTTP/OAuth envelope; прикладной error code не раскрывается обычным API, а OAuth/OIDC endpoints используют его как нормативный protocol error.
+
+## Доверительные границы
+
+Доверенными считаются собственная PostgreSQL, явно настроенный reverse proxy и явно разрешённые LDAP, SMTP и OIDC endpoints. Ввод браузера и OAuth-клиента, forwarded headers от прочих адресов, DNS-ответы и данные внешних провайдеров недоверенны и валидируются до использования. Компрометация host, root-доступа или самой БД находится за пределами прикладных средств защиты и требует инфраструктурных мер.
+
+Исходящие HTTP-запросы проходят allowlist, DNS/IP validation, запрет private/link-local targets, redirect revalidation, connect/read timeouts и ограничение размера ответа. LDAP требует разрешённый host и TLS с проверяемым CA; небезопасный режим допустим только вне production. SMTP использует проверяемый TLS, если не выбран явно локальный development transport.
+
+## Данные, секреты и транзакции
 
 PostgreSQL хранит пользователей, сессии, auth artifacts, OAuth clients, signing keys, RBAC, LDAP/provider configuration, audit, rate-limit buckets и metric counters.
 
-Email пользователя нормализуется как `trim + lowercase` и уникален без учёта регистра. Смена адреса атомарно сбрасывает `email_verified`, удаляет ранее выданные verification tokens и отзывает sessions, refresh tokens и user JWT. Блокировка и soft delete пользователя также отзывают credentials.
+Email нормализуется как `trim + lowercase` и уникален без учёта регистра. Его смена атомарно сбрасывает `email_verified`, удаляет старые verification tokens и отзывает sessions, refresh tokens и user JWT. Блокировка и soft delete пользователя также отзывают credentials.
 
-Сырые session, authorization, refresh, one-time и recovery tokens не хранятся: сохраняются SHA-256 hashes. Пароли и confidential client secrets хэшируются Argon2id. LDAP passwords, MFA secrets, provider secrets и OIDC private keys шифруются AES-256-GCM ключом `SSO_ENCRYPTION_KEY`.
+Сырые session, authorization, refresh, one-time и recovery tokens не хранятся: сохраняются SHA-256 hashes. Пароли и confidential client secrets хэшируются Argon2id. LDAP passwords, MFA secrets, provider secrets и OIDC private keys шифруются AES-256-GCM ключом `SSO_ENCRYPTION_KEY`. Signing, JWT и encryption keys имеют разные назначения и не переиспользуются.
 
-Signing, JWT и encryption keys имеют разные назначения и не должны переиспользоваться. Создание session, authorization code, refresh/one-time/recovery token и обязательного audit event проверяется явно. Изменение security-состояния и соответствующий audit выполняются в одной PostgreSQL-транзакции; ошибка записи отменяет весь use case и не допускает успешного ответа с несуществующим артефактом.
+Создание security-артефакта и обязательного audit event выполняется в одной PostgreSQL-транзакции. Ошибка аудита отменяет use case. Одноразовые артефакты и refresh rotation потребляются условным UPDATE или под row lock, поэтому конкурентно успешным может быть только один запрос. Login lockout обновляется атомарным UPSERT.
 
-Login-attempt обновляется одним PostgreSQL UPSERT: конкурентные ошибки входа не теряют инкременты, а lockout рассчитывается из уже сериализованного значения счётчика. Потребление password reset, MFA challenge/recovery code, authorization code и refresh rotation защищено условным UPDATE либо row lock, поэтому конкурентно успешным может быть только один запрос.
+## HTTP/API-контракт
 
-## HTTP и browser security
+Если маршрут не определяет redirect, HTML или OAuth form response, API отвечает JSON. Некорректный JSON, неизвестные поля и невалидные идентификаторы отклоняются до обращения к бизнес-логике. UUID валидируется до запроса к БД, timestamps возвращаются в RFC 3339 UTC. Неизвестные маршруты API, OAuth и Well-Known возвращают JSON 404.
 
-`ApiController` задаёт JSON responses, ограничение body и rate limiting для чувствительных маршрутов. `TrustedRequest` принимает forwarded IP только от настроенных proxy networks. nginx ограничивает тело до передачи PHP.
+Ошибки прикладного API имеют единый JSON envelope; OAuth/OIDC endpoints используют стандартные `error` и `error_description`. Auth/token responses содержат `Cache-Control: no-store`. `X-Request-ID` принимается только в допустимом формате либо генерируется сервисом и возвращается клиенту.
 
-Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; production HTTPS также получает HSTS. SSO cookie — HttpOnly, SameSite=Lax и Secure в production. Сырой session token не раскрывается в login JSON. Cookie-authenticated изменяющие операции используют double-submit CSRF cookie/header с дополнительной проверкой Origin и Fetch Metadata. Auth/token responses запрещено кэшировать. Полная модель угроз описана в `SECURITY.md`.
+Cookie-authenticated изменяющие запросы требуют CSRF token. Admin API требует Bearer token, нужный scope и RBAC permission. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
 
-Неизвестные `/api`, `/oauth2` и `/.well-known` маршруты возвращают JSON 404, а остальные GET могут обслуживать SPA.
+Семейства публичного контракта:
 
-## OAuth/OIDC
+- `/health/*`, `/metrics`, `/api/v1/bootstrap*` и сведения о доступных провайдерах;
+- `/api/v1/auth/*`, `/api/v1/account/*`, MFA, consent и управление сессиями;
+- `/oauth2/*` и `/.well-known/*` для OAuth 2.0/OpenID Connect;
+- `/api/v1/users`, `/roles`, `/permissions`, `/groups`, `/oauth/clients`, `/identity-providers`, `/ldap/providers`, `/audit` и broker endpoints для администрирования.
 
-OAuth clients бывают public и confidential. Authorization endpoint поддерживает только code flow; `state` и PKCE S256 обязательны для всех clients, а `nonce` — для OIDC. Redirect URI требуют HTTPS и точного строкового совпадения. Исключение — явно включённый HTTP loopback у public client, где может изменяться только port. Refresh tokens ротируются семьями; повторное использование старого токена отзывает семью.
+Конкретные методы, обязательные поля, статусы и edge cases фиксируются router/controller definitions и contract/integration tests. Новое внешнее поведение одновременно обновляет этот раздел и тесты; предполагаемое поведение исторической реализации контрактом не является.
 
-OIDC ID Token подписывается RS256 активным ключом и содержит проверяемые `iss`, `aud`, `azp`, `exp`, `iat`. Старый ключ остаётся опубликованным как минимум на срок жизни проверяемого token с учётом clock skew. UserInfo раскрывает claims согласно scopes. Пользователь может просмотреть и отозвать consent; отзыв прекращает действие связанных refresh tokens. Поддерживаемый профиль и его негативная матрица зафиксированы в `SECURITY.md` и contract tests.
+## Browser и OAuth/OIDC security
 
-## LDAP и внешние провайдеры
+Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается для HTTPS. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP и scheme принимаются только от `SSO_TRUSTED_PROXIES`.
 
-LDAP использует Search + Bind. Production transport требует TLS/StartTLS, allowlist хостов, connection-local проверки certificate/SAN/hostname и ограниченного network timeout. LDAP group mappings синхронизируют только назначения с `source=ldap`, не удаляя ручные назначения.
+Authorization Code требует PKCE S256, state и точного совпадения зарегистрированного redirect URI. Ошибка authorization перенаправляется только на уже проверенный redirect URI и сохраняет допустимые `state` и `iss`; иначе возвращается локально. Confidential client проходит ровно один способ аутентификации — HTTP Basic либо body; public client не использует secret и не получает client credentials grant.
 
-Federation broker валидирует provider endpoints, подписывает state и не связывает существующую учётную запись только по совпадению email. Исходящий HTTP запрещает credentials/fragment в endpoint URL, ограничивает private/reserved addresses кроме явного allowlist, защищён от DNS rebinding, не следует redirects и ограничивает body непосредственно во время чтения.
+Authorization codes и refresh tokens одноразовые. Повторное использование refresh token отзывает его семейство. ID Token подписывается активным RS256 key с `kid`, issuer/audience/time/nonce проверяются на границах. Consent привязан к user, client и scopes; расширение scopes требует нового подтверждения.
 
 ## RBAC и аудит
 
-Admin endpoint требует действующего principal, permission scope для OAuth token и RBAC permission пользователя. Права наследуются из прямых ролей и ролей групп.
+Эффективные permissions складываются из прямых ролей и ролей групп. Bearer API дополнительно ограничен scopes. Bootstrap доступен только пока не существует пользователь с эффективным admin-доступом.
 
-Инвариант RBAC требует хотя бы одного активного администратора. Изменение статуса/удаление администратора, снятие последней admin-роли, исключение из admin-группы, удаление такой группы и снятие её admin-роли сериализуются PostgreSQL advisory transaction lock и отклоняются с HTTP 409, если оставляют систему без администратора. Permissions встроенной admin-роли удалять нельзя.
+Операции, способные оставить систему без активного администратора, сериализуются PostgreSQL advisory transaction lock и отклоняются с HTTP 409. Permissions встроенной admin-роли нельзя удалить.
 
-Audit хранит actor, action, target и при необходимости IP/User-Agent. Ошибка сохранения audit event является ошибкой операции; в security-critical use cases audit и изменение состояния имеют общую транзакцию. Политика целостности actor после удаления пользователя ещё должна быть формализована.
+Audit хранит actor, action, target и при необходимости IP/User-Agent, но не secrets и токены. Политика целостности actor после удаления пользователя ещё должна быть формализована и отражена в `PLAN.md`.
 
 ## Надёжность и эксплуатация
 
-Rate limit и metrics counters используют атомарные PostgreSQL операции. Структурированные
-JSON-логи направляются в stderr и связываются через `X-Request-ID`. Prometheus endpoint
-защищён CIDR allowlist и/или bearer token; labels имеют ограниченную cardinality.
+Rate limits и metrics counters используют атомарные PostgreSQL operations. JSON-логи направляются в stderr и связываются `X-Request-ID`; metric labels имеют ограниченную cardinality, а `/metrics` защищён CIDR allowlist и/или bearer token.
 
-Cleanup выполняется scheduler-контейнером батчами под advisory lock, а время последнего
-успеха, длительность и число удалённых строк публикуются как метрики. Readiness проверяет
-PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов.
-SLO, alerts, backup/restore и rotation runbooks находятся в `OPERATIONS.md`.
+Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов.
 
-Maintenance flag блокирует весь HTTP кроме liveness на время backup/schema operations. Restore rehearsal разворачивает dump во временную БД и сверяет критическую структуру/данные. Детали находятся в `MIGRATION_NOTES.md`.
+Maintenance mode блокирует весь HTTP кроме liveness на время backup/schema operations. Restore rehearsal разворачивает dump во временную БД и проверяет критическую структуру и данные. Пошаговые deployment, backup, restore, monitoring и rotation процедуры находятся в `README.md`.
 
-## Контракты и документация
+## Цепочка поставки и web assets
 
-- `ENDPOINT_CONTRACTS.md` — нормативный HTTP-контракт проекта.
-- `PLAN.md` — единственный активный backlog.
-- `README.md` — запуск, конфигурация и операции.
-- `MIGRATION_NOTES.md` — deployment/schema/restore runbook.
-- `SECURITY.md` — модель угроз, browser/transport policy и поддерживаемый OAuth/OIDC профиль.
-- `OPERATIONS.md` — SLO, наблюдаемость и эксплуатационные регламенты.
-- `VENDORED_ASSETS.md` — provenance и контроль целостности vendored web assets.
+Composer dependencies фиксируются lock-файлом и проходят audit. Production image сопровождается SPDX SBOM и vulnerability scan. Vendored browser assets не загружаются с CDN во время работы приложения и проверяются по зафиксированной SHA-256 сумме.
 
-Документация не должна описывать систему через сравнение с другой реализацией.
+Vue хранится в `web/js/vue.global.prod.js`; текущий источник — production build Vue 3.5.43 из `https://unpkg.com/vue@3.5.43/dist/vue.global.prod.js`. При обновлении выбирается стабильная версия, копируется точный distribution artifact, обновляется `.sha256`, после чего выполняются `make verify-assets`, unit tests и UI smoke test.
+
+## Роли документов
+
+- `README.md` — запуск, конфигурация, проверки и эксплуатационные процедуры.
+- `ARCHITECTURE.md` — устойчивые границы, security model и нормативный HTTP/API-контракт.
+- `PLAN.md` — только незавершённый или явно отложенный backlog.
+- `AGENTS.md` — правила изменения и проверки репозитория.

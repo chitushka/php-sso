@@ -4,7 +4,6 @@ namespace app\services;
 
 use app\models\Role;
 use app\models\User;
-use Yii;
 
 class BootstrapService
 {
@@ -29,9 +28,9 @@ class BootstrapService
             return ['status' => 400, 'data' => ['error' => $passwordError]];
         }
 
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            Yii::$app->db->createCommand(
+            ApplicationRuntime::db()->createCommand(
                 'SELECT pg_advisory_xact_lock(:lock_id)',
                 [':lock_id' => self::BOOTSTRAP_LOCK]
             )->queryScalar();
@@ -58,7 +57,7 @@ class BootstrapService
                 return ['status' => 400, 'data' => ['error' => 'invalid admin payload', 'details' => $details]];
             }
 
-            Yii::$app->db->createCommand()->insert('user_roles', [
+            ApplicationRuntime::db()->createCommand()->insert('user_roles', [
                 'user_id' => $user->id,
                 'role_id' => $admin->id,
             ])->execute();

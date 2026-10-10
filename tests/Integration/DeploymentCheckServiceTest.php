@@ -3,16 +3,15 @@
 namespace tests\Integration;
 
 use app\services\CryptoService;
-use app\services\CutoverCheckService;
+use app\services\DeploymentCheckService;
 use PHPUnit\Framework\TestCase;
 use Yii;
 use yii\console\Application;
 use yii\db\Transaction;
 
-class CutoverCheckServiceTest extends TestCase
+class DeploymentCheckServiceTest extends TestCase
 {
     private const KEY = '0123456789abcdef0123456789abcdef';
-    private const LEGACY_PHP_VECTOR = 'v1:AAECAwQFBgcICQoLOHSm0zmbF8IXmfy1mILq/TOBNy3VS8DZO5h5Eo7qgWpce4BxnxjN3g==';
 
     /** @var Transaction */
     private $transaction;
@@ -48,27 +47,27 @@ class CutoverCheckServiceTest extends TestCase
     {
         $results = $this->service()->check();
 
-        $this->assertFalse(CutoverCheckService::hasFailures($results), $this->failureMessages($results));
-        $this->assertSame(CutoverCheckService::PASS, $this->status($results, 'database.schema'));
-        $this->assertSame(CutoverCheckService::PASS, $this->status($results, 'database.pgcrypto'));
-        $this->assertSame(CutoverCheckService::PASS, $this->status($results, 'secrets.decrypt'));
+        $this->assertFalse(DeploymentCheckService::hasFailures($results), $this->failureMessages($results));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.schema'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.pgcrypto'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'secrets.decrypt'));
     }
 
     public function testConfigurationMismatchIsReportedAsFailure(): void
     {
         $environment = $this->environment();
         $environment['SSO_ISSUER'] = 'http://sso.example.test';
-        $environment['SSO_CUTOVER_EXPECTED_ISSUER'] = 'https://go-sso.example.test';
+        $environment['SSO_DEPLOYMENT_EXPECTED_ISSUER'] = 'https://expected-sso.example.test';
         $environment['SSO_JWT_SECRET'] = 'change-me';
         $environment['SSO_ACCESS_TOKEN_TTL'] = '15m';
 
         $results = $this->service($environment)->check();
 
-        $this->assertTrue(CutoverCheckService::hasFailures($results));
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'config.issuer_https'));
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'config.issuer_match'));
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'config.jwt_secret_strength'));
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'config.access_token_ttl'));
+        $this->assertTrue(DeploymentCheckService::hasFailures($results));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'config.issuer_https'));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'config.issuer_match'));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'config.jwt_secret_strength'));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'config.access_token_ttl'));
     }
 
     public function testWrongEncryptionKeyIsDetectedWithoutExposingSecret(): void
@@ -76,24 +75,23 @@ class CutoverCheckServiceTest extends TestCase
         $id = $this->insertProvider((new CryptoService(str_repeat('x', 32)))->encrypt('bind-password'));
         $results = $this->service()->check();
 
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'secrets.decrypt'));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'secrets.decrypt'));
         $message = $this->message($results, 'secrets.decrypt');
         $this->assertStringContainsString($id, $message);
         $this->assertStringNotContainsString('bind-password', $message);
     }
 
-    public function testLegacyPhpCiphertextBlocksSafeGoRollback(): void
+    public function testUnsupportedCiphertextIsRejected(): void
     {
-        $this->insertProvider(self::LEGACY_PHP_VECTOR);
+        $this->insertProvider('v1:unsupported');
         $results = $this->service()->check();
 
-        $this->assertSame(CutoverCheckService::PASS, $this->status($results, 'secrets.decrypt'));
-        $this->assertSame(CutoverCheckService::FAIL, $this->status($results, 'secrets.legacy_php_format'));
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'secrets.decrypt'));
     }
 
-    private function service(?array $environment = null): CutoverCheckService
+    private function service(?array $environment = null): DeploymentCheckService
     {
-        return new CutoverCheckService(
+        return new DeploymentCheckService(
             Yii::$app->db,
             $environment ?? $this->environment(),
             new CryptoService(self::KEY)
@@ -106,7 +104,7 @@ class CutoverCheckServiceTest extends TestCase
             'SSO_ENV' => 'prod',
             'SSO_DATABASE_URL' => 'postgres://sso:secret@postgres:5432/sso',
             'SSO_ISSUER' => 'https://sso.example.test',
-            'SSO_CUTOVER_EXPECTED_ISSUER' => 'https://sso.example.test',
+            'SSO_DEPLOYMENT_EXPECTED_ISSUER' => 'https://sso.example.test',
             'SSO_JWT_SECRET' => str_repeat('j', 32),
             'SSO_ENCRYPTION_KEY' => self::KEY,
             'SSO_ACCESS_TOKEN_TTL' => '900',
@@ -124,7 +122,7 @@ class CutoverCheckServiceTest extends TestCase
             "INSERT INTO ldap_providers(name,host,bind_dn,bind_password,base_dn,enabled)
              VALUES (:name,'ldap.example.test','cn=admin',:secret,'dc=example,dc=test',false)
              RETURNING id",
-            [':name' => 'cutover-' . bin2hex(random_bytes(5)), ':secret' => $secret]
+            [':name' => 'deployment-' . bin2hex(random_bytes(5)), ':secret' => $secret]
         )->queryScalar();
     }
 
@@ -154,7 +152,7 @@ class CutoverCheckServiceTest extends TestCase
     {
         $messages = [];
         foreach ($results as $result) {
-            if ($result['status'] === CutoverCheckService::FAIL) {
+            if ($result['status'] === DeploymentCheckService::FAIL) {
                 $messages[] = $result['check'] . ': ' . $result['message'];
             }
         }

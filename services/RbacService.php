@@ -6,36 +6,25 @@ use app\models\Group;
 use app\models\Permission;
 use app\models\Role;
 use app\models\User;
-use Yii;
 use yii\db\Expression;
 use yii\db\IntegrityException;
 
 class RbacService
 {
+    private AuthorizationService $authorization;
+    private AdminInvariantService $adminInvariant;
+
+    public function __construct(
+        ?AuthorizationService $authorization = null,
+        ?AdminInvariantService $adminInvariant = null
+    ) {
+        $this->authorization = $authorization ?? new AuthorizationService();
+        $this->adminInvariant = $adminInvariant ?? new AdminInvariantService();
+    }
+
     public function userHasPermission(User $user, string $resource, string $action): bool
     {
-        $exists = Yii::$app->db->createCommand(
-            'SELECT 1
-             FROM user_roles ur
-             JOIN role_permissions rp ON rp.role_id = ur.role_id
-             JOIN permissions p ON p.id = rp.permission_id
-             WHERE ur.user_id = :user_id AND p.resource = :resource AND p.action = :action
-             UNION
-             SELECT 1
-             FROM user_groups ug
-             JOIN group_roles gr ON gr.group_id = ug.group_id
-             JOIN role_permissions rp ON rp.role_id = gr.role_id
-             JOIN permissions p ON p.id = rp.permission_id
-             WHERE ug.user_id = :user_id AND p.resource = :resource AND p.action = :action
-             LIMIT 1',
-            [
-                ':user_id' => $user->id,
-                ':resource' => $resource,
-                ':action' => $action,
-            ]
-        )->queryScalar();
-
-        return (bool)$exists;
+        return $this->authorization->userHasPermission($user, $resource, $action);
     }
 
     public function listRoles(): array
@@ -151,7 +140,10 @@ class RbacService
             return false;
         }
         $this->auditMutation(function () use ($roleId, $permissionId): int {
-            return Yii::$app->db->createCommand()->delete('role_permissions', ['role_id' => $roleId, 'permission_id' => $permissionId])->execute();
+            return ApplicationRuntime::db()->createCommand()->delete(
+                'role_permissions',
+                ['role_id' => $roleId, 'permission_id' => $permissionId]
+            )->execute();
         }, 'permission_removed', 'role', $roleId);
         return true;
     }
@@ -180,9 +172,12 @@ class RbacService
     public function removeRoleFromUser(string $userId, string $roleId): bool
     {
         $affectsAdmin = $this->roleIsAdmin($roleId)
-            && (new AdminInvariantService())->userIsActiveAdmin($userId);
+            && $this->adminInvariant->userIsActiveAdmin($userId);
         return $this->guardedAdminMutation(function () use ($userId, $roleId): int {
-            return Yii::$app->db->createCommand()->delete('user_roles', ['user_id' => $userId, 'role_id' => $roleId])->execute();
+            return ApplicationRuntime::db()->createCommand()->delete(
+                'user_roles',
+                ['user_id' => $userId, 'role_id' => $roleId]
+            )->execute();
         }, 'role_removed', 'user', $userId, $affectsAdmin);
     }
 
@@ -290,7 +285,10 @@ class RbacService
     {
         $affectsAdmin = $this->roleIsAdmin($roleId) && $this->groupHasActiveAdminMembers($groupId);
         return $this->guardedAdminMutation(function () use ($groupId, $roleId): int {
-            return Yii::$app->db->createCommand()->delete('group_roles', ['group_id' => $groupId, 'role_id' => $roleId])->execute();
+            return ApplicationRuntime::db()->createCommand()->delete(
+                'group_roles',
+                ['group_id' => $groupId, 'role_id' => $roleId]
+            )->execute();
         }, 'group_role_removed', 'group', $groupId, $affectsAdmin);
     }
 
@@ -318,9 +316,12 @@ class RbacService
     public function removeGroupFromUser(string $userId, string $groupId): bool
     {
         $affectsAdmin = $this->groupGrantsAdmin($groupId)
-            && (new AdminInvariantService())->userIsActiveAdmin($userId);
+            && $this->adminInvariant->userIsActiveAdmin($userId);
         return $this->guardedAdminMutation(function () use ($userId, $groupId): int {
-            return Yii::$app->db->createCommand()->delete('user_groups', ['user_id' => $userId, 'group_id' => $groupId])->execute();
+            return ApplicationRuntime::db()->createCommand()->delete(
+                'user_groups',
+                ['user_id' => $userId, 'group_id' => $groupId]
+            )->execute();
         }, 'group_removed', 'user', $userId, $affectsAdmin);
     }
 
@@ -333,7 +334,7 @@ class RbacService
             $params[':' . $column] = $data[$column];
         }
 
-        return Yii::$app->db->createCommand(
+        return ApplicationRuntime::db()->createCommand(
             'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_keys($params)) . ') ON CONFLICT DO NOTHING',
             $params
         )->execute();
@@ -341,7 +342,7 @@ class RbacService
 
     private function auditMutation(callable $mutation, string $action, string $targetType, string $targetId): void
     {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if ((int)$mutation() > 0) {
                 AuditService::record(null, $action, $targetType, $targetId);
@@ -362,9 +363,9 @@ class RbacService
         string $targetId,
         bool $affectsAdmin
     ): bool {
-        $transaction = Yii::$app->db->beginTransaction();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $guard = new AdminInvariantService();
+            $guard = $this->adminInvariant;
             if ($affectsAdmin) {
                 $guard->lock();
             }
@@ -393,7 +394,7 @@ class RbacService
 
     private function groupGrantsAdmin(string $groupId): bool
     {
-        return (bool)Yii::$app->db->createCommand(
+        return (bool)ApplicationRuntime::db()->createCommand(
             "SELECT EXISTS(
                 SELECT 1 FROM group_roles gr
                 JOIN roles r ON r.id = gr.role_id
@@ -405,7 +406,7 @@ class RbacService
 
     private function groupHasActiveAdminMembers(string $groupId): bool
     {
-        return $this->groupGrantsAdmin($groupId) && (bool)Yii::$app->db->createCommand(
+        return $this->groupGrantsAdmin($groupId) && (bool)ApplicationRuntime::db()->createCommand(
             'SELECT EXISTS(
                 SELECT 1 FROM user_groups ug
                 JOIN users u ON u.id = ug.user_id

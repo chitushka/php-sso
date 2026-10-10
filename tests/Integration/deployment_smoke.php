@@ -22,7 +22,7 @@ function smokeRequest(string $url, bool $tlsInsecure): array
     $context = stream_context_create([
         'http' => [
             'method' => 'GET',
-            'header' => "Accept: application/json\r\nUser-Agent: sso-cutover-smoke/1.0",
+            'header' => "Accept: application/json\r\nUser-Agent: sso-deployment-smoke/1.0",
             'ignore_errors' => true,
             'follow_location' => 0,
             'max_redirects' => 0,
@@ -66,7 +66,7 @@ function smokeJson(string $baseUrl, string $path, bool $tlsInsecure): array
 
 assertSmoke($baseUrl !== '', 'SSO_TEST_BASE_URL or SSO_ISSUER is required');
 assertSmoke($expectedIssuer !== '', 'SSO_TEST_EXPECTED_ISSUER or SSO_ISSUER is required');
-assertSmoke(parse_url($baseUrl, PHP_URL_SCHEME) === 'https', 'cutover smoke base URL must use HTTPS');
+assertSmoke(parse_url($baseUrl, PHP_URL_SCHEME) === 'https', 'deployment smoke base URL must use HTTPS');
 assertSmoke(parse_url($expectedIssuer, PHP_URL_SCHEME) === 'https', 'expected issuer must use HTTPS');
 
 $expectedHost = strtolower((string)parse_url($expectedIssuer, PHP_URL_HOST));
@@ -83,7 +83,7 @@ if ($tlsInsecure) {
 }
 
 $live = smokeJson($baseUrl, '/health/live', $tlsInsecure);
-assertSmoke(($live['status'] ?? '') === 'ok', 'liveness payload must be Go-compatible');
+assertSmoke(($live['status'] ?? '') === 'ok', 'liveness payload must be contract-compliant');
 
 $ready = smokeJson($baseUrl, '/health/ready', $tlsInsecure);
 assertSmoke(($ready['status'] ?? '') === 'ready', 'readiness payload must confirm PostgreSQL availability');
@@ -142,5 +142,5 @@ foreach ($jwks['keys'] as $key) {
 }
 assertSmoke($activeSigningKeyFound, 'JWKS does not contain a usable RS256 signing key');
 
-echo "Cutover HTTPS smoke passed\n";
+echo "Deployment HTTPS smoke passed\n";
 echo "Verified health, readiness, version, bootstrap status, public providers, issuer, discovery and JWKS\n";

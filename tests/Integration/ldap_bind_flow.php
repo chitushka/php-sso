@@ -92,7 +92,7 @@ try {
         'bind_dn' => (string)getenv('SSO_TEST_LDAP_BIND_DN'),
         'bind_password' => (string)getenv('SSO_TEST_LDAP_BIND_PASSWORD'),
     ]);
-    assertTrue(($test['ok'] ?? false) === true, 'LDAP service bind must succeed: ' . (string)($test['error'] ?? ''));
+    assertTrue($test->isSuccess(), 'LDAP service bind must succeed: ' . ($test->error->message ?? ''));
 
     $ldapGroup = (string)getenv('SSO_TEST_LDAP_GROUP_DN');
     if ($ldapGroup !== '') {

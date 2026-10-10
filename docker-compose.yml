@@ -39,10 +39,10 @@ services:
     environment:
       SSO_ENV: ${SSO_ENV:-prod}
       SSO_DATABASE_URL: ${SSO_DATABASE_URL}
-      SSO_CUTOVER_EXPECTED_ISSUER: ${SSO_CUTOVER_EXPECTED_ISSUER:-}
-      SSO_MAINTENANCE_FILE: /cutover/maintenance
+      SSO_DEPLOYMENT_EXPECTED_ISSUER: ${SSO_DEPLOYMENT_EXPECTED_ISSUER:-}
+      SSO_MAINTENANCE_FILE: /maintenance/state
     volumes:
-      - cutover_state:/cutover:ro
+      - maintenance_state:/maintenance:ro
       - tls_data:/tls:ro
     depends_on:
       postgres:
@@ -206,10 +206,10 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  rollback-rehearsal:
+  backup-restore-test:
     image: postgres:17
     profiles:
-      - cutover
+      - operations
     restart: "no"
     environment:
       PGHOST: postgres
@@ -217,29 +217,29 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sso}
       SOURCE_DB: ${POSTGRES_DB:-sso}
     volumes:
-      - ./docker/postgres/rehearse-rollback.sh:/usr/local/bin/rehearse-rollback:ro
+      - ./docker/postgres/test-backup-restore.sh:/usr/local/bin/test-backup-restore:ro
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "/usr/local/bin/rehearse-rollback"]
+    entrypoint: ["/bin/sh", "/usr/local/bin/test-backup-restore"]
 
   maintenance-on:
     image: sso-php-app:latest
     profiles:
-      - cutover
+      - operations
     restart: "no"
     volumes:
-      - cutover_state:/cutover
-    command: ["/bin/sh", "-lc", "umask 077 && touch /cutover/maintenance && chmod 600 /cutover/maintenance"]
+      - maintenance_state:/maintenance
+    command: ["/bin/sh", "-lc", "umask 077 && touch /maintenance/state && chmod 600 /maintenance/state"]
 
   maintenance-off:
     image: sso-php-app:latest
     profiles:
-      - cutover
+      - operations
     restart: "no"
     volumes:
-      - cutover_state:/cutover
-    command: ["/bin/sh", "-lc", "rm -f /cutover/maintenance"]
+      - maintenance_state:/maintenance
+    command: ["/bin/sh", "-lc", "rm -f /maintenance/state"]
 
   ldap-test:
     image: osixia/openldap:1.5.0
@@ -266,7 +266,7 @@ services:
 volumes:
   postgres17_data:
   tls_data:
-  cutover_state:
+  maintenance_state:
 
 networks:
   edge:

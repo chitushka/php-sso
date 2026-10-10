@@ -13,7 +13,6 @@ class SecretKeyRotationServiceTest extends TestCase
 {
     private const OLD_KEY = '0123456789abcdef0123456789abcdef';
     private const NEW_KEY = 'fedcba9876543210fedcba9876543210';
-    private const LEGACY_PHP_VECTOR = 'v1:AAECAwQFBgcICQoLOHSm0zmbF8IXmfy1mILq/TOBNy3VS8DZO5h5Eo7qgWpce4BxnxjN3g==';
 
     /** @var Transaction */
     private $transaction;
@@ -59,7 +58,7 @@ class SecretKeyRotationServiceTest extends TestCase
         $this->assertSame($before, $this->storedSecrets($ids));
     }
 
-    public function testApplyRotatesEveryOldFormatAndIsIdempotent(): void
+    public function testApplyRotatesSecretsAndIsIdempotent(): void
     {
         $ids = $this->insertFixtures();
         $service = $this->service();
@@ -71,7 +70,7 @@ class SecretKeyRotationServiceTest extends TestCase
 
         $secrets = $this->storedSecrets($ids);
         $newCrypto = new CryptoService(self::NEW_KEY);
-        $this->assertSame('rolling-migration-secret', $newCrypto->decrypt($secrets['ldap']));
+        $this->assertSame('ldap-secret', $newCrypto->decrypt($secrets['ldap']));
         $this->assertSame('broker-secret', $newCrypto->decrypt($secrets['identity']));
         $this->assertSame('mfa-secret', $newCrypto->decrypt($secrets['mfa']));
         $this->assertSame('already-new', $newCrypto->decrypt($secrets['already']));
@@ -105,7 +104,7 @@ class SecretKeyRotationServiceTest extends TestCase
     {
         return new SecretKeyRotationService(
             Yii::$app->db,
-            new CryptoService(self::OLD_KEY, true),
+            new CryptoService(self::OLD_KEY),
             new CryptoService(self::NEW_KEY)
         );
     }
@@ -118,7 +117,7 @@ class SecretKeyRotationServiceTest extends TestCase
             "INSERT INTO ldap_providers(name,host,bind_dn,bind_password,base_dn,enabled)
              VALUES (:name,'ldap.example.test','cn=admin',:secret,'dc=example,dc=test',false)
              RETURNING id",
-            [':name' => 'rotation-' . bin2hex(random_bytes(5)), ':secret' => self::LEGACY_PHP_VECTOR]
+            [':name' => 'rotation-' . bin2hex(random_bytes(5)), ':secret' => $oldCrypto->encrypt('ldap-secret')]
         )->queryScalar();
         $identityId = (string)Yii::$app->db->createCommand(
             "INSERT INTO identity_providers(code,name,client_id,client_secret,enabled)
@@ -134,11 +133,12 @@ class SecretKeyRotationServiceTest extends TestCase
         )->queryScalar();
         $userId = (string)Yii::$app->db->createCommand(
             "INSERT INTO users(username,email,status,source,mfa_secret)
-             VALUES (:username,:email,'active','local','mfa-secret')
+             VALUES (:username,:email,'active','local',:secret)
              RETURNING id",
             [
                 ':username' => 'rotation-' . bin2hex(random_bytes(5)),
                 ':email' => 'rotation-' . bin2hex(random_bytes(5)) . '@example.test',
+                ':secret' => $oldCrypto->encrypt('mfa-secret'),
             ]
         )->queryScalar();
 
