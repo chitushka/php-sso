@@ -73,6 +73,7 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 - `/api/v1/auth/*`, `/api/v1/account/*`, MFA, consent и управление сессиями;
 - `/oauth2/*` и `/.well-known/*` для OAuth 2.0/OpenID Connect;
 - `/api/v1/users`, `/roles`, `/permissions`, `/groups`, `/oauth/clients`, `/identity-providers`, `/ldap/providers`, `/audit` и broker endpoints для администрирования.
+- `/api/v1/operations/*` для безопасного operational summary и управления жизненным циклом OIDC signing keys; private/public PEM через administrative API не выдаются.
 
 Машиночитаемый HTTP-контракт разделён на `contracts/openapi-admin.json` для administrative/account API и `contracts/openapi-oauth.json` для OAuth 2.0, OpenID Connect и federation broker endpoints. Оба документа используют OpenAPI 3.1 и JSON Schema 2020-12. `composer verify:contracts` строит множество операций из спецификаций, сверяет его со всеми маршрутами `/api/v1`, `/oauth2` и `/.well-known`, проверяет уникальность `operationId`, path parameters, responses и локальные `$ref`. Любое изменение внешнего поведения должно атомарно обновлять router, соответствующую спецификацию и contract/integration tests; предполагаемое поведение исторической реализации контрактом не является.
 
@@ -85,6 +86,8 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 Authorization Code требует PKCE S256, state и точного совпадения зарегистрированного redirect URI. Ошибка authorization перенаправляется только на уже проверенный redirect URI и сохраняет допустимые `state` и `iss`; иначе возвращается локально. Confidential client проходит ровно один способ аутентификации — HTTP Basic либо body; public client не использует secret и не получает client credentials grant.
 
 Authorization codes и refresh tokens одноразовые. Повторное использование refresh token отзывает его семейство. ID Token подписывается активным RS256 key с `kid`, issuer/audience/time/nonce проверяются на границах. Consent привязан к user, client и scopes; расширение scopes требует нового подтверждения.
+
+Пользователь просматривает и отзывает собственные активные consent. Администратор с отдельными permissions может просматривать federated identity links пользователя и отвязывать их; последний способ входа federated-only пользователя удалить нельзя. Принудительная ротация signing key атомарно переводит прежний active key в `retiring`, сохраняет его в JWKS на grace period, создаёт новый encrypted active key и записывает audit event.
 
 ## RBAC и аудит
 
@@ -99,6 +102,8 @@ Audit хранит actor, action, target и при необходимости IP
 Rate limits и metrics counters используют атомарные PostgreSQL operations. JSON-логи направляются в stderr и связываются `X-Request-ID`; metric labels имеют ограниченную cardinality, а `/metrics` защищён CIDR allowlist и/или bearer token.
 
 Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов. Baseline-миграция намеренно не использует `IF NOT EXISTS` для таблиц и индексов, поэтому частичная схема не принимается за новую установку. `deployment-check` дополнительно сверяет обязательные таблицы, столбцы, constraints и индексы и должен завершиться до запуска новой версии приложения.
+
+Admin UI показывает агрегированный operational status: доступность БД, состояние signing keys, версию/среду и timestamp последнего успешного cleanup. Детали соединения, конфигурационные secrets и key material в этот ответ не включаются.
 
 Maintenance mode блокирует весь HTTP кроме liveness на время backup/schema operations. Restore rehearsal разворачивает dump во временную БД и проверяет критическую структуру и данные. Пошаговые deployment, backup, restore, monitoring и rotation процедуры находятся в `README.md`.
 

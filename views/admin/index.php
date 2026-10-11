@@ -19,6 +19,7 @@ $this->title = 'SSO Admin';
       <button :class="{active: view === 'groups'}" @click="view = 'groups'">Groups</button>
       <button :class="{active: view === 'ldap'}" @click="view = 'ldap'">LDAP</button>
       <button :class="{active: view === 'identity'}" @click="view = 'identity'">Federation</button>
+      <button :class="{active: view === 'operations'}" @click="view = 'operations'">Operations</button>
       <button :class="{active: view === 'audit'}" @click="view = 'audit'">Audit</button>
       <button class="primary" @click="logout">Logout</button>
     </nav>
@@ -165,6 +166,22 @@ $this->title = 'SSO Admin';
           <button @click="disableMfa">Disable MFA</button>
         </template>
         <pre v-if="mfaRecoveryCodes.length">{{ mfaRecoveryCodes }}</pre>
+
+        <h2>Active consents</h2>
+        <p class="muted" v-if="!consents.length">No active OAuth consents.</p>
+        <div class="table-wrap" v-else>
+          <table>
+            <thead><tr><th>Application</th><th>Scopes</th><th>Updated</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr v-for="consent in consents" :key="consent.client_id">
+                <td>{{ consent.client_name }} ({{ consent.client_id }})</td>
+                <td>{{ consent.scopes.join(' ') }}</td>
+                <td>{{ consent.updated_at }}</td>
+                <td><button @click="revokeConsent(consent.client_id)">Revoke</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="panel" v-if="view === 'clients'">
@@ -265,6 +282,22 @@ $this->title = 'SSO Admin';
                 </li>
               </ul>
             </div>
+          </div>
+
+          <h3>Federated identity links</h3>
+          <p class="muted" v-if="!selectedUserIdentities.length">No federated identities.</p>
+          <div class="table-wrap" v-else>
+            <table>
+              <thead><tr><th>Provider</th><th>Subject</th><th>Email</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr v-for="identity in selectedUserIdentities" :key="identity.provider_id + ':' + identity.external_subject">
+                  <td>{{ identity.provider_name }} ({{ identity.provider_code }})</td>
+                  <td>{{ identity.external_subject }}</td>
+                  <td>{{ identity.email }}</td>
+                  <td><button @click="unlinkFederatedIdentity(identity)">Unlink</button></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
       </div>
@@ -504,6 +537,35 @@ $this->title = 'SSO Admin';
         </div>
       </div>
 
+      <div class="panel" v-if="view === 'operations'">
+        <h1>Operational status</h1>
+        <button class="primary" @click="loadOperations">Refresh status</button>
+        <div class="grid" v-if="operationalStatus.status">
+          <div class="metric"><strong>Overall</strong><p class="muted">{{ operationalStatus.status }}</p></div>
+          <div class="metric"><strong>Database</strong><p class="muted">{{ operationalStatus.database?.ready ? 'ready' : 'unavailable' }}</p></div>
+          <div class="metric"><strong>Signing</strong><p class="muted">{{ operationalStatus.signing_keys?.ready ? 'ready' : 'degraded' }}</p></div>
+          <div class="metric"><strong>Last cleanup</strong><p class="muted">{{ operationalStatus.cleanup?.last_success_at || 'not recorded' }}</p></div>
+          <div class="metric"><strong>Version</strong><p class="muted">{{ operationalStatus.version }} / {{ operationalStatus.environment }}</p></div>
+        </div>
+
+        <h2>OIDC signing keys</h2>
+        <button class="primary" @click="rotateSigningKey">Rotate signing key</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>KID</th><th>Algorithm</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
+            <tbody>
+              <tr v-for="key in signingKeys" :key="key.kid">
+                <td>{{ key.kid }}</td>
+                <td>{{ key.alg }}</td>
+                <td>{{ key.status }}</td>
+                <td>{{ key.created_at }}</td>
+                <td>{{ key.expires_at || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <p class="muted">{{ message }}</p>
     </section>
   </main>
@@ -531,9 +593,13 @@ const app = Vue.createApp({
       ldapProviders: [],
       brokerProviders: [],
       identityProviders: [],
+      consents: [],
+      operationalStatus: {},
+      signingKeys: [],
       selectedUser: null,
       selectedUserRoles: [],
       selectedUserGroups: [],
+      selectedUserIdentities: [],
       selectedRole: null,
       selectedRolePermissions: [],
       selectedGroup: null,
@@ -660,6 +726,8 @@ const app = Vue.createApp({
         this.groups = await this.apiItems('/api/v1/groups').catch(() => []);
         this.ldapProviders = await this.apiItems('/api/v1/ldap/providers').catch(() => []);
         this.identityProviders = await this.apiItems('/api/v1/identity-providers').catch(() => []);
+        this.consents = await this.api('/api/v1/auth/consents').catch(() => []);
+        await this.loadOperations().catch(() => {});
         await this.reloadSelectedAssignments();
       }
     },
@@ -859,6 +927,7 @@ const app = Vue.createApp({
 
       this.selectedUserRoles = await this.api('/api/v1/users/' + this.selectedUser.id + '/roles');
       this.selectedUserGroups = await this.api('/api/v1/users/' + this.selectedUser.id + '/groups');
+      this.selectedUserIdentities = await this.api('/api/v1/users/' + this.selectedUser.id + '/federated-identities');
     },
     async assignUserRole() {
       if (!this.selectedUser || !this.assignmentForms.userRoleId) {
@@ -902,6 +971,18 @@ const app = Vue.createApp({
 
       await this.api('/api/v1/users/' + this.selectedUser.id + '/groups/' + groupId, { method: 'DELETE' });
       this.message = 'User group removed';
+      await this.loadUserAssignments();
+    },
+    async unlinkFederatedIdentity(identity) {
+      if (!this.selectedUser) return;
+      await this.api('/api/v1/users/' + this.selectedUser.id + '/federated-identities', {
+        method: 'DELETE',
+        body: JSON.stringify({
+          provider_id: identity.provider_id,
+          external_subject: identity.external_subject
+        })
+      });
+      this.message = 'Federated identity unlinked';
       await this.loadUserAssignments();
     },
     async selectRole(role) {
@@ -997,6 +1078,23 @@ const app = Vue.createApp({
     },
     async loadAudit() {
       this.audit = await this.apiItems('/api/v1/audit');
+    },
+    async revokeConsent(clientId) {
+      await this.api('/api/v1/auth/consents/' + encodeURIComponent(clientId), { method: 'DELETE' });
+      this.consents = await this.api('/api/v1/auth/consents');
+      this.message = 'Consent revoked';
+    },
+    async loadOperations() {
+      this.operationalStatus = await this.api('/api/v1/operations/status');
+      this.signingKeys = await this.api('/api/v1/operations/signing-keys');
+    },
+    async rotateSigningKey() {
+      const key = await this.api('/api/v1/operations/signing-keys/rotate', {
+        method: 'POST',
+        body: '{}'
+      });
+      this.message = 'Signing key rotated: ' + key.kid;
+      await this.loadOperations();
     },
     async testLdap() {
       await this.api('/api/v1/ldap/providers/test', { method: 'POST', body: JSON.stringify(this.ldapForm) });

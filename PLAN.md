@@ -11,7 +11,6 @@
 
 ### 1. Формализовать API и продуктовые сценарии
 
-- Добавить в UI управление активными consent, federated identity links, signing keys и operational status.
 - Провести accessibility, keyboard navigation и responsive review Vue admin; разделить монолитный `views/admin/index.php` на модули.
 
 Критерий готовности: внешний контракт машиночитаем, UI покрывает доступные операции и не дублирует бизнес-правила API.

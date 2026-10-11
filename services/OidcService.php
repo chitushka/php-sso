@@ -12,6 +12,51 @@ class OidcService
     private const KEY_ROTATION_LOCK = 1397968720;
     private const CLOCK_SKEW = 60;
 
+    public function listSigningKeys(): array
+    {
+        $rows = ApplicationRuntime::db()->createCommand(
+            'SELECT kid, alg, status, created_at, expires_at
+             FROM oidc_signing_keys
+             ORDER BY created_at DESC, kid ASC'
+        )->queryAll();
+
+        return array_map([$this, 'publicSigningKey'], $rows);
+    }
+
+    public function rotateSigningKey(string $actorUserId): array
+    {
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            ApplicationRuntime::db()->createCommand(
+                'SELECT pg_advisory_xact_lock(:lock_id)',
+                [':lock_id' => self::KEY_ROTATION_LOCK]
+            )->queryScalar();
+            $this->retireExpiredKeys();
+
+            $retiringSeconds = max(
+                self::RETIRING_GRACE_HOURS * 3600,
+                (int)ApplicationRuntime::param('accessTokenTtl') + self::CLOCK_SKEW
+            );
+            ApplicationRuntime::db()->createCommand(
+                "UPDATE oidc_signing_keys
+                 SET status = 'retiring', expires_at = now() + make_interval(secs => :seconds)
+                 WHERE status = 'active'",
+                [':seconds' => $retiringSeconds]
+            )->execute();
+
+            $key = $this->createActiveKey();
+            AuditService::record($actorUserId, 'signing_key_rotated', 'signing_key', (string)$key['kid']);
+            $transaction->commit();
+
+            return $this->publicSigningKey($key);
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
     public function configuration(): array
     {
         $issuer = ApplicationRuntime::param('issuer');
@@ -296,6 +341,19 @@ class OidcService
             'SELECT * FROM oidc_signing_keys WHERE kid = :kid',
             [':kid' => $kid]
         )->queryOne();
+    }
+
+    private function publicSigningKey(array $key): array
+    {
+        return [
+            'kid' => (string)$key['kid'],
+            'alg' => (string)$key['alg'],
+            'status' => (string)$key['status'],
+            'created_at' => \app\components\Rfc3339::format($key['created_at']),
+            'expires_at' => empty($key['expires_at'])
+                ? null
+                : \app\components\Rfc3339::format($key['expires_at']),
+        ];
     }
 
     private function privateKey(array $key): string

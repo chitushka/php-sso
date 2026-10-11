@@ -309,6 +309,22 @@ try {
         'sso_csrf' => $login['cookies']['sso_csrf'],
     ];
 
+    $anonymousOperations = jsonRequest('GET', $baseUrl . '/api/v1/operations/status', []);
+    assertTrue($anonymousOperations['status'] === 401, 'operational status must require authentication');
+    $operationalStatus = jsonRequest('GET', $baseUrl . '/api/v1/operations/status', [], $adminToken);
+    assertTrue($operationalStatus['status'] === 200, 'admin must read operational status');
+    assertTrue(($operationalStatus['json']['database']['ready'] ?? false) === true, 'operational status must report database readiness');
+    $rotatedSigningKey = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/operations/signing-keys/rotate',
+        [],
+        $adminToken
+    );
+    assertTrue($rotatedSigningKey['status'] === 201, 'admin must rotate the signing key');
+    assertTrue(($rotatedSigningKey['json']['status'] ?? '') === 'active', 'rotated signing key must be active');
+    assertTrue(!array_key_exists('private_key_pem', $rotatedSigningKey['json']), 'signing API must not expose private key material');
+    assertTrue(!array_key_exists('public_key_pem', $rotatedSigningKey['json']), 'signing metadata API must not expose PEM material');
+
     $missingBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', []);
     assertTrue($missingBearer['status'] === 401, 'protected endpoint without bearer token must return 401');
     assertTrue(($missingBearer['json']['error'] ?? '') === 'missing bearer token', 'missing bearer token must match Go error');
@@ -1606,8 +1622,14 @@ try {
     assertTrue($identityProvider['status'] === 201, 'create identity provider must return 201');
     $createdProviderIds[] = $identityProvider['json']['id'];
     assertTrue(!array_key_exists('client_secret', $identityProvider['json']), 'identity provider response must not expose client_secret');
-    assertTrue(($identityProvider['json']['scopes'] ?? null) === '', 'identity provider create must preserve Go zero value for omitted scopes');
-    assertTrue(($identityProvider['json']['enabled'] ?? null) === false, 'identity provider create must preserve Go zero value for omitted enabled');
+    assertTrue(
+        ($identityProvider['json']['scopes'] ?? null) === 'openid profile email',
+        'identity provider create must apply the documented default scopes'
+    );
+    assertTrue(
+        ($identityProvider['json']['enabled'] ?? null) === true,
+        'identity provider create must enable a provider by default'
+    );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($identityProvider['json']['created_at'] ?? '')) === 1,
         'identity provider created_at must use contract-compliant RFC3339'
