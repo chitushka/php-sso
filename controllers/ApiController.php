@@ -3,6 +3,7 @@
 namespace app\controllers;
 
 use app\components\JsonStream;
+use app\components\ApiResponse;
 use app\services\RateLimitService;
 use app\services\AuditService;
 use app\services\AuthService;
@@ -27,12 +28,12 @@ class ApiController extends Controller
 
         if ((int)Yii::$app->request->headers->get('Content-Length', 0) > $maxBodyBytes) {
             Yii::$app->response->statusCode = 413;
-            Yii::$app->response->data = ['error' => 'request body is too large'];
+            Yii::$app->response->data = ApiResponse::error('request body is too large', 'request_body_too_large');
             return false;
         }
         if (strlen(Yii::$app->request->rawBody) > $maxBodyBytes) {
             Yii::$app->response->statusCode = 413;
-            Yii::$app->response->data = ['error' => 'request body is too large'];
+            Yii::$app->response->data = ApiResponse::error('request body is too large', 'request_body_too_large');
             return false;
         }
 
@@ -42,7 +43,7 @@ class ApiController extends Controller
             && !$browserSecurity->validateCsrf(Yii::$app->request)
         ) {
             Yii::$app->response->statusCode = 403;
-            Yii::$app->response->data = ['error' => 'csrf validation failed'];
+            Yii::$app->response->data = ApiResponse::error('csrf validation failed', 'csrf_validation_failed');
             return false;
         }
 
@@ -51,7 +52,7 @@ class ApiController extends Controller
             (new \app\services\MetricsService())->event('rate_limit', 'blocked');
             Yii::$app->response->statusCode = 429;
             Yii::$app->response->headers->set('Retry-After', (string)$limit['retry_after']);
-            Yii::$app->response->data = ['error' => 'rate limit exceeded'];
+            Yii::$app->response->data = ApiResponse::error('rate limit exceeded', 'rate_limit_exceeded');
             return false;
         }
 
@@ -153,7 +154,10 @@ class ApiController extends Controller
     protected function fail(int $status, string $message, array $extra = []): array
     {
         Yii::$app->response->statusCode = $status;
-        return array_merge(['error' => $message], $extra);
+        $code = isset($extra['code']) && is_string($extra['code']) ? $extra['code'] : null;
+        unset($extra['code']);
+
+        return array_merge(ApiResponse::error($message, $code), $extra);
     }
 
     protected function respond(ServiceResult $result): array
@@ -248,6 +252,11 @@ class ApiController extends Controller
         }
 
         return $options;
+    }
+
+    protected function page(array $items, array $options): array
+    {
+        return ApiResponse::page($items, (int)$options['limit'], (int)$options['offset']);
     }
 
     protected function requirePermission(string $resource, string $action)

@@ -44,19 +44,12 @@ class AuditController extends ApiController
             $query->andWhere(['<=', 'created_at', $to->format('Y-m-d H:i:sP')]);
         }
 
-        $limit = $this->parseQueryInteger((string)$request->get('limit', ''));
-        if ($limit <= 0 || $limit > 200) {
-            $limit = 50;
-        }
-
-        $offset = $this->parseQueryInteger((string)$request->get('offset', ''));
-        if ($offset < 0) {
-            $offset = 0;
-        }
-
-        return array_map(static function (AuditLog $log): array {
+        $options = $this->adminListOptions();
+        $items = array_map(static function (AuditLog $log): array {
             return $log->publicData();
-        }, $query->limit($limit)->offset($offset)->all());
+        }, $query->limit($options['limit'])->offset($options['offset'])->all());
+
+        return $this->page($items, $options);
     }
 
     private function parseRfc3339(string $value): ?DateTimeImmutable

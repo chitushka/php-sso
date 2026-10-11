@@ -83,7 +83,8 @@ class LdapController extends ApiController
     public function actionListProviders(): array
     {
         $auth = $this->requirePermission('ldap', 'read');
-        return is_array($auth) ? $auth : $this->providers->list($this->adminListOptions(['enabled']));
+        $options = $this->adminListOptions(['enabled']);
+        return is_array($auth) ? $auth : $this->page($this->providers->list($options), $options);
     }
 
     public function actionCreateProvider(): array
@@ -164,7 +165,8 @@ class LdapController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        return $this->providers->listMappings($id, $this->adminListOptions());
+        $options = $this->adminListOptions();
+        return $this->page($this->providers->listMappings($id, $options), $options);
     }
 
     public function actionCreateGroupMapping(string $id): array

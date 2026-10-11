@@ -48,7 +48,10 @@ class HealthControllerTest extends TestCase
         $result = (new HealthController('health', Yii::$app))->actionReady();
 
         $this->assertSame(503, Yii::$app->response->statusCode);
-        $this->assertSame(['error' => 'database unavailable'], $result);
+        $this->assertSame([
+            'error' => 'database unavailable',
+            'code' => 'database_unavailable',
+        ], $result);
     }
 
     public function testReadyReturnsReadyWhenDatabaseResponds(): void

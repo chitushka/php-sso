@@ -1114,6 +1114,7 @@ try {
     ], $adminToken);
     assertTrue($missingUserFields['status'] === 400, 'create user without username/email must return 400');
     assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match Go error');
+    assertTrue(($missingUserFields['json']['code'] ?? '') === 'invalid_user', 'validation error must expose a stable code');
 
     $unknownUserField = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => 'unknown-field-' . $suffix,
@@ -1140,6 +1141,7 @@ try {
     ], $adminToken);
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
+    assertTrue(($duplicateUser['json']['code'] ?? '') === 'user_conflict', 'conflict must expose a stable code');
 
     $db->createCommand()->update('users', [
         'first_name' => 'Old',
@@ -1152,9 +1154,9 @@ try {
         'status' => 'active',
     ], $adminToken);
     assertTrue($replacedUser['status'] === 200, 'user update must return 200');
-    assertTrue(($replacedUser['json']['first_name'] ?? null) === '', 'user update must clear omitted first_name like Go');
-    assertTrue(($replacedUser['json']['last_name'] ?? null) === '', 'user update must clear omitted last_name like Go');
-    assertTrue(($replacedUser['json']['attributes'] ?? null) === [], 'user update must clear omitted attributes like Go');
+    assertTrue(($replacedUser['json']['first_name'] ?? null) === 'Old', 'user update must preserve omitted first_name');
+    assertTrue(($replacedUser['json']['last_name'] ?? null) === 'Name', 'user update must preserve omitted last_name');
+    assertTrue(($replacedUser['json']['attributes']['department'] ?? null) === 'value', 'user update must preserve omitted attributes');
 
     $db->createCommand()->update('users', ['status' => 'blocked'], ['id' => $plainUserId])->execute();
     $blockedAccount = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $plainLogin['json']['access_token']);
@@ -1175,6 +1177,7 @@ try {
     );
     assertTrue($missingUser['status'] === 404, 'missing user must return 404');
     assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match Go error');
+    assertTrue(($missingUser['json']['code'] ?? '') === 'user_not_found', 'not-found must expose a stable code');
 
     $rawUuidUser = jsonRequest(
         'GET',
@@ -1252,9 +1255,13 @@ try {
     assertTrue(strtotime((string)$updatedRole['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'role update must advance updated_at');
 
     $permissions = jsonRequest('GET', $baseUrl . '/api/v1/permissions', [], $adminToken);
-    assertTrue($permissions['status'] === 200 && !empty($permissions['json']), 'permissions list must return seeded permissions');
+    assertTrue($permissions['status'] === 200 && !empty($permissions['json']['items']), 'permissions list must return seeded permissions');
     assertTrue(
-        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($permissions['json'][0]['created_at'] ?? '')) === 1,
+        ($permissions['json']['pagination'] ?? null) === ['limit' => 50, 'offset' => 0, 'count' => count($permissions['json']['items'])],
+        'permissions list must expose pagination metadata'
+    );
+    assertTrue(
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($permissions['json']['items'][0]['created_at'] ?? '')) === 1,
         'permission created_at must use contract-compliant RFC3339'
     );
 
@@ -1486,12 +1493,13 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditWire['status'] === 200, 'audit wire-format request must return 200');
-    assertTrue(count($auditWire['json'] ?? []) === 1, 'audit wire-format request must return one event');
-    assertTrue(!array_key_exists('actor_user_id', $auditWire['json'][0]), 'audit event must omit empty actor_user_id');
-    assertTrue(($auditWire['json'][0]['ip'] ?? null) === '', 'audit event must use Go zero value for empty ip');
-    assertTrue(($auditWire['json'][0]['user_agent'] ?? null) === '', 'audit event must use Go zero value for empty user_agent');
+    assertTrue(count($auditWire['json']['items'] ?? []) === 1, 'audit wire-format request must return one event');
+    assertTrue(($auditWire['json']['pagination'] ?? null) === ['limit' => 1, 'offset' => 0, 'count' => 1], 'audit response must expose pagination metadata');
+    assertTrue(!array_key_exists('actor_user_id', $auditWire['json']['items'][0]), 'audit event must omit empty actor_user_id');
+    assertTrue(($auditWire['json']['items'][0]['ip'] ?? null) === '', 'audit event must use Go zero value for empty ip');
+    assertTrue(($auditWire['json']['items'][0]['user_agent'] ?? null) === '', 'audit event must use Go zero value for empty user_agent');
     assertTrue(
-        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($auditWire['json'][0]['created_at'] ?? '')) === 1,
+        preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($auditWire['json']['items'][0]['created_at'] ?? '')) === 1,
         'audit created_at must use contract-compliant RFC3339'
     );
 
@@ -1503,7 +1511,7 @@ try {
             'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
         ]);
         assertTrue($auditDefaultLimit['status'] === 200, 'audit with invalid limit must return 200');
-        assertTrue(count($auditDefaultLimit['json'] ?? []) === 50, 'invalid audit limit must use Go default of 50');
+        assertTrue(count($auditDefaultLimit['json']['items'] ?? []) === 50, 'invalid audit limit must use the default of 50');
     }
 
     $auditMaxLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
@@ -1513,7 +1521,7 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditMaxLimit['status'] === 200, 'audit with maximum limit must return 200');
-    assertTrue(count($auditMaxLimit['json'] ?? []) === 55, 'audit limit 200 must not be reduced to the default');
+    assertTrue(count($auditMaxLimit['json']['items'] ?? []) === 50, 'audit limit above 100 must use the default');
 
     $auditLeadingZeroLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
         'action' => $auditLimitAction,
@@ -1523,7 +1531,7 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditLeadingZeroLimit['status'] === 200, 'audit must accept a numeric limit with leading zeroes');
-    assertTrue(count($auditLeadingZeroLimit['json'] ?? []) === 55, 'invalid audit offset must use Go default of zero');
+    assertTrue(count($auditLeadingZeroLimit['json']['items'] ?? []) === 50, 'invalid audit offset must use the default of zero');
 
     $missingIdentityFields = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => '',

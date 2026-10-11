@@ -642,6 +642,10 @@ const app = Vue.createApp({
     async api(url, options = {}) {
       return AdminApi.request(this.accessToken, url, options);
     },
+    async apiItems(url) {
+      const page = await this.api(url);
+      return Array.isArray(page.items) ? page.items : [];
+    },
     async refresh() {
       this.bootstrap = await this.api('/api/v1/bootstrap/status');
       this.discovery = await this.api('/.well-known/openid-configuration');
@@ -649,13 +653,13 @@ const app = Vue.createApp({
       if (this.accessToken) {
         this.user = await this.api('/api/v1/auth/me').catch(() => null);
         this.syncProfileForm();
-        this.clients = await this.api('/api/v1/oauth/clients').catch(() => []);
-        this.users = await this.api('/api/v1/users').catch(() => []);
-        this.roles = await this.api('/api/v1/roles').catch(() => []);
-        this.permissions = await this.api('/api/v1/permissions').catch(() => []);
-        this.groups = await this.api('/api/v1/groups').catch(() => []);
-        this.ldapProviders = await this.api('/api/v1/ldap/providers').catch(() => []);
-        this.identityProviders = await this.api('/api/v1/identity-providers').catch(() => []);
+        this.clients = await this.apiItems('/api/v1/oauth/clients').catch(() => []);
+        this.users = await this.apiItems('/api/v1/users').catch(() => []);
+        this.roles = await this.apiItems('/api/v1/roles').catch(() => []);
+        this.permissions = await this.apiItems('/api/v1/permissions').catch(() => []);
+        this.groups = await this.apiItems('/api/v1/groups').catch(() => []);
+        this.ldapProviders = await this.apiItems('/api/v1/ldap/providers').catch(() => []);
+        this.identityProviders = await this.apiItems('/api/v1/identity-providers').catch(() => []);
         await this.reloadSelectedAssignments();
       }
     },
@@ -992,7 +996,7 @@ const app = Vue.createApp({
       }
     },
     async loadAudit() {
-      this.audit = await this.api('/api/v1/audit');
+      this.audit = await this.apiItems('/api/v1/audit');
     },
     async testLdap() {
       await this.api('/api/v1/ldap/providers/test', { method: 'POST', body: JSON.stringify(this.ldapForm) });

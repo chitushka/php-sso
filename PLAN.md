@@ -11,7 +11,6 @@
 
 ### 1. Формализовать API и продуктовые сценарии
 
-- Унифицировать JSON error envelope, HTTP statuses для not-found/validation/conflict и pagination metadata.
 - Добавить в UI управление активными consent, federated identity links, signing keys и operational status.
 - Провести accessibility, keyboard navigation и responsive review Vue admin; разделить монолитный `views/admin/index.php` на модули.
 

@@ -102,7 +102,10 @@ class JsonBodyContractTest extends TestCase
 
         $this->assertFalse($controller->beforeAction(new Action('oversized', $controller)));
         $this->assertSame(413, Yii::$app->response->statusCode);
-        $this->assertSame(['error' => 'request body is too large'], Yii::$app->response->data);
+        $this->assertSame([
+            'error' => 'request body is too large',
+            'code' => 'request_body_too_large',
+        ], Yii::$app->response->data);
     }
 
     private function decode(string $raw, array $schema): array

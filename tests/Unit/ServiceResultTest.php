@@ -41,6 +41,7 @@ final class ServiceResultTest extends TestCase
         $this->assertSame(409, $response->statusCode);
         $this->assertSame('user_conflict', $result->error->code);
         $this->assertSame('user already exists', $payload['error']);
-        $this->assertArrayNotHasKey('code', $payload);
+        $this->assertSame('user_conflict', $payload['code']);
+        $this->assertSame(['email' => ['duplicate']], $payload['details']);
     }
 }

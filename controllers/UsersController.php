@@ -29,7 +29,12 @@ final class UsersController extends ApiController
 
         $options = $this->adminListOptions(['status', 'source']);
 
-        return $this->respond($this->users->list($options['limit'], $options['offset'], $options));
+        $result = $this->users->list($options['limit'], $options['offset'], $options);
+        if (!$result->isSuccess()) {
+            return $this->respond($result);
+        }
+
+        return $this->page($result->data, $options);
     }
 
     public function actionView(string $id): array

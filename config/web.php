@@ -101,7 +101,17 @@ return [
                     && $exception->getMessage() === 'invalid json body'
                 ) {
                     $event->sender->format = yii\web\Response::FORMAT_JSON;
-                    $event->sender->data = ['error' => 'invalid json body'];
+                    $event->sender->data = app\components\ApiResponse::error(
+                        'invalid json body',
+                        'invalid_json_body'
+                    );
+                }
+                if (
+                    strpos($path, '/api/v1/') === 0
+                    && $event->sender->statusCode >= 400
+                    && is_array($event->sender->data)
+                ) {
+                    $event->sender->data = app\components\ApiResponse::normalizeError($event->sender->data);
                 }
             },
             'formatters' => [

@@ -113,7 +113,8 @@ class BrokerController extends ApiController
             return $user;
         }
 
-        return $this->providers->list($this->adminListOptions(['type']));
+        $options = $this->adminListOptions(['type']);
+        return $this->page($this->providers->list($options), $options);
     }
 
     public function actionCreateProvider(): array

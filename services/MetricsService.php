@@ -46,7 +46,6 @@ class MetricsService
             self::KEY_TOTAL => 1,
             self::KEY_ROUTE_DURATION_SUM . ':' . $method . ' ' . $route => $duration,
             self::KEY_ROUTE_DURATION_COUNT . ':' . $method . ' ' . $route => 1,
-            self::KEY_INFLIGHT => -1,
         ];
         foreach (self::DURATION_BUCKETS as $bucket) {
             if ($duration <= $bucket) {
@@ -55,6 +54,7 @@ class MetricsService
         }
         $deltas[self::KEY_DURATION_BUCKET . ':' . $method . ' ' . $route . ' +Inf'] = 1;
         $this->incrementMany($deltas);
+        $this->decrementInflight();
     }
 
     public function event(string $family, string $outcome, float $delta = 1.0): void
@@ -219,6 +219,17 @@ class MetricsService
             . ' ON CONFLICT (metric_key) DO UPDATE SET '
             . 'metric_value = metric_counters.metric_value + EXCLUDED.metric_value, updated_at = now()',
             $params
+        )->execute();
+    }
+
+    private function decrementInflight(): void
+    {
+        // Отдельный UPDATE не создаёт отрицательную EXCLUDED-строку и сохраняет DB CHECK invariant.
+        ApplicationRuntime::db()->createCommand(
+            'UPDATE metric_counters
+             SET metric_value = GREATEST(metric_value - 1, 0), updated_at = now()
+             WHERE metric_key = :key',
+            [':key' => self::KEY_INFLIGHT]
         )->execute();
     }
 

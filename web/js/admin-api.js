@@ -14,7 +14,8 @@
     }, options || {}));
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.error || data.error_description || 'request failed');
+      const apiError = data.error && typeof data.error === 'object' ? data.error.message : data.error;
+      throw new Error(apiError || data.error_description || 'request failed');
     }
     return data;
   }

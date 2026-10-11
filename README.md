@@ -118,6 +118,7 @@ Signing/JWT keys и credentials БД, SMTP и LDAP следует ротиров
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — границы системы, security model и нормативный HTTP/API-контракт.
 - [Administrative/account OpenAPI](contracts/openapi-admin.json) и [OAuth/OIDC OpenAPI](contracts/openapi-oauth.json) — машиночитаемые OpenAPI 3.1 контракты; `composer verify:contracts` проверяет их синхронность с router.
+- Administrative list responses содержат `items` и `pagination`, а ошибки `/api/v1` — строковые `error` и стабильный машинный `code`; точные схемы и HTTP statuses определены в OpenAPI.
 - [PLAN.md](PLAN.md) — только незавершённые и явно отложенные работы.
 - [AGENTS.md](AGENTS.md) — правила разработки и сопровождения репозитория.
 
