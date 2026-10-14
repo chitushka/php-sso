@@ -116,15 +116,37 @@ try {
         ]
     )->queryScalar();
 
+    $providerErrorLogin = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/login'
+    );
+    $providerErrorParts = parse_url($providerErrorLogin['location']);
+    parse_str($providerErrorParts['query'] ?? '', $providerErrorQuery);
     $providerError = httpRequest(
         'GET',
-        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?error=access_denied'
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
+            'error' => 'access_denied',
+            'state' => $providerErrorQuery['state'] ?? '',
+        ]),
+        $providerErrorLogin['cookies']
     );
     assertTrue($providerError['status'] === 302, 'broker provider error must redirect');
     assertTrue(
         $providerError['location'] === '/login?broker_error=access_denied'
             || $providerError['location'] === $baseUrl . '/login?broker_error=access_denied',
         'broker provider error must redirect to the contract-compliant login route'
+    );
+    $providerErrorReplay = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
+            'error' => 'access_denied',
+            'state' => $providerErrorQuery['state'] ?? '',
+        ]),
+        $providerErrorLogin['cookies']
+    );
+    assertTrue(
+        str_ends_with($providerErrorReplay['location'], '/login?broker_error=failed'),
+        'provider error callback state must be consumed exactly once'
     );
 
     $failedCallback = httpRequest(
@@ -151,12 +173,25 @@ try {
     assertTrue(($authorizeQuery['redirect_uri'] ?? '') === $baseUrl . '/oauth2/broker/' . $providerCode . '/callback', 'authorize redirect must include callback URL');
     assertTrue(!empty($authorizeQuery['state']), 'authorize redirect must include signed state');
 
-    $collisionCallback = httpRequest(
+    $transferredCallback = httpRequest(
         'GET',
         $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
             'state' => $authorizeQuery['state'],
             'code' => $externalCode,
         ])
+    );
+    assertTrue(
+        str_ends_with($transferredCallback['location'], '/login?broker_error=failed'),
+        'broker state transferred to another browser must be rejected'
+    );
+
+    $collisionCallback = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
+            'state' => $authorizeQuery['state'],
+            'code' => $externalCode,
+        ]),
+        $login['cookies']
     );
     assertTrue($collisionCallback['status'] === 302, 'email collision must redirect');
     assertTrue(
@@ -186,7 +221,8 @@ try {
         $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
             'state' => $retryAuthorizeQuery['state'] ?? '',
             'code' => $externalCode,
-        ])
+        ]),
+        $retryLogin['cookies']
     );
 
     assertTrue(
@@ -201,6 +237,19 @@ try {
         'broker callback must not expose an access token in the URL, got ' . $callback['location']
     );
     assertTrue(!empty($callback['cookies']['sso_session']), 'broker callback must set SSO session cookie');
+
+    $replayedCallback = httpRequest(
+        'GET',
+        $baseUrl . '/oauth2/broker/' . rawurlencode($providerCode) . '/callback?' . http_build_query([
+            'state' => $retryAuthorizeQuery['state'] ?? '',
+            'code' => $externalCode,
+        ]),
+        $retryLogin['cookies']
+    );
+    assertTrue(
+        str_ends_with($replayedCallback['location'], '/login?broker_error=failed'),
+        'successful broker callback must reject replay'
+    );
 
     $sessionToken = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', $callback['cookies']);
     $sessionPayload = json_decode((string)$sessionToken['body'], true);

@@ -10,10 +10,12 @@ use app\services\contracts\RandomGeneratorInterface;
 use app\services\results\ServiceError;
 use app\services\results\ServiceResult;
 use Yii;
+use yii\web\Cookie;
 
 class BrokerService
 {
     private const STATE_TTL = 600;
+    public const CONTEXT_COOKIE = 'sso_broker_context';
 
     private AuthService $auth;
     private CryptoService $crypto;
@@ -63,36 +65,71 @@ class BrokerService
         return $this->providers->delete($id);
     }
 
-    public function start(string $code, string $continueUrl): ?string
+    public function start(string $code, string $continueUrl, string $browserContext = ''): ServiceResult
     {
         $provider = IdentityProvider::findOne(['code' => $code, 'enabled' => true]);
         if (!$provider) {
-            return null;
+            return $this->failure('unknown_identity_provider', 'unknown identity provider', 404);
         }
 
         $provider = $this->applyPreset($provider);
         if (!$this->providerEndpointsAreSafe($provider)) {
-            return null;
+            return $this->failure('unknown_identity_provider', 'unknown identity provider', 404);
+        }
+        if (!$this->isValidBrowserContext($browserContext)) {
+            $browserContext = $this->random->token(32);
         }
         $continueUrl = $this->localContinueUrl($continueUrl);
+        $expiresAt = $this->clock->now()->getTimestamp() + self::STATE_TTL;
         $state = $this->signState([
             'p' => $provider->code,
             'n' => $this->random->token(16),
             'c' => $continueUrl,
-            'e' => gmdate('Y-m-d\TH:i:s\Z', $this->clock->now()->getTimestamp() + self::STATE_TTL),
+            'e' => gmdate('Y-m-d\TH:i:s\Z', $expiresAt),
         ]);
 
-        return $this->withQueryParameters((string)$provider->authorize_url, [
+        try {
+            ApplicationRuntime::db()->createCommand()->insert('broker_login_states', [
+                'state_hash' => hash('sha256', $state),
+                'browser_hash' => hash('sha256', $browserContext),
+                'provider_id' => (string)$provider->getAttribute('id'),
+                'expires_at' => gmdate('Y-m-d H:i:sP', $expiresAt),
+            ])->execute();
+        } catch (\Throwable $exception) {
+            Yii::error('broker state persistence failed', 'broker');
+            return $this->failure('broker_start_failed', 'failed to start external authentication', 500);
+        }
+
+        $redirect = $this->withQueryParameters((string)$provider->authorize_url, [
             'response_type' => 'code',
             'client_id' => $provider->client_id,
             'redirect_uri' => $this->callbackUrl((string)$provider->code),
             'scope' => $provider->scopes,
             'state' => $state,
         ]);
+        if ($redirect === null) {
+            return $this->failure('broker_start_failed', 'failed to start external authentication', 500);
+        }
+
+        return ServiceResult::success(['redirect' => $redirect], 200, [
+            'context_cookie' => new Cookie([
+                'name' => self::CONTEXT_COOKIE,
+                'value' => $browserContext,
+                'httpOnly' => true,
+                'secure' => (bool)ApplicationRuntime::param('cookieSecure'),
+                'sameSite' => Cookie::SAME_SITE_LAX,
+                'path' => '/oauth2/broker',
+                'expire' => $expiresAt,
+            ]),
+        ]);
     }
 
-    public function callback(string $providerCode, string $rawState, string $code): ServiceResult
-    {
+    public function callback(
+        string $providerCode,
+        string $rawState,
+        string $code,
+        string $browserContext = ''
+    ): ServiceResult {
         $state = $this->verifyState($rawState);
         if (!$state || ($state['p'] ?? '') !== $providerCode || $code === '') {
             return $this->failure('broker_authentication_failed', 'external authentication failed');
@@ -100,6 +137,10 @@ class BrokerService
 
         $provider = IdentityProvider::findOne(['code' => $providerCode, 'enabled' => true]);
         if (!$provider) {
+            return $this->failure('broker_authentication_failed', 'external authentication failed');
+        }
+
+        if (!$this->consumeState($provider, $rawState, $browserContext)) {
             return $this->failure('broker_authentication_failed', 'external authentication failed');
         }
 
@@ -132,6 +173,51 @@ class BrokerService
             'cookie' => $auth->metadata['cookie'],
             'csrf_cookie' => $auth->metadata['csrf_cookie'],
         ]);
+    }
+
+    public function consumeRejectedCallback(
+        string $providerCode,
+        string $rawState,
+        string $browserContext = ''
+    ): bool {
+        $state = $this->verifyState($rawState);
+        if (!$state || ($state['p'] ?? '') !== $providerCode) {
+            return false;
+        }
+
+        $provider = IdentityProvider::findOne(['code' => $providerCode, 'enabled' => true]);
+        return $provider ? $this->consumeState($provider, $rawState, $browserContext) : false;
+    }
+
+    private function consumeState(
+        IdentityProvider $provider,
+        string $rawState,
+        string $browserContext
+    ): bool {
+        if (!$this->isValidBrowserContext($browserContext)) {
+            return false;
+        }
+
+        // Условное обновление делает callback одноразовым даже при параллельных запросах.
+        return ApplicationRuntime::db()->createCommand(
+            'UPDATE broker_login_states
+             SET consumed_at = now()
+             WHERE state_hash = :state_hash
+               AND browser_hash = :browser_hash
+               AND provider_id = :provider_id
+               AND consumed_at IS NULL
+               AND expires_at > now()',
+            [
+                ':state_hash' => hash('sha256', $rawState),
+                ':browser_hash' => hash('sha256', $browserContext),
+                ':provider_id' => (string)$provider->getAttribute('id'),
+            ]
+        )->execute() === 1;
+    }
+
+    private function isValidBrowserContext(string $browserContext): bool
+    {
+        return preg_match('/^[A-Za-z0-9_-]{32,128}$/D', $browserContext) === 1;
     }
 
     private function applyPreset(IdentityProvider $provider): IdentityProvider
@@ -436,8 +522,8 @@ class BrokerService
         return $decoded === false ? null : $decoded;
     }
 
-    private function failure(string $code, string $message): ServiceResult
+    private function failure(string $code, string $message, int $status = 401): ServiceResult
     {
-        return ServiceResult::failure(new ServiceError($code, $message, 401));
+        return ServiceResult::failure(new ServiceError($code, $message, $status));
     }
 }

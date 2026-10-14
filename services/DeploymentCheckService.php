@@ -178,6 +178,7 @@ class DeploymentCheckService
             'ldap_group_mappings' => ['id', 'provider_id', 'ldap_group', 'group_id'],
             'identity_providers' => ['id', 'code', 'client_secret', 'authorize_url', 'token_url'],
             'federated_identities' => ['provider_id', 'external_subject', 'user_id'],
+            'broker_login_states' => ['state_hash', 'browser_hash', 'provider_id', 'expires_at', 'consumed_at'],
             'cache' => ['id', 'expire', 'data'],
         ];
 
@@ -232,6 +233,7 @@ class DeploymentCheckService
             'idx_one_time_tokens_cleanup',
             'idx_login_attempts_cleanup',
             'idx_audit_logs_cleanup',
+            'idx_broker_login_states_cleanup',
             'idx_rate_limit_buckets_expiry',
             'idx_users_admin_list',
             'idx_oauth_clients_admin_list',

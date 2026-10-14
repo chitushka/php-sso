@@ -88,13 +88,29 @@ class AdminProviderServiceTest extends TestCase
 
         $public = $service->publicProviders();
         $this->assertContains(strtolower($code), array_column($public, 'code'));
-        $loginUrl = $service->start(strtolower($code), 'https://evil.example.test/path');
+        $browserContext = str_repeat('a', 43);
+        $loginResult = $service->start(
+            strtolower($code),
+            'https://evil.example.test/path',
+            $browserContext
+        );
+        $this->assertTrue($loginResult->isSuccess());
+        $loginUrl = $loginResult->data['redirect'];
         $this->assertStringStartsWith('https://idp.example.test/authorize?', $loginUrl);
         $this->assertStringContainsString('redirect_uri=', $loginUrl);
         $loginParts = parse_url($loginUrl);
         parse_str($loginParts['query'] ?? '', $loginQuery);
         $verifyState = new \ReflectionMethod($service, 'verifyState');
         $this->assertSame('/', $verifyState->invoke($service, $loginQuery['state'])['c']);
+        $this->assertFalse($service->consumeRejectedCallback(
+            strtolower($code),
+            $loginQuery['state'],
+            str_repeat('b', 43)
+        ));
+        $this->assertSame(
+            ['0', '1'],
+            $this->consumeStateConcurrently(strtolower($code), $loginQuery['state'], $browserContext)
+        );
 
         $localContinue = new \ReflectionMethod($service, 'localContinueUrl');
         $this->assertSame('/', $localContinue->invoke($service, '//evil.example.test/path'));
@@ -107,7 +123,11 @@ class AdminProviderServiceTest extends TestCase
             'authorize_url' => 'https://idp.example.test/authorize?prompt=login&client_id=stale#provider-fragment',
         ], ['id' => $created['data']['id']])->execute();
         $provider->refresh();
-        $loginUrlWithQuery = $service->start(strtolower($code), '/users');
+        $loginUrlWithQuery = $service->start(
+            strtolower($code),
+            '/users',
+            $browserContext
+        )->data['redirect'];
         $this->assertStringEndsWith('#provider-fragment', $loginUrlWithQuery);
         $this->assertSame(1, substr_count($loginUrlWithQuery, 'client_id='));
         $loginPartsWithQuery = parse_url($loginUrlWithQuery);
@@ -115,6 +135,17 @@ class AdminProviderServiceTest extends TestCase
         $this->assertSame('login', $loginQueryWithQuery['prompt'] ?? null);
         $this->assertSame('client-' . $code, $loginQueryWithQuery['client_id'] ?? null);
         $this->assertSame('code', $loginQueryWithQuery['response_type'] ?? null);
+
+        Yii::$app->db->createCommand()->update('broker_login_states', [
+            'expires_at' => '2000-01-01 00:00:00+00',
+        ], [
+            'state_hash' => hash('sha256', $loginQueryWithQuery['state']),
+        ])->execute();
+        $this->assertFalse($service->consumeRejectedCallback(
+            strtolower($code),
+            $loginQueryWithQuery['state'],
+            $browserContext
+        ));
 
         Yii::$app->db->createCommand()->update(
             'identity_providers',
@@ -319,5 +350,44 @@ class AdminProviderServiceTest extends TestCase
         return JwtService::base64url($payload) . '.' . JwtService::base64url(
             hash_hmac('sha256', $payload, $secret, true)
         );
+    }
+
+    private function consumeStateConcurrently(
+        string $providerCode,
+        string $state,
+        string $browserContext
+    ): array {
+        $script = dirname(__DIR__) . '/Fixtures/broker_state_worker.php';
+        $startAt = sprintf('%.6F', microtime(true) + 0.75);
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $workers = [];
+
+        for ($index = 0; $index < 2; $index++) {
+            $process = proc_open(
+                [PHP_BINARY, $script, $providerCode, $state, $browserContext, $startAt],
+                $descriptorSpec,
+                $pipes
+            );
+            $this->assertIsResource($process);
+            fclose($pipes[0]);
+            $workers[] = [$process, $pipes[1], $pipes[2]];
+        }
+
+        $outputs = [];
+        foreach ($workers as [$process, $stdout, $stderr]) {
+            $output = stream_get_contents($stdout);
+            $error = stream_get_contents($stderr);
+            fclose($stdout);
+            fclose($stderr);
+            $this->assertSame(0, proc_close($process), $error);
+            $outputs[] = trim($output);
+        }
+        sort($outputs);
+
+        return $outputs;
     }
 }

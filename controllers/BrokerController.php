@@ -69,29 +69,43 @@ class BrokerController extends ApiController
     public function actionLogin(string $providerCode): Response
     {
         $continue = (string)Yii::$app->request->get('continue', '/');
-        $redirect = $this->broker->start($providerCode, $continue);
-        if (!$redirect) {
+        $result = $this->broker->start(
+            $providerCode,
+            $continue,
+            (string)Yii::$app->request->cookies->getValue(BrokerService::CONTEXT_COOKIE, '')
+        );
+        if (!$result->isSuccess()) {
             $this->metrics->event('provider', 'failure');
-            Yii::$app->response->statusCode = 404;
+            Yii::$app->response->statusCode = $result->status;
             Yii::$app->response->format = Response::FORMAT_JSON;
-            Yii::$app->response->data = ['error' => 'unknown identity provider'];
+            Yii::$app->response->data = ['error' => $result->error->message];
             return Yii::$app->response;
         }
 
-        return Yii::$app->response->redirect($redirect, 302);
+        Yii::$app->response->cookies->add($result->metadata['context_cookie']);
+        return Yii::$app->response->redirect($result->data['redirect'], 302);
     }
 
     public function actionCallback(string $providerCode): Response
     {
         if ((string)Yii::$app->request->get('error', '') !== '') {
             $this->metrics->event('provider', 'failure');
+            $valid = $this->broker->consumeRejectedCallback(
+                $providerCode,
+                (string)Yii::$app->request->get('state', ''),
+                (string)Yii::$app->request->cookies->getValue(BrokerService::CONTEXT_COOKIE, '')
+            );
+            if (!$valid) {
+                return Yii::$app->response->redirect('/login?broker_error=failed', 302);
+            }
             return Yii::$app->response->redirect('/login?broker_error=' . rawurlencode((string)Yii::$app->request->get('error')), 302);
         }
 
         $result = $this->broker->callback(
             $providerCode,
             (string)Yii::$app->request->get('state', ''),
-            (string)Yii::$app->request->get('code', '')
+            (string)Yii::$app->request->get('code', ''),
+            (string)Yii::$app->request->cookies->getValue(BrokerService::CONTEXT_COOKIE, '')
         );
         if (!$result->isSuccess()) {
             $this->metrics->event('provider', 'failure');

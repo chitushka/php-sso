@@ -32,6 +32,7 @@ class CleanupController extends Controller
                 'login_attempts' => "updated_at < now() - interval '24 hours'",
                 'revoked_access_tokens' => 'expires_at <= now()',
                 'rate_limit_buckets' => 'expires_at <= now()',
+                'broker_login_states' => "expires_at < now() - interval '24 hours'",
                 'audit_logs' => "created_at < now() - make_interval(days => {$retention})",
             ];
             $total = 0;

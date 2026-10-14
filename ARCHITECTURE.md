@@ -87,6 +87,8 @@ Authorization Code требует PKCE S256, state и точного совпа�
 
 Authorization codes и refresh tokens одноразовые. Повторное использование refresh token отзывает его семейство. ID Token подписывается активным RS256 key с `kid`, issuer/audience/time/nonce проверяются на границах; ID Token из refresh grant не содержит `nonce`. Introspection активного access token возвращает стандартные `exp` и `iat`, но не раскрывает внутренние JWT-only claims. Consent привязан к user, client и scopes; расширение scopes требует нового подтверждения.
 
+Federation broker сохраняет только SHA-256 хеш подписанного `state` и хеш отдельного browser-context token. Контекст передаётся в `HttpOnly`, `SameSite=Lax` cookie с областью `/oauth2/broker`; callback атомарно помечает запись использованной до обмена authorization code. Поэтому `state` нельзя перенести в другой браузер или повторно применить, а два конкурентных callback не могут оба обратиться к провайдеру. Error callback также потребляет `state`; истёкшие записи удаляются общим cleanup.
+
 Пользователь просматривает и отзывает собственные активные consent. Администратор с отдельными permissions может просматривать federated identity links пользователя и отвязывать их; последний способ входа federated-only пользователя удалить нельзя. Принудительная ротация signing key атомарно переводит прежний active key в `retiring`, сохраняет его в JWKS на grace period, создаёт новый encrypted active key и записывает audit event.
 
 ## RBAC и аудит
