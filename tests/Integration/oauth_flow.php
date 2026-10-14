@@ -1783,7 +1783,7 @@ try {
         $adminToken
     );
     assertTrue($invalidLdapMappingId['status'] === 400, 'LDAP mapping delete with invalid mapping id must return 400');
-    assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid mapping id', 'LDAP mapping delete must match API mapping-id contract');
+    assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid id', 'LDAP mapping delete must validate parent id first');
 
     $missingLdapMapping = jsonRequest(
         'DELETE',
@@ -1791,8 +1791,29 @@ try {
         [],
         $adminToken
     );
-    assertTrue($missingLdapMapping['status'] === 404, 'LDAP mapping delete must ignore parent id under the current API contract and return 404');
-    assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'mapping not found', 'missing LDAP mapping must match API contract');
+    assertTrue($missingLdapMapping['status'] === 400, 'LDAP mapping delete must reject an invalid parent id');
+    assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'invalid id', 'LDAP mapping delete must enforce the parent-id contract');
+
+    $missingLdapMappings = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000/group-mappings',
+        [],
+        $adminToken
+    );
+    assertTrue($missingLdapMappings['status'] === 404, 'list mappings for a missing LDAP provider must return 404');
+    assertTrue(($missingLdapMappings['json']['error'] ?? '') === 'provider not found', 'missing LDAP mapping parent must match API contract');
+
+    $missingLdapMappingCreate = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000/group-mappings',
+        [
+            'ldap_group' => 'cn=missing,dc=example,dc=test',
+            'group_id' => $group['json']['id'],
+        ],
+        $adminToken
+    );
+    assertTrue($missingLdapMappingCreate['status'] === 404, 'create mapping for a missing LDAP provider must return 404');
+    assertTrue(($missingLdapMappingCreate['json']['error'] ?? '') === 'provider not found', 'missing LDAP mapping create parent must match API contract');
 
     $ldapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Integration LDAP ' . $suffix,
@@ -1826,6 +1847,20 @@ try {
         [':id' => $ldapProvider['json']['id']]
     )->queryScalar();
     assertTrue($ldapCreateAuditCount === 1, 'LDAP provider create must write exactly one audit event');
+
+    $otherLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+        'name' => 'Other integration LDAP ' . $suffix,
+        'host' => 'ldap-other.example.test',
+        'bind_dn' => 'cn=service,dc=example,dc=test',
+        'bind_password' => 'other-integration-secret',
+        'base_dn' => 'dc=example,dc=test',
+    ], $adminToken);
+    assertTrue($otherLdapProvider['status'] === 201, 'second LDAP provider must be created');
+    $createdLdapProviderIds[] = $otherLdapProvider['json']['id'];
+    $createdAuditTargets[] = [
+        'action' => 'ldap_provider_created',
+        'target_id' => $otherLdapProvider['json']['id'],
+    ];
 
     $failedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Invalid integration LDAP ' . $suffix,
@@ -1863,15 +1898,17 @@ try {
         $adminToken
     );
     assertTrue($updatedLdapProvider['status'] === 200, 'LDAP provider update must return 200');
-    foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $zeroValueField) {
-        assertTrue(
-            ($updatedLdapProvider['json'][$zeroValueField] ?? null) === '',
-            'LDAP provider update must clear omitted ' . $zeroValueField . ' under the current API contract'
-        );
-    }
-    assertTrue(($updatedLdapProvider['json']['use_tls'] ?? null) === false, 'LDAP provider update must clear omitted use_tls under the current API contract');
-    assertTrue(($updatedLdapProvider['json']['start_tls'] ?? null) === false, 'LDAP provider update must clear omitted start_tls under the current API contract');
-    assertTrue(($updatedLdapProvider['json']['enabled'] ?? null) === false, 'LDAP provider update must clear omitted enabled under the current API contract');
+    assertTrue(($updatedLdapProvider['json']['host'] ?? '') === 'ldap.example.test', 'LDAP provider update must preserve omitted host');
+    assertTrue(($updatedLdapProvider['json']['bind_dn'] ?? '') === 'cn=service,dc=example,dc=test', 'LDAP provider update must preserve omitted bind_dn');
+    assertTrue(($updatedLdapProvider['json']['base_dn'] ?? '') === 'dc=example,dc=test', 'LDAP provider update must preserve omitted base_dn');
+    assertTrue(($updatedLdapProvider['json']['user_filter'] ?? '') === '(&(objectClass=user)(sAMAccountName={username}))', 'LDAP provider update must preserve omitted user_filter');
+    assertTrue(($updatedLdapProvider['json']['username_attribute'] ?? '') === 'sAMAccountName', 'LDAP provider update must preserve omitted username_attribute');
+    assertTrue(($updatedLdapProvider['json']['email_attribute'] ?? '') === 'mail', 'LDAP provider update must preserve omitted email_attribute');
+    assertTrue(($updatedLdapProvider['json']['display_name_attribute'] ?? '') === 'displayName', 'LDAP provider update must preserve omitted display_name_attribute');
+    assertTrue(($updatedLdapProvider['json']['group_attribute'] ?? null) === '', 'LDAP provider update must preserve omitted group_attribute');
+    assertTrue(($updatedLdapProvider['json']['use_tls'] ?? null) === false, 'LDAP provider update must preserve omitted use_tls');
+    assertTrue(($updatedLdapProvider['json']['start_tls'] ?? null) === false, 'LDAP provider update must preserve omitted start_tls');
+    assertTrue(($updatedLdapProvider['json']['enabled'] ?? null) === false, 'LDAP provider update must preserve omitted enabled');
     assertTrue(
         strtotime((string)$updatedLdapProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
         'LDAP provider update must advance updated_at'
@@ -1896,6 +1933,15 @@ try {
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapMapping['json']['created_at'] ?? '')) === 1,
         'LDAP group mapping created_at must use contract-compliant RFC3339'
     );
+
+    $crossProviderDelete = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/' . $otherLdapProvider['json']['id'] . '/group-mappings/' . $ldapMapping['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($crossProviderDelete['status'] === 404, 'LDAP mapping cannot be deleted through another provider');
+    assertTrue(($crossProviderDelete['json']['error'] ?? '') === 'mapping not found', 'cross-provider mapping delete must use the not-found contract');
 
     $duplicateLdapMapping = jsonRequest(
         'POST',

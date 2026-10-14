@@ -79,6 +79,8 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 
 Административные списки принимают `limit` (1–100, по умолчанию 50), `offset` (неотрицательный) и текстовый фильтр `q`. Список пользователей дополнительно принимает `status` и `source`, OAuth clients и identity providers — `type`, LDAP providers — `enabled`. Некорректные границы заменяются безопасными значениями по умолчанию. Ответ имеет envelope `{"items": [...], "pagination": {"limit": 50, "offset": 0, "count": N}}`; `count` описывает число элементов в текущей странице. Пользовательские account-списки остаются JSON-массивами.
 
+LDAP group mapping является вложенным ресурсом provider: list/create возвращают `404`, если parent отсутствует, а delete сопоставляет одновременно `provider_id` и `mappingID`, поэтому mapping нельзя удалить через URI другого provider. Проверка parent, mutation и обязательный audit выполняются в одной транзакции. `PUT /api/v1/ldap/providers/{id}` имеет partial-update семантику: изменяются только присутствующие поля, пропущенные настройки и пустой `bind_password` сохраняют прежние значения.
+
 ## Browser и OAuth/OIDC security
 
 Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается в production для прямого HTTPS и HTTPS за доверенным proxy. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP, host, scheme и port принимаются только от CIDR из `SSO_TRUSTED_PROXIES`; те же CIDR настраивают Yii `Request::trustedHosts`, поэтому недоверенные peers не могут подменить origin или признак защищённого соединения.

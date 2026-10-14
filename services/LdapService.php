@@ -103,7 +103,7 @@ class LdapService
         return $user;
     }
 
-    public function listGroupMappings(string $providerId): array
+    public function listGroupMappings(string $providerId): ServiceResult
     {
         return $this->providers()->listMappings($providerId);
     }
@@ -113,9 +113,9 @@ class LdapService
         return $this->providers()->createMapping($providerId, $body, $actorId);
     }
 
-    public function deleteGroupMapping(string $mappingId, ?string $actorId): bool
+    public function deleteGroupMapping(string $providerId, string $mappingId, ?string $actorId): bool
     {
-        return $this->providers()->deleteMapping($mappingId, $actorId);
+        return $this->providers()->deleteMapping($providerId, $mappingId, $actorId);
     }
 
     private function authenticateWithProvider(LdapProvider $provider, string $login, string $password): ?User

@@ -25,7 +25,6 @@ class LdapController extends ApiController
     }
 
     private const PROVIDER_FIELDS = [
-        'id',
         'name',
         'host',
         'port',
@@ -40,8 +39,6 @@ class LdapController extends ApiController
         'display_name_attribute',
         'group_attribute',
         'enabled',
-        'created_at',
-        'updated_at',
     ];
 
     private const GROUP_MAPPING_FIELDS = [
@@ -166,7 +163,12 @@ class LdapController extends ApiController
         $id = $this->canonicalUuid($id);
 
         $options = $this->adminListOptions();
-        return $this->page($this->providers->listMappings($id, $options), $options);
+        $result = $this->providers->listMappings($id, $options);
+        if (!$result->isSuccess()) {
+            Yii::$app->response->statusCode = $result->status;
+            return $result->data;
+        }
+        return $this->page($result->data, $options);
     }
 
     public function actionCreateGroupMapping(string $id): array
@@ -195,11 +197,17 @@ class LdapController extends ApiController
             return $auth;
         }
 
+        if (!$this->isUuid($id)) {
+            return $this->fail(400, 'invalid id');
+        }
         if (!$this->isUuid($mappingID)) {
             return $this->fail(400, 'invalid mapping id');
         }
+        $id = $this->canonicalUuid($id);
         $mappingID = $this->canonicalUuid($mappingID);
 
-        return $this->providers->deleteMapping($mappingID, null) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
+        return $this->providers->deleteMapping($id, $mappingID, null)
+            ? ['status' => 'deleted']
+            : $this->fail(404, 'mapping not found');
     }
 }

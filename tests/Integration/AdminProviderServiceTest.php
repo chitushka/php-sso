@@ -4,6 +4,7 @@ namespace tests\Integration;
 
 use app\models\Group;
 use app\models\IdentityProvider;
+use app\models\LdapGroupMapping;
 use app\models\LdapProvider;
 use app\services\BrokerService;
 use app\services\CryptoService;
@@ -283,18 +284,42 @@ class AdminProviderServiceTest extends TestCase
         ], null);
         $this->assertSame(200, $updated['status'], json_encode($updated));
         $this->assertGreaterThan(strtotime('2020-01-01T00:00:00Z'), strtotime($updated['data']['updated_at']));
-        foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $field) {
-            $this->assertSame('', $updated['data'][$field]);
-        }
+        $this->assertSame('ldap.example.test', $updated['data']['host']);
+        $this->assertSame('cn=service,dc=example,dc=test', $updated['data']['bind_dn']);
+        $this->assertSame('dc=example,dc=test', $updated['data']['base_dn']);
+        $this->assertSame('(&(objectClass=user)(sAMAccountName={username}))', $updated['data']['user_filter']);
+        $this->assertSame('sAMAccountName', $updated['data']['username_attribute']);
+        $this->assertSame('mail', $updated['data']['email_attribute']);
+        $this->assertSame('displayName', $updated['data']['display_name_attribute']);
+        $this->assertSame('', $updated['data']['group_attribute']);
         $this->assertFalse($updated['data']['use_tls']);
         $this->assertFalse($updated['data']['start_tls']);
-        $this->assertFalse($updated['data']['enabled']);
+        $this->assertTrue($updated['data']['enabled']);
         $provider->refresh();
         $this->assertSame('ldap-secret', (new CryptoService())->decrypt((string)$provider->bind_password));
         $this->assertSame(1, (int)Yii::$app->db->createCommand(
             "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_updated' AND target_id = :id AND actor_user_id IS NULL",
             [':id' => $created['data']['id']]
         )->queryScalar());
+
+        $missingProviderId = '00000000-0000-0000-0000-000000000000';
+        $missingList = $service->listGroupMappings($missingProviderId);
+        $this->assertSame(404, $missingList->status);
+        $missingCreate = $service->createGroupMapping($missingProviderId, [
+            'ldap_group' => 'cn=missing,dc=example,dc=test',
+            'group_id' => $this->groupId,
+        ], null);
+        $this->assertSame(404, $missingCreate->status);
+
+        $otherProvider = $service->createProvider([
+            'name' => 'PHPUnit LDAP Other ' . $suffix,
+            'host' => 'ldap-other.example.test',
+            'bind_dn' => 'cn=service,dc=example,dc=test',
+            'bind_password' => 'other-secret',
+            'base_dn' => 'dc=example,dc=test',
+        ], null);
+        $this->assertSame(201, $otherProvider->status);
+        $this->ldapProviderIds[] = $otherProvider->data['id'];
 
         $mapping = $service->createGroupMapping($created['data']['id'], [
             'ldap_group' => 'cn=admins,dc=example,dc=test',
@@ -317,18 +342,64 @@ class AdminProviderServiceTest extends TestCase
         ], null);
         $this->assertSame(201, $secondMapping['status']);
         $mappings = $service->listGroupMappings($created['data']['id']);
-        $this->assertCount(2, $mappings);
+        $this->assertSame(200, $mappings->status);
+        $this->assertCount(2, $mappings->data);
         $this->assertSame([
             'cn=aardvarks,dc=example,dc=test',
             'cn=admins,dc=example,dc=test',
-        ], array_column($mappings, 'ldap_group'));
-        $this->assertTrue($service->deleteGroupMapping($mapping['data']['id'], null));
+        ], array_column($mappings->data, 'ldap_group'));
+        $this->assertFalse($service->deleteGroupMapping(
+            $otherProvider->data['id'],
+            $mapping->data['id'],
+            null
+        ));
+        $this->assertNotNull(LdapGroupMapping::findOne(['id' => $mapping->data['id']]));
+
+        $function = 'fail_ldap_mapping_audit_' . bin2hex(random_bytes(4));
+        $trigger = 'fail_ldap_mapping_audit_' . bin2hex(random_bytes(4));
+        Yii::$app->db->createCommand(
+            "CREATE FUNCTION {$function}() RETURNS trigger LANGUAGE plpgsql AS '
+             BEGIN
+                 IF NEW.action = ''ldap_group_mapping_deleted'' THEN
+                     RAISE EXCEPTION ''forced audit failure'';
+                 END IF;
+                 RETURN NEW;
+             END'"
+        )->execute();
+        Yii::$app->db->createCommand(
+            "CREATE TRIGGER {$trigger} BEFORE INSERT ON audit_logs
+             FOR EACH ROW EXECUTE FUNCTION {$function}()"
+        )->execute();
+        try {
+            try {
+                $service->deleteGroupMapping($created->data['id'], $mapping->data['id'], null);
+                $this->fail('mandatory audit failure must abort LDAP mapping deletion');
+            } catch (\Throwable $exception) {
+                $this->assertStringContainsString('forced audit failure', $exception->getMessage());
+            }
+            $this->assertNotNull(LdapGroupMapping::findOne(['id' => $mapping->data['id']]));
+        } finally {
+            Yii::$app->db->createCommand("DROP TRIGGER IF EXISTS {$trigger} ON audit_logs")->execute();
+            Yii::$app->db->createCommand("DROP FUNCTION IF EXISTS {$function}() ")->execute();
+        }
+
+        $this->assertTrue($service->deleteGroupMapping(
+            $created->data['id'],
+            $mapping->data['id'],
+            null
+        ));
         $this->assertSame(1, (int)Yii::$app->db->createCommand(
             "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id IS NULL",
             [':id' => $mapping['data']['id']]
         )->queryScalar());
-        $this->assertTrue($service->deleteGroupMapping($secondMapping['data']['id'], null));
-        $this->assertCount(0, $service->listGroupMappings($created['data']['id']));
+        $this->assertTrue($service->deleteGroupMapping(
+            $created->data['id'],
+            $secondMapping->data['id'],
+            null
+        ));
+        $remainingMappings = $service->listGroupMappings($created->data['id']);
+        $this->assertSame(200, $remainingMappings->status);
+        $this->assertCount(0, $remainingMappings->data);
 
         $this->assertTrue($service->deleteProvider($created['data']['id'], null));
         $this->assertFalse($service->deleteProvider($created['data']['id'], null));

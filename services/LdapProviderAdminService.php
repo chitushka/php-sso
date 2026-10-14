@@ -115,17 +115,31 @@ final class LdapProviderAdminService
         }
     }
 
-    public function listMappings(string $providerId, array $options = []): array
+    public function listMappings(string $providerId, array $options = []): ServiceResult
     {
-        return array_map(function (LdapGroupMapping $mapping): array {
-            return $this->publicMapping($mapping);
-        }, LdapGroupMapping::find()
-            ->where(['provider_id' => $providerId])
-            ->andFilterWhere(['ilike', 'ldap_group', $options['q'] ?? null])
-            ->orderBy(['ldap_group' => SORT_ASC, 'id' => SORT_ASC])
-            ->limit($options['limit'] ?? 50)
-            ->offset($options['offset'] ?? 0)
-            ->all());
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            if (!$this->lockProvider($providerId)) {
+                $transaction->rollBack();
+                return $this->failure('provider_not_found', 'provider not found', 404);
+            }
+            $mappings = array_map(function (LdapGroupMapping $mapping): array {
+                return $this->publicMapping($mapping);
+            }, LdapGroupMapping::find()
+                ->where(['provider_id' => $providerId])
+                ->andFilterWhere(['ilike', 'ldap_group', $options['q'] ?? null])
+                ->orderBy(['ldap_group' => SORT_ASC, 'id' => SORT_ASC])
+                ->limit($options['limit'] ?? 50)
+                ->offset($options['offset'] ?? 0)
+                ->all());
+            $transaction->commit();
+            return ServiceResult::success($mappings);
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function createMapping(string $providerId, array $body, ?string $actorId): ServiceResult
@@ -137,6 +151,10 @@ final class LdapProviderAdminService
 
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
+            if (!$this->lockProvider($providerId)) {
+                $transaction->rollBack();
+                return $this->failure('provider_not_found', 'provider not found', 404);
+            }
             if (!$mapping->save()) {
                 $transaction->rollBack();
                 return $this->failure('mapping_create_failed', 'failed to create mapping', 500);
@@ -160,16 +178,18 @@ final class LdapProviderAdminService
         return ServiceResult::success($this->publicMapping($mapping), 201);
     }
 
-    public function deleteMapping(string $mappingId, ?string $actorId): bool
+    public function deleteMapping(string $providerId, string $mappingId, ?string $actorId): bool
     {
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
-            $mapping = LdapGroupMapping::findOne(['id' => $mappingId]);
-            if (!$mapping) {
+            $deleted = ApplicationRuntime::db()->createCommand()->delete('ldap_group_mappings', [
+                'id' => $mappingId,
+                'provider_id' => $providerId,
+            ])->execute();
+            if ($deleted === 0) {
                 $transaction->rollBack();
                 return false;
             }
-            $mapping->delete();
             AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
             $transaction->commit();
             return true;
@@ -195,15 +215,19 @@ final class LdapProviderAdminService
             'group_attribute',
         ];
         foreach ($fields as $field) {
-            $provider->{$field} = (string)($body[$field] ?? '');
+            if (!$isUpdate || array_key_exists($field, $body)) {
+                $provider->{$field} = (string)($body[$field] ?? '');
+            }
         }
-        $provider->port = (int)($body['port'] ?? 0);
-        $provider->use_tls = (bool)($body['use_tls'] ?? false);
-        $provider->start_tls = (bool)($body['start_tls'] ?? false);
-        $provider->enabled = (bool)($body['enabled'] ?? false);
+        foreach (['port' => 389, 'use_tls' => false, 'start_tls' => false, 'enabled' => false] as $field => $default) {
+            if (!$isUpdate || array_key_exists($field, $body)) {
+                $provider->{$field} = $field === 'port'
+                    ? (int)($body[$field] ?? $default)
+                    : (bool)($body[$field] ?? $default);
+            }
+        }
 
         if (!$isUpdate) {
-            $provider->port = $provider->port ?: 389;
             $provider->user_filter = $provider->user_filter ?: '(&(objectClass=user)(sAMAccountName={username}))';
             $provider->username_attribute = $provider->username_attribute ?: 'sAMAccountName';
             $provider->email_attribute = $provider->email_attribute ?: 'mail';
@@ -212,6 +236,14 @@ final class LdapProviderAdminService
         if (!$isUpdate || !empty($body['bind_password'])) {
             $provider->bind_password = $this->crypto->encrypt((string)($body['bind_password'] ?? ''));
         }
+    }
+
+    private function lockProvider(string $providerId): bool
+    {
+        return ApplicationRuntime::db()->createCommand(
+            'SELECT id FROM ldap_providers WHERE id = :id FOR KEY SHARE',
+            [':id' => $providerId]
+        )->queryScalar() !== false;
     }
 
     private function publicProvider(LdapProvider $provider): array

@@ -9,6 +9,7 @@
 - OAuth 2.0 Authorization Code с PKCE S256, refresh rotation, client credentials, revoke, introspect и consent.
 - OIDC Discovery, JWKS, RS256 ID Token, UserInfo и RP/back-channel logout.
 - Управление пользователями, ролями, permissions, группами, OAuth-клиентами и провайдерами; аудит различает user, OAuth client и system principals.
+- LDAP group mappings строго привязаны к provider, а обновление LDAP provider сохраняет все пропущенные поля и существующий пароль.
 - Machine-токены `client_credentials` ограничены явным allowlist операций чтения, LDAP test и ротации signing key; остальные изменения требуют пользователя.
 - Vue admin UI, health probes, Prometheus metrics, cleanup и ротация зашифрованных секретов.
 
