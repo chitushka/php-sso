@@ -9,16 +9,7 @@
 
 ## P1 — безопасность и корректность
 
-### 1. Разделить user и machine principals в авторизации и аудите
-
-- `ApiController::requirePermission()` допускает `client_credentials`, но ряд контроллеров передаёт `$auth->id` как `actor_user_id`. Для OAuth client это нарушает FK `audit_logs.actor_user_id -> users.id`: signing-key rotation и federated unlink завершаются `500`, а LDAP update/delete могут сначала изменить данные и затем упасть на аудите.
-- Явно определить операции, разрешённые machine clients. Для разрешённых операций хранить тип и идентификатор principal в аудите; для остальных требовать пользователя.
-- Сделать mutation и обязательную audit-запись одной транзакцией во всех admin services.
-- Добавить отсутствующие события как минимум для создания LDAP provider и OAuth client; не записывать успешное удаление несуществующего LDAP provider.
-
-Критерий готовности: каждая admin-операция атомарна, корректно атрибутирована user/client principal и покрыта success, forbidden, rollback и client-credentials тестами.
-
-### 2. Исправить доверие reverse proxy и production network perimeter
+### 1. Исправить доверие reverse proxy и production network perimeter
 
 - `SSO_TRUSTED_PROXIES` используется только собственной обработкой IP и не заполняет Yii `Request::trustedHosts`; поэтому `X-Forwarded-Proto` удаляется, `isSecureConnection` остаётся false и заявленный HSTS не выставляется за штатным HTTPS proxy.
 - Настроить доверенные forwarded proto/host/port только для разрешённых CIDR и проверить spoofing от недоверенного peer.
@@ -26,7 +17,7 @@
 
 Критерий готовности: за доверенным proxy приложение распознаёт HTTPS и отдаёт HSTS, недоверенные forwarded headers игнорируются, а production-профиль не публикует HTTP/DB ports наружу.
 
-### 3. Закрыть нарушения вложенных ресурсов и audit lifecycle LDAP
+### 2. Закрыть нарушения вложенных ресурсов и audit lifecycle LDAP
 
 - `DELETE /api/v1/ldap/providers/{id}/group-mappings/{mappingID}` не валидирует `{id}` и удаляет mapping другого provider; list mappings также возвращает пустой список вместо `404` для отсутствующего parent.
 - Проверять существование parent и принадлежность mapping в одном запросе/транзакции; унифицировать `404` и idempotency по документированному контракту.
@@ -34,7 +25,7 @@
 
 Критерий готовности: вложенный ресурс нельзя прочитать или удалить через чужой parent ID, а create/update/delete и audit откатываются совместно.
 
-### 4. Довести DB-инварианты до фактической модели безопасности
+### 3. Довести DB-инварианты до фактической модели безопасности
 
 - Добавить partial unique index, допускающий не более одного `active` OIDC signing key, и проверяемый repair path для нуля/нескольких активных ключей.
 - Закрепить согласованность `users.source` с `password_hash`, `ldap_provider_id`/`ldap_dn` и federated links либо формализовать допустимые переходные состояния.
@@ -43,7 +34,7 @@
 
 Критерий готовности: некорректные состояния нельзя записать напрямую в PostgreSQL, deployment check диагностирует repairable drift, fresh/upgrade/down проверки проходят.
 
-### 5. Усилить MFA lifecycle
+### 4. Усилить MFA lifecycle
 
 - MFA login challenge возвращает фиктивного zero-user и timestamps `0001-01-01`, оставшиеся от исторического wire format, вместо минимального типизированного challenge response.
 - Recovery codes имеют только 40 бит (`bin2hex(random_bytes(5))`) и хранятся как быстрый SHA-256; увеличить энтропию и использовать keyed/slow verification с безопасной миграцией или принудительной регенерацией.
@@ -52,7 +43,7 @@
 
 Критерий готовности: MFA response не содержит фиктивных сущностей, recovery codes устойчивы к offline перебору, а изменение MFA инвалидирует credentials согласно документированной политике.
 
-### 6. Унифицировать access-token claims и валидацию
+### 5. Унифицировать access-token claims и валидацию
 
 - First-party токены из `AuthService::issueAccessToken()` не содержат `iss`, `aud` и явного purpose, а `authenticate()` проверяет issuer/audience только при наличии `client_id` или `client_credentials`.
 - Ввести единый профиль access token, всегда проверять тип, issuer, audience, временные claims и revocation; отделить browser/admin tokens от OAuth resource tokens, если у них разные аудитории.
@@ -60,7 +51,7 @@
 
 Критерий готовности: ни один подписанный JWT другого назначения или аудитории не принимается как API access token.
 
-### 7. Сделать operational status достоверным и fail-closed
+### 6. Сделать operational status достоверным и fail-closed
 
 - Готовность signing keys определяется только количеством строк `active`, без дешифрования private key и пробной подписи; повреждённый ключ отображается как ready.
 - После успешного `SELECT 1` последующие запросы summary/cleanup не перехватывают сбой БД и превращают status endpoint в необработанный `500`.

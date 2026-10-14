@@ -65,7 +65,7 @@ Email нормализуется как `trim + lowercase` и уникален �
 
 Ошибки прикладного API имеют единый JSON envelope `{"error":"читаемое сообщение","code":"machine_code","details":...}`. Поля `error` и `code` обязательны, `details` присутствует при наличии структурированного контекста. Validation errors возвращают HTTP 400, отсутствующие ресурсы — 404, конфликты уникальности или состояния — 409. OAuth/OIDC endpoints используют нормативные `error` и `error_description`. Auth/token responses содержат `Cache-Control: no-store`. `X-Request-ID` принимается только в допустимом формате либо генерируется сервисом и возвращается клиенту.
 
-Cookie-authenticated изменяющие запросы требуют CSRF token. После загрузки admin UI действующая browser-сессия обменивается на хранимый только в памяти access token через `POST /api/v1/auth/session-token`; запрос передаёт значение cookie `sso_csrf` в `X-CSRF-Token`, а отсутствие или несовпадение токена отклоняется. Admin API требует Bearer token, нужный scope и RBAC permission. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
+Cookie-authenticated изменяющие запросы требуют CSRF token. После загрузки admin UI действующая browser-сессия обменивается на хранимый только в памяти access token через `POST /api/v1/auth/session-token`; запрос передаёт значение cookie `sso_csrf` в `X-CSRF-Token`, а отсутствие или несовпадение токена отклоняется. Admin API требует Bearer token и нужный scope. User principal дополнительно проходит RBAC-проверку. Machine principal из `client_credentials` допускается только к явному allowlist операций чтения, LDAP test и ротации signing key; прочие изменения требуют user principal. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
 
 Семейства публичного контракта:
 
@@ -97,7 +97,7 @@ Federation broker сохраняет только SHA-256 хеш подписа�
 
 Операции, способные оставить систему без активного администратора, сериализуются PostgreSQL advisory transaction lock и отклоняются с HTTP 409. Permissions встроенной admin-роли нельзя удалить.
 
-Audit хранит actor, action, target и при необходимости IP/User-Agent, но не secrets и токены. `audit_logs.actor_user_id` ссылается на пользователя через FK `ON DELETE SET NULL`: soft delete сохраняет actor, физическое удаление анонимизирует ссылку, а само audit-событие остаётся неизменяемым и доступным до retention cleanup.
+Audit хранит тип principal (`user`, `client` или `system`), его идентификатор, action, target и при необходимости IP/User-Agent, но не secrets и токены. Для user principal совместимое поле `audit_logs.actor_user_id` ссылается на пользователя через FK `ON DELETE SET NULL`; OAuth client записывается в `actor_id` без ложной пользовательской ссылки. Soft delete сохраняет actor, физическое удаление пользователя анонимизирует ссылку, а само audit-событие остаётся неизменяемым и доступным до retention cleanup. Изменяющие admin use cases сохраняют mutation и обязательное audit-событие в одной PostgreSQL-транзакции; ошибка аудита откатывает mutation.
 
 ## Надёжность и эксплуатация
 

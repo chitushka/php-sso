@@ -3,6 +3,7 @@
 namespace tests\Integration;
 
 use app\services\FederatedIdentityService;
+use app\services\AuditService;
 use app\services\OidcService;
 use app\services\OperationalStatusService;
 use PHPUnit\Framework\TestCase;
@@ -94,6 +95,36 @@ final class AdminOperationsServiceTest extends TestCase
         $this->assertSame('ready', $status['status']);
         $this->assertTrue($status['database']['ready']);
         $this->assertTrue($status['signing_keys']['ready']);
+    }
+
+    public function testSigningRotationAttributesMachinePrincipal(): void
+    {
+        $suffix = bin2hex(random_bytes(5));
+        $clientId = (string)Yii::$app->db->createCommand(
+            "INSERT INTO oauth_clients(client_id,name,type,allowed_scopes,enabled)
+             VALUES (:client_id,'Operations machine','confidential',:scopes,true)
+             RETURNING id",
+            [
+                ':client_id' => 'operations-machine-' . $suffix,
+                ':scopes' => '{signing_keys:rotate}',
+            ]
+        )->queryScalar();
+        AuditService::setCurrentPrincipal(AuditService::ACTOR_CLIENT, $clientId);
+
+        try {
+            $rotated = (new OidcService())->rotateSigningKey();
+            $audit = Yii::$app->db->createCommand(
+                "SELECT actor_type, actor_id, actor_user_id FROM audit_logs
+                 WHERE action = 'signing_key_rotated' AND target_id = :kid",
+                [':kid' => $rotated['kid']]
+            )->queryOne();
+
+            $this->assertSame('client', $audit['actor_type']);
+            $this->assertSame($clientId, $audit['actor_id']);
+            $this->assertNull($audit['actor_user_id']);
+        } finally {
+            AuditService::setCurrentActor(null);
+        }
     }
 
     private function fixtures(bool $withPassword, string $source, bool $withIdentity = true): array

@@ -511,7 +511,7 @@ try {
         'client_id' => 'itest-client-' . $suffix,
         'type' => 'confidential',
         'redirect_uris' => ['https://rp.example.test/cb'],
-        'allowed_scopes' => ['openid', 'profile', 'email'],
+        'allowed_scopes' => ['openid', 'profile', 'email', 'signing_keys:rotate', 'users:create'],
         'post_logout_redirect_uris' => ['https://rp.example.test/logout-cb'],
         'backchannel_logout_uri' => $backchannelUrl . '/logout',
         'skip_consent' => true,
@@ -1773,8 +1773,8 @@ try {
         [],
         $adminToken
     );
-    assertTrue($missingLdapProviderDelete['status'] === 200, 'DELETE missing LDAP provider must be idempotent under the current API contract');
-    assertTrue(($missingLdapProviderDelete['json']['status'] ?? '') === 'deleted', 'DELETE missing LDAP provider must return deleted status');
+    assertTrue($missingLdapProviderDelete['status'] === 404, 'DELETE missing LDAP provider must return 404');
+    assertTrue(($missingLdapProviderDelete['json']['error'] ?? '') === 'provider not found', 'DELETE missing LDAP provider must match API contract');
 
     $invalidLdapMappingId = jsonRequest(
         'DELETE',
@@ -1810,6 +1810,7 @@ try {
     ], $adminToken);
     assertTrue($ldapProvider['status'] === 201, 'create LDAP provider must return 201');
     $createdLdapProviderIds[] = $ldapProvider['json']['id'];
+    $createdAuditTargets[] = ['action' => 'ldap_provider_created', 'target_id' => $ldapProvider['json']['id']];
     $createdAuditTargets[] = ['action' => 'ldap_provider_updated', 'target_id' => $ldapProvider['json']['id']];
     $createdAuditTargets[] = ['action' => 'ldap_provider_deleted', 'target_id' => $ldapProvider['json']['id']];
     $createdAuditTargets[] = ['action' => 'ldap_group_mapping_created', 'target_id' => $ldapProvider['json']['id']];
@@ -1824,7 +1825,7 @@ try {
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
         [':id' => $ldapProvider['json']['id']]
     )->queryScalar();
-    assertTrue($ldapCreateAuditCount === 0, 'LDAP provider create must follow the current audit contract and omit an audit event');
+    assertTrue($ldapCreateAuditCount === 1, 'LDAP provider create must write exactly one audit event');
 
     $failedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Invalid integration LDAP ' . $suffix,
@@ -1957,20 +1958,25 @@ try {
         assertTrue($mappingDeleteAuditCount === 1, 'LDAP mapping delete audit must target the mapping with empty actor');
     }
 
-    foreach ([1, 2] as $deleteAttempt) {
-        $deletedLdapProvider = jsonRequest(
-            'DELETE',
-            $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
-            [],
-            $adminToken
-        );
-        assertTrue($deletedLdapProvider['status'] === 200, 'LDAP provider delete attempt ' . $deleteAttempt . ' must return 200');
-    }
+    $deletedLdapProvider = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($deletedLdapProvider['status'] === 200, 'existing LDAP provider delete must return 200');
+    $repeatedLdapProviderDelete = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($repeatedLdapProviderDelete['status'] === 404, 'repeated LDAP provider delete must return 404');
     $ldapDeleteAuditCount = (int)$db->createCommand(
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id = :actor_id",
         [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
     )->queryScalar();
-    assertTrue($ldapDeleteAuditCount === 2, 'each idempotent LDAP provider delete must write the contract-compliant audit event');
+    assertTrue($ldapDeleteAuditCount === 1, 'only successful LDAP provider delete must write an audit event');
 
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'contract-compliant MFA enroll must return 200');
@@ -2074,6 +2080,40 @@ try {
     assertTrue(($clientCredentialsClaims['email'] ?? null) === '', 'client_credentials token must include empty email');
     assertTrue(($clientCredentialsClaims['source'] ?? '') === 'client', 'client_credentials token must identify client source');
     assertTrue(($clientCredentialsClaims['iss'] ?? '') === $configuration['json']['issuer'], 'client_credentials token issuer must match discovery');
+
+    $adminClientCredentials = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $client['json']['client_secret'],
+        'scope' => 'signing_keys:rotate users:create',
+    ]);
+    assertTrue($adminClientCredentials['status'] === 200, 'scoped machine token must be issued');
+    $machineToken = $adminClientCredentials['json']['access_token'];
+    $machineRotation = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/operations/signing-keys/rotate',
+        [],
+        $machineToken
+    );
+    assertTrue($machineRotation['status'] === 201, 'machine client may rotate signing keys');
+    $machineAudit = $db->createCommand(
+        "SELECT actor_type, actor_id, actor_user_id FROM audit_logs
+         WHERE action = 'signing_key_rotated' AND target_id = :kid",
+        [':kid' => $machineRotation['json']['kid'] ?? '']
+    )->queryOne();
+    assertTrue(($machineAudit['actor_type'] ?? '') === 'client', 'machine audit must store client principal type');
+    assertTrue(($machineAudit['actor_id'] ?? '') === $client['json']['id'], 'machine audit must store client principal id');
+    assertTrue(($machineAudit['actor_user_id'] ?? null) === null, 'machine audit must not use actor_user_id');
+    $machineUserCreate = jsonRequest('POST', $baseUrl . '/api/v1/users', [
+        'username' => 'machine-created-' . $suffix,
+        'email' => 'machine-created-' . $suffix . '@example.test',
+        'password' => 'Machine-created-password-123',
+    ], $machineToken);
+    assertTrue($machineUserCreate['status'] === 403, 'machine client must not create users');
+    assertTrue(
+        ($machineUserCreate['json']['error'] ?? '') === 'user principal required',
+        'forbidden machine mutation must report the principal boundary'
+    );
 
     $badClientCredentialsScope = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'client_credentials',

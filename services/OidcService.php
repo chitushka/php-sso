@@ -25,7 +25,7 @@ class OidcService
         return array_map([$this, 'publicSigningKey'], $rows);
     }
 
-    public function rotateSigningKey(string $actorUserId): array
+    public function rotateSigningKey(?string $actorUserId = null): array
     {
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {

@@ -24,7 +24,7 @@ class AuditController extends ApiController
                 return $this->fail(400, 'invalid actor id');
             }
             $actor = $this->canonicalUuid($actor);
-            $query->andWhere(['actor_user_id' => $actor]);
+            $query->andWhere(['or', ['actor_user_id' => $actor], ['actor_id' => $actor]]);
         }
         if ($request->get('action')) {
             $query->andWhere(['action' => $request->get('action')]);

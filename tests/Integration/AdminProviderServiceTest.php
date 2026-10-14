@@ -247,7 +247,7 @@ class AdminProviderServiceTest extends TestCase
             $created['data']['updated_at']
         );
         $this->ldapProviderIds[] = $created['data']['id'];
-        $this->assertSame(0, (int)Yii::$app->db->createCommand(
+        $this->assertSame(1, (int)Yii::$app->db->createCommand(
             "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
             [':id' => $created['data']['id']]
         )->queryScalar());
@@ -331,8 +331,8 @@ class AdminProviderServiceTest extends TestCase
         $this->assertCount(0, $service->listGroupMappings($created['data']['id']));
 
         $this->assertTrue($service->deleteProvider($created['data']['id'], null));
-        $this->assertTrue($service->deleteProvider($created['data']['id'], null));
-        $this->assertSame(2, (int)Yii::$app->db->createCommand(
+        $this->assertFalse($service->deleteProvider($created['data']['id'], null));
+        $this->assertSame(1, (int)Yii::$app->db->createCommand(
             "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id IS NULL",
             [':id' => $created['data']['id']]
         )->queryScalar());

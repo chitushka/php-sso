@@ -54,20 +54,39 @@ class RbacService
             return ['status' => 409, 'data' => ['error' => 'role already exists']];
         }
 
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$role->save()) {
+                $transaction->rollBack();
                 return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
             }
         } catch (IntegrityException $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return ['status' => 409, 'data' => ['error' => 'role already exists']];
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
 
         if ($role->hasErrors()) {
+            $transaction->rollBack();
             return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
         }
 
-        $role->refresh();
-        AuditService::record(null, 'role_created', 'role', $role->id);
+        try {
+            $role->refresh();
+            AuditService::record(null, 'role_created', 'role', $role->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
         return ['status' => 201, 'data' => $role->publicData()];
     }
 
@@ -85,13 +104,23 @@ class RbacService
             return ['status' => 400, 'data' => ['error' => 'role name is required']];
         }
 
-        $role->updated_at = new Expression('now()');
-        if (!$role->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
-        }
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $role->updated_at = new Expression('now()');
+            if (!$role->save()) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid role payload', 'details' => $role->errors]];
+            }
 
-        $role->refresh();
-        AuditService::record(null, 'role_updated', 'role', $role->id);
+            $role->refresh();
+            AuditService::record(null, 'role_updated', 'role', $role->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
         return ['status' => 200, 'data' => $role->publicData()];
     }
 
@@ -106,8 +135,14 @@ class RbacService
             return ['status' => 409, 'data' => ['error' => 'built-in role cannot be deleted']];
         }
 
-        $role->delete();
-        AuditService::record(null, 'role_deleted', 'role', $id);
+        $this->auditMutation(
+            static function () use ($role): int {
+                return (int)$role->delete();
+            },
+            'role_deleted',
+            'role',
+            $id
+        );
         return ['status' => 200, 'data' => ['status' => 'deleted']];
     }
 
@@ -222,20 +257,39 @@ class RbacService
             return ['status' => 409, 'data' => ['error' => 'group already exists']];
         }
 
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$group->save()) {
+                $transaction->rollBack();
                 return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
             }
         } catch (IntegrityException $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return ['status' => 409, 'data' => ['error' => 'group already exists']];
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
 
         if ($group->hasErrors()) {
+            $transaction->rollBack();
             return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
         }
 
-        $group->refresh();
-        AuditService::record(null, 'group_created', 'group', $group->id);
+        try {
+            $group->refresh();
+            AuditService::record(null, 'group_created', 'group', $group->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
         return ['status' => 201, 'data' => $group->publicData()];
     }
 
@@ -253,13 +307,23 @@ class RbacService
             return ['status' => 400, 'data' => ['error' => 'group name is required']];
         }
 
-        $group->updated_at = new Expression('now()');
-        if (!$group->save()) {
-            return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
-        }
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $group->updated_at = new Expression('now()');
+            if (!$group->save()) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'invalid group payload', 'details' => $group->errors]];
+            }
 
-        $group->refresh();
-        AuditService::record(null, 'group_updated', 'group', $group->id);
+            $group->refresh();
+            AuditService::record(null, 'group_updated', 'group', $group->id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
         return ['status' => 200, 'data' => $group->publicData()];
     }
 

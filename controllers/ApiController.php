@@ -5,6 +5,7 @@ namespace app\controllers;
 use app\components\ApiResponse;
 use app\services\RateLimitService;
 use app\services\AuditService;
+use app\services\AuthorizationService;
 use app\services\AuthService;
 use app\services\BrowserSecurityService;
 use app\services\RbacService;
@@ -262,7 +263,16 @@ class ApiController extends Controller
             return $this->fail(401, $authentication['error']);
         }
         $principal = $authentication['user'] ?: $authentication['client'];
-        AuditService::setCurrentActor($authentication['user'] ? (string)$authentication['user']->id : null);
+        if (
+            $authentication['client']
+            && !(new AuthorizationService())->machineClientAllows($resource, $action)
+        ) {
+            return $this->fail(403, 'user principal required');
+        }
+        AuditService::setCurrentPrincipal(
+            $authentication['user'] ? AuditService::ACTOR_USER : AuditService::ACTOR_CLIENT,
+            (string)$principal->id
+        );
 
         if (!$authService->tokenAllowsPermission($authentication['claims'] ?? [], $resource, $action)) {
             return $this->fail(403, 'insufficient scope');

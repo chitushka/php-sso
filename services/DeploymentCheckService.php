@@ -156,7 +156,7 @@ class DeploymentCheckService
             'ldap_providers' => ['id', 'bind_password', 'enabled', 'created_at'],
             'users' => ['id', 'password_hash', 'mfa_secret', 'tokens_invalid_before', 'ldap_provider_id'],
             'sessions' => ['id', 'user_id', 'token_hash', 'expires_at', 'revoked_at'],
-            'audit_logs' => ['id', 'actor_user_id', 'action', 'target_type', 'target_id'],
+            'audit_logs' => ['id', 'actor_user_id', 'actor_type', 'actor_id', 'action', 'target_type', 'target_id'],
             'oauth_clients' => ['id', 'client_id', 'client_secret_hash', 'redirect_uris', 'backchannel_logout_uri'],
             'oauth_authorization_codes' => ['id', 'code_hash', 'code_challenge', 'nonce', 'used_at'],
             'oidc_signing_keys' => ['id', 'kid', 'private_key_pem', 'status', 'expires_at'],
@@ -224,6 +224,7 @@ class DeploymentCheckService
             'chk_login_attempts_nonnegative',
             'chk_rate_limit_tokens_nonnegative',
             'chk_metric_counters_nonnegative',
+            'chk_audit_actor',
             'ux_mfa_recovery_codes_user_code',
         ];
         $indexes = [
@@ -241,6 +242,7 @@ class DeploymentCheckService
             'idx_ldap_group_mappings_admin_list',
             'idx_audit_logs_admin_list',
             'idx_audit_logs_actor_list',
+            'idx_audit_logs_principal',
             'idx_audit_logs_action_list',
         ];
         $results[] = $this->schemaObjectResult('constraint', 'database.constraints', $constraints);

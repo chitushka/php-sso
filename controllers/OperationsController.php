@@ -39,6 +39,6 @@ final class OperationsController extends ApiController
         }
 
         Yii::$app->response->statusCode = 201;
-        return $this->oidc->rotateSigningKey((string)$auth->id);
+        return $this->oidc->rotateSigningKey();
     }
 }

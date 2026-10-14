@@ -26,6 +26,11 @@ class AuditLog extends ValidatedActiveRecord
         if ($this->actor_user_id !== null) {
             $data['actor_user_id'] = $this->actor_user_id;
         }
+        $data['actor'] = ['type' => (string)$this->getAttribute('actor_type')];
+        $actorId = $this->actor_user_id ?? $this->getAttribute('actor_id');
+        if ($actorId !== null) {
+            $data['actor']['id'] = (string)$actorId;
+        }
 
         return $data;
     }

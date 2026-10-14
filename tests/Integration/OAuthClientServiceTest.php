@@ -81,11 +81,11 @@ class OAuthClientServiceTest extends TestCase
             'SELECT COUNT(*) FROM audit_logs WHERE target_type = :target_type AND target_id = :target_id AND action = :action',
             [
                 ':target_type' => 'oauth_client',
-                ':target_id' => $client->id,
+                ':target_id' => $clientId,
                 ':action' => 'oauth_client_created',
             ]
         )->queryScalar();
-        $this->assertSame(0, $auditCount);
+        $this->assertSame(1, $auditCount);
     }
 
     public function testUpdateClientReplacesArrayFields(): void
@@ -175,6 +175,42 @@ class OAuthClientServiceTest extends TestCase
         $this->assertSame([], $created['data']['redirect_uris']);
         $this->assertSame([], $created['data']['allowed_scopes']);
         $this->assertSame([], $created['data']['post_logout_redirect_uris']);
+    }
+
+    public function testCreateRollsBackWhenMandatoryAuditFails(): void
+    {
+        $clientId = $this->prefix . '_audit_rollback';
+        $function = 'fail_oauth_client_audit_' . bin2hex(random_bytes(4));
+        $trigger = 'fail_oauth_client_audit_' . bin2hex(random_bytes(4));
+        Yii::$app->db->createCommand(
+            "CREATE FUNCTION {$function}() RETURNS trigger LANGUAGE plpgsql AS '
+             BEGIN
+                 IF NEW.action = ''oauth_client_created'' THEN
+                     RAISE EXCEPTION ''forced audit failure'';
+                 END IF;
+                 RETURN NEW;
+             END'"
+        )->execute();
+        Yii::$app->db->createCommand(
+            "CREATE TRIGGER {$trigger} BEFORE INSERT ON audit_logs
+             FOR EACH ROW EXECUTE FUNCTION {$function}()"
+        )->execute();
+
+        try {
+            try {
+                (new OAuthService())->createClient([
+                    'client_id' => $clientId,
+                    'name' => 'Audit rollback client',
+                ]);
+                $this->fail('mandatory audit failure must abort client creation');
+            } catch (\Throwable $exception) {
+                $this->assertStringContainsString('forced audit failure', $exception->getMessage());
+            }
+            $this->assertFalse(OAuthClient::find()->where(['client_id' => $clientId])->exists());
+        } finally {
+            Yii::$app->db->createCommand("DROP TRIGGER IF EXISTS {$trigger} ON audit_logs")->execute();
+            Yii::$app->db->createCommand("DROP FUNCTION IF EXISTS {$function}() ")->execute();
+        }
     }
 
     /**

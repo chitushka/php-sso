@@ -68,9 +68,18 @@ final class IdentityProviderAdminService
         if (!$provider) {
             return $this->failure('provider_not_found', 'provider not found', 404);
         }
-        $provider->delete();
-        AuditService::record(null, 'identity_provider_deleted', 'identity_provider', $id);
-        return ServiceResult::success(['status' => 'deleted']);
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $provider->delete();
+            AuditService::record(null, 'identity_provider_deleted', 'identity_provider', $id);
+            $transaction->commit();
+            return ServiceResult::success(['status' => 'deleted']);
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->failure('provider_delete_failed', 'failed to delete identity provider', 500);
+        }
     }
 
     private function save(
@@ -125,16 +134,27 @@ final class IdentityProviderAdminService
             $provider->updated_at = new Expression('now()');
         }
 
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$provider->save()) {
+                $transaction->rollBack();
                 return $this->failure('invalid_provider', 'failed to save identity provider', 400);
             }
             $provider->refresh();
+            AuditService::record(null, $auditAction, 'identity_provider', $provider->id);
+            $transaction->commit();
         } catch (Exception $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return $this->failure('provider_conflict', 'provider already exists', 409);
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            return $this->failure('provider_save_failed', 'failed to save identity provider', 500);
         }
 
-        AuditService::record(null, $auditAction, 'identity_provider', $provider->id);
         return ServiceResult::success($this->policy->publicData($provider), $status);
     }
 

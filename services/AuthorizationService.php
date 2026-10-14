@@ -6,6 +6,27 @@ use app\models\User;
 
 final class AuthorizationService
 {
+    private const MACHINE_PERMISSIONS = [
+        'users:read',
+        'roles:read',
+        'permissions:read',
+        'groups:read',
+        'oauth_clients:read',
+        'identity_providers:read',
+        'ldap:read',
+        'ldap:test',
+        'audit:read',
+        'federated_identities:read',
+        'operations:read',
+        'signing_keys:read',
+        'signing_keys:rotate',
+    ];
+
+    public function machineClientAllows(string $resource, string $action): bool
+    {
+        return in_array($resource . ':' . $action, self::MACHINE_PERMISSIONS, true);
+    }
+
     public function userHasPermission(User $user, string $resource, string $action): bool
     {
         return (bool)ApplicationRuntime::db()->createCommand(

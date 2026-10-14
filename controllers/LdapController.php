@@ -96,7 +96,7 @@ class LdapController extends ApiController
 
         $result = $this->providers->create(
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES),
-            $auth->id
+            null
         );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -117,7 +117,7 @@ class LdapController extends ApiController
         $result = $this->providers->update(
             $id,
             $this->body(self::PROVIDER_FIELDS, self::PROVIDER_TYPES),
-            $auth->id
+            null
         );
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
@@ -135,7 +135,7 @@ class LdapController extends ApiController
         }
         $id = $this->canonicalUuid($id);
 
-        return $this->providers->delete($id, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'provider not found');
+        return $this->providers->delete($id, null) ? ['status' => 'deleted'] : $this->fail(404, 'provider not found');
     }
 
     public function actionTest(): array
@@ -183,7 +183,7 @@ class LdapController extends ApiController
 
         $body = $this->body(self::GROUP_MAPPING_FIELDS, self::GROUP_MAPPING_TYPES);
 
-        $result = $this->providers->createMapping($id, $body, $auth->id);
+        $result = $this->providers->createMapping($id, $body, null);
         Yii::$app->response->statusCode = $result['status'];
         return $result['data'];
     }
@@ -200,6 +200,6 @@ class LdapController extends ApiController
         }
         $mappingID = $this->canonicalUuid($mappingID);
 
-        return $this->providers->deleteMapping($mappingID, $auth->id) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
+        return $this->providers->deleteMapping($mappingID, null) ? ['status' => 'deleted'] : $this->fail(404, 'mapping not found');
     }
 }

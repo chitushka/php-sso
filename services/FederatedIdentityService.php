@@ -44,7 +44,7 @@ final class FederatedIdentityService
         string $userId,
         string $providerId,
         string $externalSubject,
-        string $actorUserId
+        ?string $actorUserId
     ): ServiceResult {
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {

@@ -43,15 +43,27 @@ final class LdapProviderAdminService
     public function create(array $body, ?string $actorId): ServiceResult
     {
         $provider = new LdapProvider();
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $this->fillProvider($provider, $body, false);
             if (!$provider->save()) {
+                $transaction->rollBack();
                 return $this->failure('provider_create_failed', 'failed to create provider', 500);
             }
+            $provider->refresh();
+            AuditService::record(
+                $actorId,
+                'ldap_provider_created',
+                'ldap_provider',
+                (string)$provider->getAttribute('id')
+            );
+            $transaction->commit();
         } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return $this->failure('provider_create_failed', 'failed to create provider', 500);
         }
-        $provider->refresh();
         return ServiceResult::success($this->publicProvider($provider), 201);
     }
 
@@ -61,25 +73,46 @@ final class LdapProviderAdminService
         if (!$provider) {
             return $this->failure('provider_not_found', 'provider not found', 404);
         }
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             $this->fillProvider($provider, $body, true);
             $provider->updated_at = new Expression('now()');
             if (!$provider->save()) {
+                $transaction->rollBack();
                 return $this->failure('provider_update_failed', 'failed to update provider', 500);
             }
+            $provider->refresh();
+            AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
+            $transaction->commit();
         } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return $this->failure('provider_update_failed', 'failed to update provider', 500);
         }
-        $provider->refresh();
-        AuditService::record($actorId, 'ldap_provider_updated', 'ldap_provider', $provider->id);
         return ServiceResult::success($this->publicProvider($provider));
     }
 
     public function delete(string $id, ?string $actorId): bool
     {
-        ApplicationRuntime::db()->createCommand()->delete('ldap_providers', ['id' => $id])->execute();
-        AuditService::record($actorId, 'ldap_provider_deleted', 'ldap_provider', $id);
-        return true;
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $deleted = ApplicationRuntime::db()->createCommand()
+                ->delete('ldap_providers', ['id' => $id])
+                ->execute();
+            if ($deleted === 0) {
+                $transaction->rollBack();
+                return false;
+            }
+            AuditService::record($actorId, 'ldap_provider_deleted', 'ldap_provider', $id);
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function listMappings(string $providerId, array $options = []): array
@@ -102,31 +135,50 @@ final class LdapProviderAdminService
         $mapping->ldap_group = trim((string)($body['ldap_group'] ?? ''));
         $mapping->group_id = (string)($body['group_id'] ?? '');
 
+        $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
             if (!$mapping->save()) {
+                $transaction->rollBack();
                 return $this->failure('mapping_create_failed', 'failed to create mapping', 500);
             }
+            $mapping->refresh();
+            AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
+            $transaction->commit();
         } catch (IntegrityException $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return ($exception->errorInfo[0] ?? '') === '23505'
                 ? $this->failure('mapping_conflict', 'mapping already exists', 409)
                 : $this->failure('mapping_create_failed', 'failed to create mapping', 500);
         } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
             return $this->failure('mapping_create_failed', 'failed to create mapping', 500);
         }
-        $mapping->refresh();
-        AuditService::record($actorId, 'ldap_group_mapping_created', 'ldap_provider', $providerId);
         return ServiceResult::success($this->publicMapping($mapping), 201);
     }
 
     public function deleteMapping(string $mappingId, ?string $actorId): bool
     {
-        $mapping = LdapGroupMapping::findOne(['id' => $mappingId]);
-        if (!$mapping) {
-            return false;
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $mapping = LdapGroupMapping::findOne(['id' => $mappingId]);
+            if (!$mapping) {
+                $transaction->rollBack();
+                return false;
+            }
+            $mapping->delete();
+            AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
-        $mapping->delete();
-        AuditService::record($actorId, 'ldap_group_mapping_deleted', 'ldap_group_mapping', $mappingId);
-        return true;
     }
 
     private function fillProvider(LdapProvider $provider, array $body, bool $isUpdate): void

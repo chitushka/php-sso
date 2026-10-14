@@ -50,7 +50,7 @@ final class FederatedIdentitiesController extends ApiController
             $this->canonicalUuid($userID),
             (string)$body['provider_id'],
             (string)$body['external_subject'],
-            (string)$auth->id
+            null
         ));
     }
 }

@@ -8,7 +8,8 @@
 - HttpOnly SSO-сессии, Bearer JWT, TOTP MFA, recovery codes и управление сессиями.
 - OAuth 2.0 Authorization Code с PKCE S256, refresh rotation, client credentials, revoke, introspect и consent.
 - OIDC Discovery, JWKS, RS256 ID Token, UserInfo и RP/back-channel logout.
-- Управление пользователями, ролями, permissions, группами, OAuth-клиентами, провайдерами и аудитом.
+- Управление пользователями, ролями, permissions, группами, OAuth-клиентами и провайдерами; аудит различает user, OAuth client и system principals.
+- Machine-токены `client_credentials` ограничены явным allowlist операций чтения, LDAP test и ротации signing key; остальные изменения требуют пользователя.
 - Vue admin UI, health probes, Prometheus metrics, cleanup и ротация зашифрованных секретов.
 
 ## Быстрый старт

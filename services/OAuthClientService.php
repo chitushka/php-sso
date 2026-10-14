@@ -65,10 +65,26 @@ final class OAuthClientService
             $plainSecret = $this->random->token();
             $client->client_secret_hash = PasswordHasher::hash($plainSecret);
         }
-        if (!$client->save()) {
-            return $this->failure('invalid_client', 'invalid client payload', 400, ['details' => $client->errors]);
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            if (!$client->save()) {
+                $transaction->rollBack();
+                return $this->failure('invalid_client', 'invalid client payload', 400, ['details' => $client->errors]);
+            }
+            $client->refresh();
+            AuditService::record(
+                null,
+                'oauth_client_created',
+                'oauth_client',
+                (string)$client->getAttribute('client_id')
+            );
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
-        $client->refresh();
 
         $data = $client->publicData();
         if ($plainSecret !== null) {
@@ -90,11 +106,21 @@ final class OAuthClientService
         if ($invalid !== null) {
             return $invalid;
         }
-        if (!$client->save()) {
-            return $this->failure('invalid_client', 'invalid client payload', 400, ['details' => $client->errors]);
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            if (!$client->save()) {
+                $transaction->rollBack();
+                return $this->failure('invalid_client', 'invalid client payload', 400, ['details' => $client->errors]);
+            }
+            $client->refresh();
+            AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->client_id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
         }
-        $client->refresh();
-        AuditService::record(null, 'oauth_client_updated', 'oauth_client', $client->client_id);
         return ServiceResult::success($client->publicData());
     }
 
@@ -104,9 +130,18 @@ final class OAuthClientService
         if (!$client) {
             return false;
         }
-        $client->delete();
-        AuditService::record(null, 'oauth_client_deleted', 'oauth_client', $id);
-        return true;
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $client->delete();
+            AuditService::record(null, 'oauth_client_deleted', 'oauth_client', $id);
+            $transaction->commit();
+            return true;
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     public function rotateSecret(string $id): ServiceResult
@@ -116,13 +151,22 @@ final class OAuthClientService
             return $this->failure('client_not_found', 'confidential client not found', 404);
         }
 
-        $secret = $this->random->token();
-        OAuthClient::updateAll([
-            'client_secret_hash' => PasswordHasher::hash($secret),
-            'updated_at' => new Expression('now()'),
-        ], ['id' => $client->id]);
-        $client->refresh();
-        AuditService::record(null, 'oauth_client_secret_rotated', 'oauth_client', $client->client_id);
+        $transaction = ApplicationRuntime::db()->beginTransaction();
+        try {
+            $secret = $this->random->token();
+            OAuthClient::updateAll([
+                'client_secret_hash' => PasswordHasher::hash($secret),
+                'updated_at' => new Expression('now()'),
+            ], ['id' => $client->id]);
+            $client->refresh();
+            AuditService::record(null, 'oauth_client_secret_rotated', 'oauth_client', $client->client_id);
+            $transaction->commit();
+        } catch (\Throwable $exception) {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+            throw $exception;
+        }
 
         return ServiceResult::success(array_merge($client->publicData(), ['client_secret' => $secret]));
     }
