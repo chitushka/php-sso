@@ -24,7 +24,9 @@ make up-development
 
 Приложение доступно на `http://localhost:8080`, локальный HTTPS proxy — на `https://localhost:8443`, PostgreSQL — на `localhost:5433`.
 
-`.env.development.example` предназначен только для разработки. `.env.example` задаёт fail-closed production-профиль: перед запуском необходимы уникальные secrets, нестандартный пароль БД, HTTPS issuer и PostgreSQL `sslmode=verify-full` с доверенным CA. Production secrets следует передавать через `*_FILE` и read-only mounts.
+Порты `8080` и `5433` публикует только `docker-compose.development.yml`, который автоматически подключает `make up-development`. Базовый production Compose публикует только TLS entrypoint `8443`; внутренние HTTP и PostgreSQL доступны лишь в Docker networks.
+
+`.env.development.example` предназначен только для разработки. `.env.example` задаёт fail-closed production-конфигурацию: перед запуском необходимы уникальные secrets, нестандартный пароль БД, HTTPS issuer и PostgreSQL `sslmode=verify-full` с доверенным CA. Production secrets следует передавать через `*_FILE` и read-only mounts. Production запускается через `make up` без development override.
 
 ## Проверки
 
@@ -62,7 +64,7 @@ Test service всегда задаёт отдельный `SSO_ENV=test` и не
 - `SSO_JWT_SECRET`, `SSO_ENCRYPTION_KEY` — независимые secrets длиной не менее 32 символов.
 - `SSO_ACCESS_TOKEN_TTL`, `SSO_SESSION_TTL`, `SSO_REFRESH_TOKEN_TTL` — сроки жизни артефактов.
 - `SSO_COOKIE_SECURE`, `SSO_MAX_BODY_BYTES`, `SSO_RATE_LIMIT_*` — browser/request security и rate limits.
-- `SSO_TRUSTED_PROXIES` — доверенные IP/CIDR reverse proxies.
+- `SSO_TRUSTED_PROXIES` — точный список IP/CIDR reverse proxies, от которых принимаются `X-Forwarded-For`, `Host`, `Proto` и `Port`; заголовки от остальных peers игнорируются.
 - `SSO_OUTBOUND_*`, `SSO_LDAP_*`, `SSO_SMTP_*` — политики и ограничения внешних соединений.
 - `SSO_AUDIT_RETENTION_DAYS`, `SSO_CLEANUP_*` — retention и cleanup scheduler.
 - `SSO_METRICS_ALLOWED_CIDRS`, `SSO_METRICS_BEARER_TOKEN` — защита `/metrics`.

@@ -20,10 +20,19 @@ class BrowserSecurityServiceTest extends TestCase
             'id' => 'browser-security-unit',
             'basePath' => dirname(__DIR__, 2),
             'components' => ['request' => Request::class],
-            'params' => ['issuer' => 'https://sso.example.test'],
+            'params' => [
+                'issuer' => 'https://sso.example.test',
+                'environment' => 'test',
+            ],
         ]);
         $_COOKIE = [];
         $_SERVER['REQUEST_METHOD'] = 'POST';
+    }
+
+    protected function tearDown(): void
+    {
+        unset($_SERVER['HTTPS']);
+        parent::tearDown();
     }
 
     public function testCookieAuthenticatedMutationRequiresMatchingTokenAndSameOrigin(): void
@@ -54,6 +63,22 @@ class BrowserSecurityServiceTest extends TestCase
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $get = $this->request([]);
         $this->assertFalse($service->requiresCsrf('oauth/logout', $get));
+    }
+
+    public function testHstsRequiresProductionAndSecureConnection(): void
+    {
+        $service = new BrowserSecurityService();
+        $_SERVER['HTTPS'] = 'on';
+        $request = $this->request([]);
+
+        Yii::$app->params['environment'] = 'prod';
+        $this->assertTrue($service->shouldSendHsts($request));
+        Yii::$app->params['environment'] = 'development';
+        $this->assertFalse($service->shouldSendHsts($request));
+
+        unset($_SERVER['HTTPS']);
+        Yii::$app->params['environment'] = 'prod';
+        $this->assertFalse($service->shouldSendHsts($this->request([])));
     }
 
     private function request(array $cookies): Request

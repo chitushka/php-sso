@@ -1,0 +1,23 @@
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+
+  web:
+    ports:
+      - "8080:8080"
+
+  app:
+    env_file:
+      - path: .env.development
+        required: true
+
+  migrate:
+    env_file:
+      - path: .env.development
+        required: true
+
+  cleanup-scheduler:
+    env_file:
+      - path: .env.development
+        required: true

@@ -81,7 +81,9 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 
 ## Browser и OAuth/OIDC security
 
-Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается для HTTPS. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP и scheme принимаются только от `SSO_TRUSTED_PROXIES`.
+Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается в production для прямого HTTPS и HTTPS за доверенным proxy. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP, host, scheme и port принимаются только от CIDR из `SSO_TRUSTED_PROXIES`; те же CIDR настраивают Yii `Request::trustedHosts`, поэтому недоверенные peers не могут подменить origin или признак защищённого соединения.
+
+Базовый production Compose публикует только TLS entrypoint `8443`; cleartext web и PostgreSQL остаются во внутренних Docker networks. Локальные порты `8080` и `5433` добавляются отдельным `docker-compose.development.yml` и не входят в production graph.
 
 Authorization Code требует PKCE S256, state и точного совпадения зарегистрированного redirect URI. Ошибка authorization перенаправляется только на уже проверенный redirect URI и сохраняет допустимые `state` и `iss`; иначе возвращается локально. Confidential client проходит ровно один способ аутентификации — HTTP Basic либо body; public client не использует secret и не получает client credentials grant.
 

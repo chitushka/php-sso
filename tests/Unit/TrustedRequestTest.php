@@ -28,6 +28,23 @@ class TrustedRequestTest extends TestCase
         }
     }
 
+    protected function tearDown(): void
+    {
+        foreach ([
+            'HTTPS',
+            'HTTP_HOST',
+            'HTTP_X_FORWARDED_FOR',
+            'HTTP_X_FORWARDED_HOST',
+            'HTTP_X_FORWARDED_PROTO',
+            'HTTP_X_FORWARDED_PORT',
+            'REMOTE_ADDR',
+            'SERVER_PORT',
+        ] as $name) {
+            unset($_SERVER[$name]);
+        }
+        parent::tearDown();
+    }
+
     public function testUntrustedPeerIgnoresForwardedFor(): void
     {
         $this->assertSame(
@@ -89,6 +106,26 @@ class TrustedRequestTest extends TestCase
         );
     }
 
+    public function testTrustedProxyProvidesForwardedSchemeHostAndPort(): void
+    {
+        $request = $this->forwardedRequest('10.10.1.5', '10.10.0.0/16');
+
+        $this->assertTrue($request->isSecureConnection);
+        $this->assertSame('https://sso.example.test:8443', $request->hostInfo);
+        $this->assertSame(8443, $request->serverPort);
+        $this->assertSame('203.0.113.7', $request->userIP);
+    }
+
+    public function testUntrustedPeerCannotSpoofForwardedSchemeHostOrPort(): void
+    {
+        $request = $this->forwardedRequest('198.51.100.10', '10.10.0.0/16');
+
+        $this->assertFalse($request->isSecureConnection);
+        $this->assertSame('http://internal:8080', $request->hostInfo);
+        $this->assertSame(8080, $request->serverPort);
+        $this->assertSame('198.51.100.10', $request->userIP);
+    }
+
     private function resolvedIp(string $remoteAddr, string $forwardedFor, string $trustedProxies): string
     {
         Yii::$app->params['trustedProxies'] = $trustedProxies;
@@ -98,9 +135,30 @@ class TrustedRequestTest extends TestCase
             'cookieValidationKey' => 'unit-test-cookie-validation-key',
             'scriptFile' => __FILE__,
             'scriptUrl' => '/index.php',
+            'trustedHosts' => TrustedRequest::trustedHostsFromCsv($trustedProxies),
         ]);
         $request->headers->set('X-Forwarded-For', $forwardedFor);
 
         return $request->getUserIP();
+    }
+
+    private function forwardedRequest(string $remoteAddr, string $trustedProxies): TrustedRequest
+    {
+        Yii::$app->params['trustedProxies'] = $trustedProxies;
+        $_SERVER['REMOTE_ADDR'] = $remoteAddr;
+        $_SERVER['SERVER_PORT'] = '8080';
+        $_SERVER['HTTP_HOST'] = 'internal:8080';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.7, 10.10.1.4';
+        $_SERVER['HTTP_X_FORWARDED_HOST'] = 'sso.example.test:8443';
+        $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+        $_SERVER['HTTP_X_FORWARDED_PORT'] = '8443';
+        unset($_SERVER['HTTPS']);
+
+        return new TrustedRequest([
+            'cookieValidationKey' => 'unit-test-cookie-validation-key',
+            'scriptFile' => __FILE__,
+            'scriptUrl' => '/index.php',
+            'trustedHosts' => TrustedRequest::trustedHostsFromCsv($trustedProxies),
+        ]);
     }
 }

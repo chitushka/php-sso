@@ -53,7 +53,19 @@ function smokeRequest(string $url, bool $tlsInsecure): array
         'status' => $status,
         'body' => (string)$body,
         'json' => is_array($json) ? $json : null,
+        'headers' => $headers,
     ];
+}
+
+function smokeHeader(array $response, string $name): string
+{
+    foreach ($response['headers'] ?? [] as $header) {
+        if (stripos($header, $name . ':') === 0) {
+            return trim(substr($header, strlen($name) + 1));
+        }
+    }
+
+    return '';
 }
 
 function smokeJson(string $baseUrl, string $path, bool $tlsInsecure): array
@@ -82,7 +94,14 @@ if ($tlsInsecure) {
     );
 }
 
-$live = smokeJson($baseUrl, '/health/live', $tlsInsecure);
+$hstsProbe = smokeRequest($baseUrl . '/health/live', $tlsInsecure);
+assertSmoke($hstsProbe['status'] === 200, 'HTTPS liveness probe must return HTTP 200');
+assertSmoke(
+    preg_match('/^max-age=\d+(?:;|$)/i', smokeHeader($hstsProbe, 'Strict-Transport-Security')) === 1,
+    'production HTTPS response must include HSTS'
+);
+$live = $hstsProbe['json'];
+assertSmoke(is_array($live), '/health/live must return a JSON object');
 assertSmoke(($live['status'] ?? '') === 'ok', 'liveness payload must be contract-compliant');
 
 $ready = smokeJson($baseUrl, '/health/ready', $tlsInsecure);

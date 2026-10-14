@@ -16,7 +16,7 @@ up:
 	docker compose --profile operations up -d
 
 up-development:
-	docker compose --env-file .env.development --profile operations up -d
+	docker compose -f docker-compose.yml -f docker-compose.development.yml --env-file .env.development --profile operations up -d
 
 down:
 	docker compose --profile operations down

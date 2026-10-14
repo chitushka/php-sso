@@ -33,6 +33,23 @@ class TrustedRequest extends Request
         parent::setRawBody($rawBody);
     }
 
+    public static function trustedHostsFromCsv(string $value): array
+    {
+        $headers = [
+            'X-Forwarded-For',
+            'X-Forwarded-Host',
+            'X-Forwarded-Proto',
+            'X-Forwarded-Port',
+        ];
+        $trustedHosts = [];
+        foreach (array_filter(array_map('trim', explode(',', $value))) as $cidr) {
+            self::validateNetwork($cidr);
+            $trustedHosts[$cidr] = $headers;
+        }
+
+        return $trustedHosts;
+    }
+
     public function getUserIP()
     {
         $peer = $this->hostOnly((string)($_SERVER['REMOTE_ADDR'] ?? parent::getUserIP()));
@@ -68,7 +85,7 @@ class TrustedRequest extends Request
             }
             $prefix = (int)$prefix;
             $bytes = strlen($packed);
-            if ($prefix < 0 || $prefix > $bytes * 8 || !$this->isNetworkAddress($packed, $prefix)) {
+            if ($prefix < 0 || $prefix > $bytes * 8 || !self::isNetworkAddress($packed, $prefix)) {
                 throw new \yii\base\InvalidConfigException('invalid trusted proxy CIDR');
             }
             $networks[] = [
@@ -149,7 +166,24 @@ class TrustedRequest extends Request
         return (ord($ip[$fullBytes]) & $mask) === (ord($network[$fullBytes]) & $mask);
     }
 
-    private function isNetworkAddress(string $packed, int $prefix): bool
+    private static function validateNetwork(string $cidr): void
+    {
+        $entry = $cidr;
+        if (strpos($entry, '/') === false) {
+            $entry .= strpos($entry, ':') === false ? '/32' : '/128';
+        }
+        [$network, $prefix] = explode('/', $entry, 2);
+        $packed = @inet_pton($network);
+        if ($packed === false || preg_match('/^\d+$/D', $prefix) !== 1) {
+            throw new \yii\base\InvalidConfigException('invalid trusted proxy CIDR');
+        }
+        $prefix = (int)$prefix;
+        if ($prefix < 0 || $prefix > strlen($packed) * 8 || !self::isNetworkAddress($packed, $prefix)) {
+            throw new \yii\base\InvalidConfigException('invalid trusted proxy CIDR');
+        }
+    }
+
+    private static function isNetworkAddress(string $packed, int $prefix): bool
     {
         $fullBytes = intdiv($prefix, 8);
         $remainingBits = $prefix % 8;

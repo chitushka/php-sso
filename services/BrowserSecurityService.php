@@ -44,6 +44,11 @@ class BrowserSecurityService
         );
     }
 
+    public function shouldSendHsts(Request $request): bool
+    {
+        return ApplicationRuntime::param('environment') === 'prod' && $request->isSecureConnection;
+    }
+
     private function origin(string $url): string
     {
         $parts = parse_url($url);

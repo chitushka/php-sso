@@ -6,8 +6,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-sso}
       POSTGRES_USER: ${POSTGRES_USER:-sso}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso}
-    ports:
-      - "5433:5432"
     volumes:
       - postgres17_data:/var/lib/postgresql/data
       - tls_data:/tls:ro
@@ -94,8 +92,6 @@ services:
       dockerfile: docker/nginx/Dockerfile
     image: sso-php-web:latest
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     depends_on:
       - app
     healthcheck:

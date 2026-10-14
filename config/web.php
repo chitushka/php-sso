@@ -48,6 +48,9 @@ return [
             'class' => app\components\TrustedRequest::class,
             'enableCookieValidation' => false,
             'cookieValidationKey' => $params['encryptionKey'],
+            'trustedHosts' => app\components\TrustedRequest::trustedHostsFromCsv(
+                (string)$params['trustedProxies']
+            ),
             'parsers' => [
                 'application/json' => app\components\JsonParser::class,
             ],
@@ -71,10 +74,7 @@ return [
                     'Permissions-Policy',
                     'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
                 );
-                if (
-                    strtolower((string)getenv('SSO_ENV')) === 'prod'
-                    && Yii::$app->request->isSecureConnection
-                ) {
+                if ((new app\services\BrowserSecurityService())->shouldSendHsts(Yii::$app->request)) {
                     $event->sender->headers->set(
                         'Strict-Transport-Security',
                         'max-age=31536000; includeSubDomains'

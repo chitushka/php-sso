@@ -33,6 +33,10 @@ $metricsAllowedCidrs = ConfigValidator::cidrList('SSO_METRICS_ALLOWED_CIDRS', (s
     'SSO_METRICS_ALLOWED_CIDRS',
     $production ? '' : '127.0.0.1/32,::1/128'
 ));
+$trustedProxies = ConfigValidator::cidrList(
+    'SSO_TRUSTED_PROXIES',
+    (string)Environment::value('SSO_TRUSTED_PROXIES', '')
+);
 $metricsBearerToken = (string)Environment::value('SSO_METRICS_BEARER_TOKEN', '');
 $ldapCaCertificate = ConfigValidator::readableFile(
     'SSO_LDAP_CA_CERT',
@@ -80,7 +84,7 @@ return [
     'rateLimitPerMinute' => Environment::int('SSO_RATE_LIMIT_PER_MINUTE', 30, 1, 100000),
     'rateLimitBurst' => Environment::int('SSO_RATE_LIMIT_BURST', 10, 1, 100000),
     'cacheDriver' => $cacheDriver,
-    'trustedProxies' => (string)Environment::value('SSO_TRUSTED_PROXIES', ''),
+    'trustedProxies' => $trustedProxies,
     'outboundHostAllowlist' => (string)Environment::value('SSO_OUTBOUND_HOST_ALLOWLIST', ''),
     'outboundConnectTimeout' => Environment::int('SSO_OUTBOUND_CONNECT_TIMEOUT', 5, 1, 60),
     'outboundReadTimeout' => Environment::int('SSO_OUTBOUND_READ_TIMEOUT', 10, 1, 120),
