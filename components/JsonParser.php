@@ -9,14 +9,13 @@ class JsonParser extends YiiJsonParser
 {
     public function parse($rawBody, $contentType)
     {
-        $firstValue = JsonStream::firstValue($rawBody);
         try {
-            $params = parent::parse($firstValue, $contentType);
+            $params = parent::parse($rawBody, $contentType);
         } catch (BadRequestHttpException $exception) {
             throw new BadRequestHttpException('invalid json body', 0, $exception);
         }
 
-        $trimmedBody = ltrim($firstValue);
+        $trimmedBody = trim($rawBody);
         if (!is_array($params) || ($trimmedBody !== 'null' && substr($trimmedBody, 0, 1) !== '{')) {
             throw new BadRequestHttpException('invalid json body');
         }

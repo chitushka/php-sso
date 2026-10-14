@@ -237,7 +237,7 @@ try {
     )->queryOne();
     assertTrue((bool)$user, 'broker callback must provision federated user');
     assertTrue($user['source'] === 'federated', 'broker user must be federated');
-    assertTrue((bool)$user['email_verified'] === false, 'broker provision must preserve Go email_verified zero value');
+    assertTrue((bool)$user['email_verified'] === false, 'broker provision must not mark an unverified external email as verified');
     $userId = $user['id'];
 
     $linked = (int)$db->createCommand(

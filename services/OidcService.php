@@ -17,7 +17,9 @@ class OidcService
         $rows = ApplicationRuntime::db()->createCommand(
             'SELECT kid, alg, status, created_at, expires_at
              FROM oidc_signing_keys
-             ORDER BY created_at DESC, kid ASC'
+             ORDER BY CASE status WHEN \'active\' THEN 0 WHEN \'retiring\' THEN 1 ELSE 2 END,
+                      created_at DESC,
+                      kid ASC'
         )->queryAll();
 
         return array_map([$this, 'publicSigningKey'], $rows);
@@ -145,10 +147,12 @@ class OidcService
             'iat' => $now,
             'exp' => $now + (int)ApplicationRuntime::param('accessTokenTtl'),
             'auth_time' => $authTime ?? $now,
-            'nonce' => $nonce,
             'preferred_username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
         ];
+        if ($nonce !== '') {
+            $payload['nonce'] = $nonce;
+        }
 
         $header = JwtService::base64url(json_encode(['typ' => 'JWT', 'alg' => 'RS256', 'kid' => $key['kid']]));
         $body = JwtService::base64url(json_encode($payload));

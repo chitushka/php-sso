@@ -6,7 +6,7 @@ class PasswordPolicy
 {
     public static function validate(string $password): ?string
     {
-        // Единая политика паролей повторяет Go-сервис: длина важнее искусственных правил состава.
+        // Длина парольной фразы важнее искусственных правил состава.
         if (strlen($password) < 12) {
             return 'password must contain at least 12 characters';
         }

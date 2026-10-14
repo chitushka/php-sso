@@ -61,7 +61,7 @@ Email нормализуется как `trim + lowercase` и уникален �
 
 ## HTTP/API-контракт
 
-Если маршрут не определяет redirect, HTML или OAuth form response, API отвечает JSON. Некорректный JSON, неизвестные поля и невалидные идентификаторы отклоняются до обращения к бизнес-логике. UUID валидируется до запроса к БД, timestamps возвращаются в RFC 3339 UTC. Неизвестные маршруты API, OAuth и Well-Known возвращают JSON 404.
+Если маршрут не определяет redirect, HTML или OAuth form response, API отвечает JSON. Тело JSON содержит ровно одно значение; хвостовые данные, несколько значений, неизвестные поля, неверный регистр полей и невалидные идентификаторы отклоняются до обращения к бизнес-логике. UUID валидируется до запроса к БД, timestamps возвращаются в RFC 3339 UTC. Неизвестные маршруты API, OAuth и Well-Known возвращают JSON 404.
 
 Ошибки прикладного API имеют единый JSON envelope `{"error":"читаемое сообщение","code":"machine_code","details":...}`. Поля `error` и `code` обязательны, `details` присутствует при наличии структурированного контекста. Validation errors возвращают HTTP 400, отсутствующие ресурсы — 404, конфликты уникальности или состояния — 409. OAuth/OIDC endpoints используют нормативные `error` и `error_description`. Auth/token responses содержат `Cache-Control: no-store`. `X-Request-ID` принимается только в допустимом формате либо генерируется сервисом и возвращается клиенту.
 
@@ -77,7 +77,7 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 
 Машиночитаемый HTTP-контракт разделён на `contracts/openapi-admin.json` для administrative/account API и `contracts/openapi-oauth.json` для OAuth 2.0, OpenID Connect и federation broker endpoints. Оба документа используют OpenAPI 3.1 и JSON Schema 2020-12. `composer verify:contracts` строит множество операций из спецификаций, сверяет его со всеми маршрутами `/api/v1`, `/oauth2` и `/.well-known`, проверяет уникальность `operationId`, path parameters, responses и локальные `$ref`. Любое изменение внешнего поведения должно атомарно обновлять router, соответствующую спецификацию и contract/integration tests; предполагаемое поведение исторической реализации контрактом не является.
 
-Верхнеуровневые административные списки принимают `limit` (1–100, по умолчанию 50), `offset` (неотрицательный) и текстовый фильтр `q`. Список пользователей дополнительно принимает `status` и `source`, OAuth clients и identity providers — `type`, LDAP providers — `enabled`. Некорректные границы заменяются безопасными значениями по умолчанию. Ответ имеет envelope `{"items": [...], "pagination": {"limit": 50, "offset": 0, "count": N}}`; `count` описывает число элементов в текущей странице. Вложенные списки связей и пользовательские account-списки остаются JSON-массивами.
+Административные списки принимают `limit` (1–100, по умолчанию 50), `offset` (неотрицательный) и текстовый фильтр `q`. Список пользователей дополнительно принимает `status` и `source`, OAuth clients и identity providers — `type`, LDAP providers — `enabled`. Некорректные границы заменяются безопасными значениями по умолчанию. Ответ имеет envelope `{"items": [...], "pagination": {"limit": 50, "offset": 0, "count": N}}`; `count` описывает число элементов в текущей странице. Пользовательские account-списки остаются JSON-массивами.
 
 ## Browser и OAuth/OIDC security
 
@@ -85,7 +85,7 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 
 Authorization Code требует PKCE S256, state и точного совпадения зарегистрированного redirect URI. Ошибка authorization перенаправляется только на уже проверенный redirect URI и сохраняет допустимые `state` и `iss`; иначе возвращается локально. Confidential client проходит ровно один способ аутентификации — HTTP Basic либо body; public client не использует secret и не получает client credentials grant.
 
-Authorization codes и refresh tokens одноразовые. Повторное использование refresh token отзывает его семейство. ID Token подписывается активным RS256 key с `kid`, issuer/audience/time/nonce проверяются на границах. Consent привязан к user, client и scopes; расширение scopes требует нового подтверждения.
+Authorization codes и refresh tokens одноразовые. Повторное использование refresh token отзывает его семейство. ID Token подписывается активным RS256 key с `kid`, issuer/audience/time/nonce проверяются на границах; ID Token из refresh grant не содержит `nonce`. Introspection активного access token возвращает стандартные `exp` и `iat`, но не раскрывает внутренние JWT-only claims. Consent привязан к user, client и scopes; расширение scopes требует нового подтверждения.
 
 Пользователь просматривает и отзывает собственные активные consent. Администратор с отдельными permissions может просматривать federated identity links пользователя и отвязывать их; последний способ входа federated-only пользователя удалить нельзя. Принудительная ротация signing key атомарно переводит прежний active key в `retiring`, сохраняет его в JWKS на grace period, создаёт новый encrypted active key и записывает audit event.
 

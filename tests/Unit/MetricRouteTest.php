@@ -15,7 +15,7 @@ class MetricRouteTest extends TestCase
         );
     }
 
-    public function testDynamicRoutesUseGoParameterNames(): void
+    public function testDynamicRoutesUseCanonicalParameterNames(): void
     {
         $this->assertSame(
             '/api/v1/oauth/clients/{id}',
@@ -34,7 +34,7 @@ class MetricRouteTest extends TestCase
         );
     }
 
-    public function testSpaFallbackUsesGoOtherLabel(): void
+    public function testSpaFallbackUsesOtherLabel(): void
     {
         $this->assertSame('other', MetricRoute::label('admin/index', 'unknown/path'));
         $this->assertSame('other', MetricRoute::label('admin/index', ''));

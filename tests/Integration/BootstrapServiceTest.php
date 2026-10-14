@@ -37,7 +37,7 @@ class BootstrapServiceTest extends TestCase
         parent::tearDown();
     }
 
-    public function testCreateAdminMatchesGoDefaultsRoleAndAudit(): void
+    public function testCreateAdminUsesDocumentedDefaultsRoleAndAudit(): void
     {
         $result = (new BootstrapService())->createAdmin([
             'username' => ' bootstrap-admin ',

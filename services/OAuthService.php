@@ -288,8 +288,10 @@ class OAuthService
             'username' => (string)($claims['username'] ?? ''),
             'scope' => (string)($claims['scope'] ?? ''),
         ];
-        if (isset($claims['exp'])) {
-            $data['exp'] = (int)$claims['exp'];
+        foreach (['exp', 'iat'] as $claim) {
+            if (isset($claims[$claim])) {
+                $data[$claim] = (int)$claims[$claim];
+            }
         }
 
         return ServiceResult::success($data);
@@ -841,7 +843,7 @@ class OAuthService
             if ($decoded !== false && strpos($decoded, ':') !== false) {
                 [$basicId, $basicSecret] = explode(':', $decoded, 2);
                 // RFC 6749 §2.3.1 использует application/x-www-form-urlencoded,
-                // поэтому знак "+" декодируется как пробел, как url.QueryUnescape в Go.
+                // поэтому знак "+" декодируется как пробел.
                 $clientId = urldecode($basicId);
                 $clientSecret = urldecode($basicSecret);
             } else {

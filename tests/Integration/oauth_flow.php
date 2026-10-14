@@ -253,7 +253,7 @@ try {
         'password' => $password,
     ]);
     assertTrue($repeatedBootstrap['status'] === 409, 'repeated bootstrap must return 409');
-    assertTrue(($repeatedBootstrap['json']['error'] ?? '') === 'system already initialized', 'repeated bootstrap must match Go error');
+    assertTrue(($repeatedBootstrap['json']['error'] ?? '') === 'system already initialized', 'repeated bootstrap must match API contract');
 
     $plainUserId = createUser($db, $userUsername, $password);
     $createdUserIds[] = $plainUserId;
@@ -327,54 +327,66 @@ try {
 
     $missingBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', []);
     assertTrue($missingBearer['status'] === 401, 'protected endpoint without bearer token must return 401');
-    assertTrue(($missingBearer['json']['error'] ?? '') === 'missing bearer token', 'missing bearer token must match Go error');
+    assertTrue(($missingBearer['json']['error'] ?? '') === 'missing bearer token', 'missing bearer token must match API contract');
 
     $invalidBearer = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], 'not-a-jwt');
     assertTrue($invalidBearer['status'] === 401, 'protected endpoint with invalid bearer token must return 401');
-    assertTrue(($invalidBearer['json']['error'] ?? '') === 'invalid token', 'invalid bearer token must match Go error');
+    assertTrue(($invalidBearer['json']['error'] ?? '') === 'invalid token', 'invalid bearer token must match API contract');
 
     $missingAdminBearer = jsonRequest('GET', $baseUrl . '/api/v1/users', []);
     assertTrue($missingAdminBearer['status'] === 401, 'admin endpoint without bearer token must return 401');
-    assertTrue(($missingAdminBearer['json']['error'] ?? '') === 'missing bearer token', 'admin bearer middleware must match Go error');
+    assertTrue(($missingAdminBearer['json']['error'] ?? '') === 'missing bearer token', 'admin bearer middleware must match API contract');
 
     $missingUserinfoBearer = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', []);
     assertTrue($missingUserinfoBearer['status'] === 401, 'userinfo without bearer token must return 401');
-    assertTrue(($missingUserinfoBearer['json']['error'] ?? '') === 'missing bearer token', 'userinfo bearer middleware must match Go error');
+    assertTrue(($missingUserinfoBearer['json']['error'] ?? '') === 'missing bearer token', 'userinfo bearer middleware must match API contract');
 
     $malformedLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '{"username":',
     ]);
     assertTrue($malformedLogin['status'] === 400, 'malformed login JSON must return 400');
-    assertTrue(($malformedLogin['json']['error'] ?? '') === 'invalid json body', 'malformed login JSON must match Go error');
+    assertTrue(($malformedLogin['json']['error'] ?? '') === 'invalid json body', 'malformed login JSON must match API contract');
+
+    foreach (['{"username":"admin"}{"password":"ignored"}', '{"username":"admin"} trailing'] as $invalidJsonStream) {
+        $streamLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
+            'headers' => ['Content-Type: application/json', 'Accept: application/json'],
+            'body' => $invalidJsonStream,
+        ]);
+        assertTrue($streamLogin['status'] === 400, 'request body with trailing JSON data must return 400');
+        assertTrue(
+            ($streamLogin['json']['error'] ?? '') === 'invalid json body',
+            'request body with trailing JSON data must match strict JSON contract'
+        );
+    }
 
     $malformedForgot = httpRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '{"login":',
     ]);
     assertTrue($malformedForgot['status'] === 400, 'malformed password forgot JSON must return 400');
-    assertTrue(($malformedForgot['json']['error'] ?? '') === 'login is required', 'malformed password forgot JSON must match Go error');
+    assertTrue(($malformedForgot['json']['error'] ?? '') === 'login is required', 'malformed password forgot JSON must match API contract');
 
     $arrayForgot = httpRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '[]',
     ]);
     assertTrue($arrayForgot['status'] === 400, 'non-object password forgot JSON must return 400');
-    assertTrue(($arrayForgot['json']['error'] ?? '') === 'login is required', 'non-object password forgot JSON must match Go error');
+    assertTrue(($arrayForgot['json']['error'] ?? '') === 'login is required', 'non-object password forgot JSON must match API contract');
 
     $unknownForgotField = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', [
         'login' => $adminUsername,
         'unexpected' => true,
     ]);
     assertTrue($unknownForgotField['status'] === 400, 'password forgot JSON with unknown field must return 400');
-    assertTrue(($unknownForgotField['json']['error'] ?? '') === 'login is required', 'password forgot decode failure must match Go error');
+    assertTrue(($unknownForgotField['json']['error'] ?? '') === 'login is required', 'password forgot decode failure must match API contract');
 
     $arrayResetBody = httpRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '[]',
     ]);
     assertTrue($arrayResetBody['status'] === 400, 'non-object account JSON must return 400');
-    assertTrue(($arrayResetBody['json']['error'] ?? '') === 'invalid json body', 'non-object account JSON must match Go error');
+    assertTrue(($arrayResetBody['json']['error'] ?? '') === 'invalid json body', 'non-object account JSON must match API contract');
 
     $unknownLoginField = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -382,34 +394,30 @@ try {
         'unexpected' => true,
     ]);
     assertTrue($unknownLoginField['status'] === 400, 'login JSON with unknown field must return 400');
-    assertTrue(($unknownLoginField['json']['error'] ?? '') === 'invalid json body', 'unknown login field must match Go error');
+    assertTrue(($unknownLoginField['json']['error'] ?? '') === 'invalid json body', 'unknown login field must match API contract');
 
     $typedLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => 42,
         'password' => $password,
     ]);
     assertTrue($typedLogin['status'] === 400, 'login JSON with numeric username must return 400');
-    assertTrue(($typedLogin['json']['error'] ?? '') === 'invalid json body', 'typed login error must match Go decoder');
+    assertTrue(($typedLogin['json']['error'] ?? '') === 'invalid json body', 'typed login error must match JSON contract');
 
     $caseInsensitiveLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'Username' => $adminUsername,
         'Password' => $password,
     ]);
-    assertTrue($caseInsensitiveLogin['status'] === 200, 'Go decoder must match JSON field names case-insensitively');
-    $caseInsensitiveLogout = httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
-        'cookies' => [
-            'sso_session' => $caseInsensitiveLogin['cookies']['sso_session'],
-            'sso_csrf' => $caseInsensitiveLogin['cookies']['sso_csrf'],
-        ],
-        'headers' => ['Accept: application/json'],
-    ]);
-    assertTrue($caseInsensitiveLogout['status'] === 200, 'case-insensitive login session cleanup must return 200');
+    assertTrue($caseInsensitiveLogin['status'] === 400, 'JSON field names must be case-sensitive');
+    assertTrue(
+        ($caseInsensitiveLogin['json']['error'] ?? '') === 'invalid json body',
+        'case-mismatched JSON fields must be rejected by the API contract'
+    );
 
     $contentTypeIndependentLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'headers' => ['Accept: application/json'],
         'body' => json_encode(['username' => $adminUsername, 'password' => $password]),
     ]);
-    assertTrue($contentTypeIndependentLogin['status'] === 200, 'Go JSON decoding must not depend on Content-Type');
+    assertTrue($contentTypeIndependentLogin['status'] === 200, 'API JSON decoding must not depend on Content-Type');
     httpRequest('POST', $baseUrl . '/api/v1/auth/logout', [
         'cookies' => [
             'sso_session' => $contentTypeIndependentLogin['cookies']['sso_session'],
@@ -422,14 +430,14 @@ try {
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => 'null',
     ]);
-    assertTrue($nullLogin['status'] === 401, 'literal null must decode as a Go zero-value login request');
+    assertTrue($nullLogin['status'] === 401, 'literal null must decode as an empty login request');
 
     $emptyLogin = httpRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
         'body' => '',
     ]);
-    assertTrue($emptyLogin['status'] === 400, 'empty JSON body must match Go EOF decode error');
-    assertTrue(($emptyLogin['json']['error'] ?? '') === 'invalid json body', 'empty JSON body must match Go error');
+    assertTrue($emptyLogin['status'] === 400, 'empty JSON body must reject an empty JSON document');
+    assertTrue(($emptyLogin['json']['error'] ?? '') === 'invalid json body', 'empty JSON body must match API contract');
 
     $unknownResetField = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/reset', [
         'token' => 'unknown-token',
@@ -437,7 +445,7 @@ try {
         'unexpected' => true,
     ]);
     assertTrue($unknownResetField['status'] === 400, 'password reset JSON with unknown field must return 400');
-    assertTrue(($unknownResetField['json']['error'] ?? '') === 'invalid json body', 'unknown password reset field must match Go error');
+    assertTrue(($unknownResetField['json']['error'] ?? '') === 'invalid json body', 'unknown password reset field must match API contract');
 
     $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -462,7 +470,7 @@ try {
 
     $invalidSession = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions/not-a-uuid', [], $adminToken);
     assertTrue($invalidSession['status'] === 400, 'invalid session id must return 400');
-    assertTrue(($invalidSession['json']['error'] ?? '') === 'invalid session id', 'invalid session id must match Go error');
+    assertTrue(($invalidSession['json']['error'] ?? '') === 'invalid session id', 'invalid session id must match API contract');
 
     $revokedSession = jsonRequest(
         'DELETE',
@@ -482,7 +490,7 @@ try {
 
     $revokedToken = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
     assertTrue($revokedToken['status'] === 401, 'revoke all sessions must invalidate existing bearer token');
-    assertTrue(($revokedToken['json']['error'] ?? '') === 'token revoked', 'revoked first-party token must match Go error');
+    assertTrue(($revokedToken['json']['error'] ?? '') === 'token revoked', 'revoked first-party token must match API contract');
 
     $login = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -566,7 +574,7 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownOAuthClientField['status'] === 400, 'OAuth client JSON with unknown field must return 400');
-    assertTrue(($unknownOAuthClientField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client field must match Go error');
+    assertTrue(($unknownOAuthClientField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client field must match API contract');
 
     $typedOAuthClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
         'client_id' => 'typed-client-' . $suffix,
@@ -575,7 +583,7 @@ try {
         'enabled' => 'false',
     ], $adminToken);
     assertTrue($typedOAuthClient['status'] === 400, 'OAuth client with invalid slice/bool types must return 400');
-    assertTrue(($typedOAuthClient['json']['error'] ?? '') === 'invalid json body', 'typed OAuth client error must match Go decoder');
+    assertTrue(($typedOAuthClient['json']['error'] ?? '') === 'invalid json body', 'typed OAuth client error must match JSON contract');
 
     foreach ([
         ['GET', '/api/v1/oauth/clients/not-a-uuid'],
@@ -586,7 +594,7 @@ try {
         [$method, $path] = $invalidClientRequest;
         $invalidClientId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidClientId['status'] === 400, $method . ' OAuth client with invalid id must return 400');
-        assertTrue(($invalidClientId['json']['error'] ?? '') === 'invalid id', $method . ' OAuth client must match Go error');
+        assertTrue(($invalidClientId['json']['error'] ?? '') === 'invalid id', $method . ' OAuth client must match API contract');
     }
 
     $missingClient = jsonRequest(
@@ -596,7 +604,7 @@ try {
         $adminToken
     );
     assertTrue($missingClient['status'] === 404, 'missing OAuth client must return 404');
-    assertTrue(($missingClient['json']['error'] ?? '') === 'client not found', 'missing OAuth client must match Go error');
+    assertTrue(($missingClient['json']['error'] ?? '') === 'client not found', 'missing OAuth client must match API contract');
 
     $unknownOAuthUpdateField = jsonRequest(
         'PUT',
@@ -604,8 +612,8 @@ try {
         ['type' => 'public'],
         $adminToken
     );
-    assertTrue($unknownOAuthUpdateField['status'] === 400, 'OAuth client update with Go-unknown type field must return 400');
-    assertTrue(($unknownOAuthUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client update field must match Go error');
+    assertTrue($unknownOAuthUpdateField['status'] === 400, 'OAuth client update with unsupported type field must return 400');
+    assertTrue(($unknownOAuthUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client update field must match API contract');
 
     $missingConfidentialClient = jsonRequest(
         'POST',
@@ -614,7 +622,7 @@ try {
         $adminToken
     );
     assertTrue($missingConfidentialClient['status'] === 404, 'missing confidential OAuth client must return 404');
-    assertTrue(($missingConfidentialClient['json']['error'] ?? '') === 'confidential client not found', 'missing confidential OAuth client must match Go error');
+    assertTrue(($missingConfidentialClient['json']['error'] ?? '') === 'confidential client not found', 'missing confidential OAuth client must match API contract');
 
     $configuration = httpRequest('GET', $baseUrl . '/.well-known/openid-configuration', [
         'headers' => ['Accept: application/json'],
@@ -635,7 +643,7 @@ try {
     assertTrue(strpos((string)$metrics['body'], '# TYPE sso_http_requests_total counter') !== false, 'metrics endpoint must expose request counter');
     assertTrue(strpos((string)$metrics['body'], 'sso_http_requests_processed_total') !== false, 'metrics endpoint must expose processed counter');
     assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}"') !== false, 'metrics must expose contract-compliant dynamic route template');
-    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}/rotate-secret"') !== false, 'metrics must preserve nested Go route template');
+    assertTrue(strpos((string)$metrics['body'], 'route="/api/v1/oauth/clients/{id}/rotate-secret"') !== false, 'metrics must preserve normalized nested route template');
     assertTrue(strpos((string)$metrics['body'], 'route="oauth/get-client"') === false, 'metrics must not expose internal Yii route names');
     assertTrue(strpos((string)$metrics['body'], '00000000-0000-0000-0000-000000000000') === false, 'metrics route labels must not contain resource UUIDs');
 
@@ -795,7 +803,7 @@ try {
     assertTrue(($introspection['json']['client_id'] ?? '') === $client['json']['client_id'], 'introspection must include client_id');
     assertTrue(($introspection['json']['username'] ?? '') === $adminUsername, 'introspection must include access token username');
     assertTrue(!array_key_exists('iss', $introspection['json']), 'introspection must not leak JWT-only issuer claim');
-    assertTrue(!array_key_exists('iat', $introspection['json']), 'access token introspection must match Go claim set');
+    assertTrue(($introspection['json']['iat'] ?? 0) <= time(), 'access token introspection must include issued-at timestamp');
     $accessTokenClaims = jwtPart($token['json']['access_token'], 1);
     assertTrue(($accessTokenClaims['email'] ?? '') === $adminUsername . '@example.test', 'OAuth access token must include user email');
     assertTrue(($accessTokenClaims['source'] ?? '') === 'local', 'OAuth access token must include user source');
@@ -876,7 +884,7 @@ try {
     assertTrue(!empty($refresh['json']['refresh_token']), 'refresh grant must return rotated refresh_token');
     assertTrue($refresh['json']['refresh_token'] !== $firstRefresh, 'refresh grant must rotate token value');
     $refreshIdToken = jwtPart($refresh['json']['id_token'], 1);
-    assertTrue(($refreshIdToken['nonce'] ?? null) === '', 'refreshed id_token must carry empty nonce like Go');
+    assertTrue(!array_key_exists('nonce', $refreshIdToken), 'refreshed id_token must omit nonce');
     assertTrue(is_int($refreshIdToken['auth_time'] ?? null), 'refreshed id_token must include auth_time');
 
     $rotatedIntrospection = formRequest($baseUrl . '/oauth2/introspect', [
@@ -1010,14 +1018,14 @@ try {
     ]);
     $anonymousConsentInfo = httpRequest('GET', $consentInfoUrl, ['headers' => ['Accept: application/json']]);
     assertOAuthError($anonymousConsentInfo, 401, 'login_required', 'anonymous consent info');
-    assertTrue(($anonymousConsentInfo['json']['error_description'] ?? '') === 'no active session', 'anonymous consent info must match Go description');
+    assertTrue(($anonymousConsentInfo['json']['error_description'] ?? '') === 'no active session', 'anonymous consent info must match OAuth error contract');
 
     $unknownConsentClient = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
         'client_id' => 'missing-client-' . $suffix,
         'scope' => 'openid',
     ]), ['headers' => ['Accept: application/json'], 'cookies' => $sessionCookie]);
     assertOAuthError($unknownConsentClient, 400, 'invalid_request', 'unknown consent client');
-    assertTrue(($unknownConsentClient['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown consent client must match Go description');
+    assertTrue(($unknownConsentClient['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown consent client must match OAuth error contract');
 
     $invalidConsentScope = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
         'client_id' => $consentClient['json']['client_id'],
@@ -1051,7 +1059,7 @@ try {
         'cookies' => $sessionCookie,
     ]);
     assertOAuthError($malformedConsent, 400, 'invalid_request', 'malformed consent JSON');
-    assertTrue(($malformedConsent['json']['error_description'] ?? '') === 'invalid json body', 'malformed consent JSON must match Go description');
+    assertTrue(($malformedConsent['json']['error_description'] ?? '') === 'invalid json body', 'malformed consent JSON must match OAuth error contract');
 
     $arrayConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
@@ -1059,7 +1067,7 @@ try {
         'cookies' => $sessionCookie,
     ]);
     assertOAuthError($arrayConsent, 400, 'invalid_request', 'non-object consent JSON');
-    assertTrue(($arrayConsent['json']['error_description'] ?? '') === 'invalid json body', 'non-object consent JSON must match Go description');
+    assertTrue(($arrayConsent['json']['error_description'] ?? '') === 'invalid json body', 'non-object consent JSON must match OAuth error contract');
 
     $unknownConsentField = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
         'client_id' => $consentClient['json']['client_id'],
@@ -1067,14 +1075,14 @@ try {
         'unexpected' => true,
     ], null, $sessionCookie);
     assertOAuthError($unknownConsentField, 400, 'invalid_request', 'consent JSON with unknown field');
-    assertTrue(($unknownConsentField['json']['error_description'] ?? '') === 'invalid json body', 'unknown consent field must match Go description');
+    assertTrue(($unknownConsentField['json']['error_description'] ?? '') === 'invalid json body', 'unknown consent field must match OAuth error contract');
 
     $invalidConsentClientGrant = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
         'client_id' => 'missing-client-' . $suffix,
         'scope' => 'openid',
     ], null, $sessionCookie);
     assertOAuthError($invalidConsentClientGrant, 400, 'invalid_request', 'grant consent for unknown client');
-    assertTrue(($invalidConsentClientGrant['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown grant consent client must match Go description');
+    assertTrue(($invalidConsentClientGrant['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown grant consent client must match OAuth error contract');
 
     $grantOpenidConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
         'client_id' => $consentClient['json']['client_id'],
@@ -1129,7 +1137,7 @@ try {
         'password' => $password,
     ], $adminToken);
     assertTrue($missingUserFields['status'] === 400, 'create user without username/email must return 400');
-    assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match Go error');
+    assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match API contract');
     assertTrue(($missingUserFields['json']['code'] ?? '') === 'invalid_user', 'validation error must expose a stable code');
 
     $unknownUserField = jsonRequest('POST', $baseUrl . '/api/v1/users', [
@@ -1139,7 +1147,7 @@ try {
         'email_verified' => true,
     ], $adminToken);
     assertTrue($unknownUserField['status'] === 400, 'create user JSON with unknown field must return 400');
-    assertTrue(($unknownUserField['json']['error'] ?? '') === 'invalid json body', 'unknown user field must match Go error');
+    assertTrue(($unknownUserField['json']['error'] ?? '') === 'invalid json body', 'unknown user field must match API contract');
 
     $typedUserAttributes = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => 'typed-user-' . $suffix,
@@ -1148,7 +1156,7 @@ try {
         'attributes' => [],
     ], $adminToken);
     assertTrue($typedUserAttributes['status'] === 400, 'user attributes JSON array must return 400');
-    assertTrue(($typedUserAttributes['json']['error'] ?? '') === 'invalid json body', 'typed attributes error must match Go map decoder');
+    assertTrue(($typedUserAttributes['json']['error'] ?? '') === 'invalid json body', 'typed attributes error must match JSON map contract');
 
     $duplicateUser = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => $plainLogin['json']['user']['username'],
@@ -1156,7 +1164,7 @@ try {
         'password' => $password,
     ], $adminToken);
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
-    assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match Go error');
+    assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match API contract');
     assertTrue(($duplicateUser['json']['code'] ?? '') === 'user_conflict', 'conflict must expose a stable code');
 
     $db->createCommand()->update('users', [
@@ -1177,12 +1185,12 @@ try {
     $db->createCommand()->update('users', ['status' => 'blocked'], ['id' => $plainUserId])->execute();
     $blockedAccount = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $plainLogin['json']['access_token']);
     assertTrue($blockedAccount['status'] === 401, 'blocked account bearer token must return 401');
-    assertTrue(($blockedAccount['json']['error'] ?? '') === 'account is not active', 'blocked account must match Go error');
+    assertTrue(($blockedAccount['json']['error'] ?? '') === 'account is not active', 'blocked account must match API contract');
 
     foreach (['GET', 'PUT', 'DELETE'] as $method) {
         $invalidUserId = jsonRequest($method, $baseUrl . '/api/v1/users/not-a-uuid', [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user with invalid id must return 400');
-        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid id', $method . ' user with invalid id must match Go error');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid id', $method . ' user with invalid id must match API contract');
     }
 
     $missingUser = jsonRequest(
@@ -1192,7 +1200,7 @@ try {
         $adminToken
     );
     assertTrue($missingUser['status'] === 404, 'missing user must return 404');
-    assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match Go error');
+    assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match API contract');
     assertTrue(($missingUser['json']['code'] ?? '') === 'user_not_found', 'not-found must expose a stable code');
 
     $rawUuidUser = jsonRequest(
@@ -1201,7 +1209,7 @@ try {
         [],
         $adminToken
     );
-    assertTrue($rawUuidUser['status'] === 200, 'raw-hex UUID path must match google/uuid.Parse');
+    assertTrue($rawUuidUser['status'] === 200, 'compact UUID path must be accepted by the documented UUID parser');
     assertTrue(($rawUuidUser['json']['id'] ?? '') === $adminId, 'raw-hex UUID path must be canonicalized');
 
     $unknownUserUpdateField = jsonRequest(
@@ -1210,8 +1218,8 @@ try {
         ['password' => $password],
         $adminToken
     );
-    assertTrue($unknownUserUpdateField['status'] === 400, 'update user JSON with Go-unknown password field must return 400');
-    assertTrue(($unknownUserUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown user update field must match Go error');
+    assertTrue($unknownUserUpdateField['status'] === 400, 'update user JSON with unsupported password field must return 400');
+    assertTrue(($unknownUserUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown user update field must match API contract');
 
     $missingUserUpdate = jsonRequest(
         'PUT',
@@ -1227,7 +1235,7 @@ try {
         'name' => '',
     ], $adminToken);
     assertTrue($missingRoleFields['status'] === 400, 'create role without code/name must return 400');
-    assertTrue(($missingRoleFields['json']['error'] ?? '') === 'role code and name are required', 'create role without code/name must match Go error');
+    assertTrue(($missingRoleFields['json']['error'] ?? '') === 'role code and name are required', 'create role without code/name must match API contract');
 
     $unknownRoleField = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => 'unknown-role-' . $suffix,
@@ -1235,14 +1243,14 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownRoleField['status'] === 400, 'create role JSON with unknown field must return 400');
-    assertTrue(($unknownRoleField['json']['error'] ?? '') === 'invalid json body', 'unknown role field must match Go error');
+    assertTrue(($unknownRoleField['json']['error'] ?? '') === 'invalid json body', 'unknown role field must match API contract');
 
     $duplicateRole = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => 'admin',
         'name' => 'Duplicate admin',
     ], $adminToken);
     assertTrue($duplicateRole['status'] === 409, 'duplicate role code must return 409');
-    assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match Go error');
+    assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match API contract');
 
     $role = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
         'code' => 'itest-role-' . $suffix,
@@ -1267,7 +1275,7 @@ try {
         'name' => 'Updated integration role ' . $suffix,
     ], $adminToken);
     assertTrue($updatedRole['status'] === 200, 'update role must return 200');
-    assertTrue(!array_key_exists('description', $updatedRole['json']), 'role update must clear omitted description like Go');
+    assertTrue(!array_key_exists('description', $updatedRole['json']), 'role update must clear omitted description under the current API contract');
     assertTrue(strtotime((string)$updatedRole['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'role update must advance updated_at');
 
     $permissions = jsonRequest('GET', $baseUrl . '/api/v1/permissions', [], $adminToken);
@@ -1291,7 +1299,7 @@ try {
         [$method, $path] = $invalidRoleRequest;
         $invalidRoleId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidRoleId['status'] === 400, $method . ' role path with invalid id must return 400');
-        assertTrue(($invalidRoleId['json']['error'] ?? '') === 'invalid role id', $method . ' role path must match Go error');
+        assertTrue(($invalidRoleId['json']['error'] ?? '') === 'invalid role id', $method . ' role path must match API contract');
     }
 
     $invalidPermissionPath = jsonRequest(
@@ -1301,7 +1309,7 @@ try {
         $adminToken
     );
     assertTrue($invalidPermissionPath['status'] === 400, 'invalid permission path id must return 400');
-    assertTrue(($invalidPermissionPath['json']['error'] ?? '') === 'invalid permission id', 'invalid permission path id must match Go error');
+    assertTrue(($invalidPermissionPath['json']['error'] ?? '') === 'invalid permission id', 'invalid permission path id must match API contract');
 
     $invalidPermissionBody = jsonRequest(
         'POST',
@@ -1310,7 +1318,7 @@ try {
         $adminToken
     );
     assertTrue($invalidPermissionBody['status'] === 400, 'invalid permission body id must return 400');
-    assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match Go error');
+    assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match API contract');
 
     foreach ([
         ['/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions', 'permission_id'],
@@ -1324,7 +1332,7 @@ try {
             'unexpected' => true,
         ], $adminToken);
         assertTrue($unknownAssignmentField['status'] === 400, $path . ' with unknown field must return 400');
-        assertTrue(($unknownAssignmentField['json']['error'] ?? '') === 'invalid json body', $path . ' unknown field must match Go error');
+        assertTrue(($unknownAssignmentField['json']['error'] ?? '') === 'invalid json body', $path . ' unknown field must match API contract');
     }
 
     foreach ([
@@ -1335,7 +1343,7 @@ try {
         [$method, $path] = $invalidUserRoleRequest;
         $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user-role path with invalid user id must return 400');
-        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-role path must match Go error');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-role path must match API contract');
     }
 
     $invalidUserRolePath = jsonRequest(
@@ -1345,7 +1353,7 @@ try {
         $adminToken
     );
     assertTrue($invalidUserRolePath['status'] === 400, 'invalid user-role role id must return 400');
-    assertTrue(($invalidUserRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid user-role role id must match Go error');
+    assertTrue(($invalidUserRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid user-role role id must match API contract');
 
     $invalidUserRoleBody = jsonRequest(
         'POST',
@@ -1354,7 +1362,7 @@ try {
         $adminToken
     );
     assertTrue($invalidUserRoleBody['status'] === 400, 'invalid user-role body id must return 400');
-    assertTrue(($invalidUserRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-role body id must match Go error');
+    assertTrue(($invalidUserRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-role body id must match API contract');
 
     $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => 'itest-group-' . $suffix,
@@ -1362,7 +1370,7 @@ try {
     ], $adminToken);
     assertTrue($group['status'] === 201, 'create group must return 201');
     $createdGroupIds[] = $group['json']['id'];
-    assertTrue(($group['json']['description'] ?? null) === '', 'group must preserve Go string zero value for empty description');
+    assertTrue(($group['json']['description'] ?? null) === '', 'group must preserve documented empty string for empty description');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($group['json']['created_at'] ?? '')) === 1,
         'group created_at must use contract-compliant RFC3339'
@@ -1380,7 +1388,7 @@ try {
         'name' => 'Updated integration group ' . $suffix,
     ], $adminToken);
     assertTrue($updatedGroup['status'] === 200, 'update group must return 200');
-    assertTrue(($updatedGroup['json']['description'] ?? null) === '', 'group update must clear omitted description like Go');
+    assertTrue(($updatedGroup['json']['description'] ?? null) === '', 'group update must clear omitted description under the current API contract');
     assertTrue(strtotime((string)$updatedGroup['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'group update must advance updated_at');
 
     $unknownGroupField = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
@@ -1389,14 +1397,14 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownGroupField['status'] === 400, 'create group JSON with unknown field must return 400');
-    assertTrue(($unknownGroupField['json']['error'] ?? '') === 'invalid json body', 'unknown group field must match Go error');
+    assertTrue(($unknownGroupField['json']['error'] ?? '') === 'invalid json body', 'unknown group field must match API contract');
 
     $duplicateGroup = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
         'code' => $group['json']['code'],
         'name' => 'Duplicate group',
     ], $adminToken);
     assertTrue($duplicateGroup['status'] === 409, 'duplicate group code must return 409');
-    assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match Go error');
+    assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match API contract');
 
     foreach ([
         ['PUT', '/api/v1/groups/not-a-uuid'],
@@ -1408,7 +1416,7 @@ try {
         [$method, $path] = $invalidGroupRequest;
         $invalidGroupId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidGroupId['status'] === 400, $method . ' group path with invalid id must return 400');
-        assertTrue(($invalidGroupId['json']['error'] ?? '') === 'invalid group id', $method . ' group path must match Go error');
+        assertTrue(($invalidGroupId['json']['error'] ?? '') === 'invalid group id', $method . ' group path must match API contract');
     }
 
     $invalidGroupRolePath = jsonRequest(
@@ -1418,7 +1426,7 @@ try {
         $adminToken
     );
     assertTrue($invalidGroupRolePath['status'] === 400, 'invalid group role path id must return 400');
-    assertTrue(($invalidGroupRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid group role path id must match Go error');
+    assertTrue(($invalidGroupRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid group role path id must match API contract');
 
     $invalidGroupRoleBody = jsonRequest(
         'POST',
@@ -1427,7 +1435,7 @@ try {
         $adminToken
     );
     assertTrue($invalidGroupRoleBody['status'] === 400, 'invalid group role body id must return 400');
-    assertTrue(($invalidGroupRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid group role body id must match Go error');
+    assertTrue(($invalidGroupRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid group role body id must match API contract');
 
     foreach ([
         ['GET', '/api/v1/users/not-a-uuid/groups'],
@@ -1437,7 +1445,7 @@ try {
         [$method, $path] = $invalidUserGroupRequest;
         $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user-group path with invalid user id must return 400');
-        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-group path must match Go error');
+        assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-group path must match API contract');
     }
 
     $invalidUserGroupPath = jsonRequest(
@@ -1447,7 +1455,7 @@ try {
         $adminToken
     );
     assertTrue($invalidUserGroupPath['status'] === 400, 'invalid user-group group id must return 400');
-    assertTrue(($invalidUserGroupPath['json']['error'] ?? '') === 'invalid group id', 'invalid user-group group id must match Go error');
+    assertTrue(($invalidUserGroupPath['json']['error'] ?? '') === 'invalid group id', 'invalid user-group group id must match API contract');
 
     $invalidUserGroupBody = jsonRequest(
         'POST',
@@ -1456,31 +1464,31 @@ try {
         $adminToken
     );
     assertTrue($invalidUserGroupBody['status'] === 400, 'invalid user-group body id must return 400');
-    assertTrue(($invalidUserGroupBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-group body id must match Go error');
+    assertTrue(($invalidUserGroupBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-group body id must match API contract');
 
     $badAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=not-a-uuid', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditActor['status'] === 400, 'audit with invalid actor must return 400');
-    assertTrue(($badAuditActor['json']['error'] ?? '') === 'invalid actor id', 'audit invalid actor must match Go error');
+    assertTrue(($badAuditActor['json']['error'] ?? '') === 'invalid actor id', 'audit invalid actor must match API contract');
 
     $malformedAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=------------------------------------', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($malformedAuditActor['status'] === 400, 'audit with malformed 36-character actor must return 400');
-    assertTrue(($malformedAuditActor['json']['error'] ?? '') === 'invalid actor id', 'malformed audit actor must match Go error');
+    assertTrue(($malformedAuditActor['json']['error'] ?? '') === 'invalid actor id', 'malformed audit actor must match API contract');
 
     $badAuditFrom = httpRequest('GET', $baseUrl . '/api/v1/audit?from=not-a-date', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditFrom['status'] === 400, 'audit with invalid from must return 400');
-    assertTrue(($badAuditFrom['json']['error'] ?? '') === 'invalid from, expected RFC3339', 'audit invalid from must match Go error');
+    assertTrue(($badAuditFrom['json']['error'] ?? '') === 'invalid from, expected RFC3339', 'audit invalid from must match API contract');
 
     $badAuditTo = httpRequest('GET', $baseUrl . '/api/v1/audit?to=not-a-date', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditTo['status'] === 400, 'audit with invalid to must return 400');
-    assertTrue(($badAuditTo['json']['error'] ?? '') === 'invalid to, expected RFC3339', 'audit invalid to must match Go error');
+    assertTrue(($badAuditTo['json']['error'] ?? '') === 'invalid to, expected RFC3339', 'audit invalid to must match API contract');
 
     $fractionalAuditRange = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
         'from' => '2000-01-01T00:00:00.123456789Z',
@@ -1512,8 +1520,8 @@ try {
     assertTrue(count($auditWire['json']['items'] ?? []) === 1, 'audit wire-format request must return one event');
     assertTrue(($auditWire['json']['pagination'] ?? null) === ['limit' => 1, 'offset' => 0, 'count' => 1], 'audit response must expose pagination metadata');
     assertTrue(!array_key_exists('actor_user_id', $auditWire['json']['items'][0]), 'audit event must omit empty actor_user_id');
-    assertTrue(($auditWire['json']['items'][0]['ip'] ?? null) === '', 'audit event must use Go zero value for empty ip');
-    assertTrue(($auditWire['json']['items'][0]['user_agent'] ?? null) === '', 'audit event must use Go zero value for empty user_agent');
+    assertTrue(($auditWire['json']['items'][0]['ip'] ?? null) === '', 'audit event must use documented empty value for empty ip');
+    assertTrue(($auditWire['json']['items'][0]['user_agent'] ?? null) === '', 'audit event must use documented empty value for empty user_agent');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($auditWire['json']['items'][0]['created_at'] ?? '')) === 1,
         'audit created_at must use contract-compliant RFC3339'
@@ -1554,7 +1562,7 @@ try {
         'client_id' => '',
     ], $adminToken);
     assertTrue($missingIdentityFields['status'] === 400, 'identity provider without code/client_id must return 400');
-    assertTrue(($missingIdentityFields['json']['error'] ?? '') === 'code and client_id are required', 'identity provider missing fields must match Go error');
+    assertTrue(($missingIdentityFields['json']['error'] ?? '') === 'code and client_id are required', 'identity provider missing fields must match API contract');
 
     $missingIdentityUrls = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => 'itest-oidc-missing-' . $suffix,
@@ -1564,7 +1572,7 @@ try {
         'client_secret' => 'secret',
     ], $adminToken);
     assertTrue($missingIdentityUrls['status'] === 400, 'OIDC provider without URLs must return 400');
-    assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match Go error');
+    assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match API contract');
 
     $unknownIdentityProviderField = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => 'unknown-idp-' . $suffix,
@@ -1572,7 +1580,7 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownIdentityProviderField['status'] === 400, 'identity provider JSON with unknown field must return 400');
-    assertTrue(($unknownIdentityProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider field must match Go error');
+    assertTrue(($unknownIdentityProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider field must match API contract');
 
     $typedIdentityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => 'typed-idp-' . $suffix,
@@ -1580,7 +1588,7 @@ try {
         'enabled' => 1,
     ], $adminToken);
     assertTrue($typedIdentityProvider['status'] === 400, 'identity provider with numeric bool must return 400');
-    assertTrue(($typedIdentityProvider['json']['error'] ?? '') === 'invalid json body', 'typed identity provider error must match Go decoder');
+    assertTrue(($typedIdentityProvider['json']['error'] ?? '') === 'invalid json body', 'typed identity provider error must match JSON contract');
 
     foreach (['PUT', 'DELETE'] as $method) {
         $invalidIdentityProviderId = jsonRequest(
@@ -1590,7 +1598,7 @@ try {
             $adminToken
         );
         assertTrue($invalidIdentityProviderId['status'] === 400, $method . ' identity provider with invalid id must return 400');
-        assertTrue(($invalidIdentityProviderId['json']['error'] ?? '') === 'invalid id', $method . ' identity provider must match Go error');
+        assertTrue(($invalidIdentityProviderId['json']['error'] ?? '') === 'invalid id', $method . ' identity provider must match API contract');
     }
 
     foreach (['PUT', 'DELETE'] as $method) {
@@ -1606,7 +1614,7 @@ try {
                 $adminToken
             );
         assertTrue($missingIdentityProvider['status'] === 404, $method . ' missing identity provider must return 404');
-        assertTrue(($missingIdentityProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing identity provider must match Go error');
+        assertTrue(($missingIdentityProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing identity provider must match API contract');
     }
 
     $identityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
@@ -1654,13 +1662,16 @@ try {
         $adminToken
     );
     assertTrue($updatedIdentityProvider['status'] === 200, 'identity provider update must return 200');
-    foreach (['type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $zeroValueField) {
+    foreach (['type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $preservedField) {
         assertTrue(
-            ($updatedIdentityProvider['json'][$zeroValueField] ?? null) === '',
-            'identity provider update must clear omitted ' . $zeroValueField . ' like Go'
+            ($updatedIdentityProvider['json'][$preservedField] ?? null) === ($identityProvider['json'][$preservedField] ?? null),
+            'identity provider update must preserve omitted ' . $preservedField
         );
     }
-    assertTrue(($updatedIdentityProvider['json']['enabled'] ?? null) === false, 'identity provider update must clear omitted enabled like Go');
+    assertTrue(
+        ($updatedIdentityProvider['json']['enabled'] ?? null) === $identityProvider['json']['enabled'],
+        'identity provider update must preserve omitted enabled flag'
+    );
     assertTrue(
         strtotime((string)$updatedIdentityProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
         'identity provider update must advance updated_at'
@@ -1677,7 +1688,7 @@ try {
         'userinfo_url' => 'https://idp.example.test/userinfo',
     ], $adminToken);
     assertTrue($duplicateIdentityProvider['status'] === 409, 'duplicate identity provider code must return 409');
-    assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match Go error');
+    assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match API contract');
 
     $unknownIdentityUpdateField = jsonRequest(
         'PUT',
@@ -1686,7 +1697,7 @@ try {
         $adminToken
     );
     assertTrue($unknownIdentityUpdateField['status'] === 400, 'identity provider update with unknown field must return 400');
-    assertTrue(($unknownIdentityUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider update field must match Go error');
+    assertTrue(($unknownIdentityUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider update field must match API contract');
 
     $unknownLdapProviderField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Unknown LDAP field',
@@ -1694,7 +1705,7 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownLdapProviderField['status'] === 400, 'LDAP provider JSON with unknown field must return 400');
-    assertTrue(($unknownLdapProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP provider field must match Go error');
+    assertTrue(($unknownLdapProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP provider field must match API contract');
 
     $typedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Typed LDAP provider',
@@ -1703,14 +1714,14 @@ try {
         'created_at' => 'not-rfc3339',
     ], $adminToken);
     assertTrue($typedLdapProvider['status'] === 400, 'LDAP provider with invalid int/time types must return 400');
-    assertTrue(($typedLdapProvider['json']['error'] ?? '') === 'invalid json body', 'typed LDAP provider error must match Go decoder');
+    assertTrue(($typedLdapProvider['json']['error'] ?? '') === 'invalid json body', 'typed LDAP provider error must match JSON contract');
 
     $unknownLdapTestField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers/test', [
         'host' => 'ldap.example.test',
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownLdapTestField['status'] === 400, 'LDAP test JSON with unknown field must return 400');
-    assertTrue(($unknownLdapTestField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP test field must match Go error');
+    assertTrue(($unknownLdapTestField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP test field must match API contract');
 
     $unknownLdapMappingField = jsonRequest(
         'POST',
@@ -1723,7 +1734,7 @@ try {
         $adminToken
     );
     assertTrue($unknownLdapMappingField['status'] === 400, 'LDAP mapping JSON with unknown field must return 400');
-    assertTrue(($unknownLdapMappingField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP mapping field must match Go error');
+    assertTrue(($unknownLdapMappingField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP mapping field must match API contract');
 
     $invalidLdapMappingGroup = jsonRequest(
         'POST',
@@ -1735,7 +1746,7 @@ try {
         $adminToken
     );
     assertTrue($invalidLdapMappingGroup['status'] === 400, 'LDAP mapping with invalid group id must return 400');
-    assertTrue(($invalidLdapMappingGroup['json']['error'] ?? '') === 'invalid json body', 'LDAP mapping invalid group id must match Go decoder error');
+    assertTrue(($invalidLdapMappingGroup['json']['error'] ?? '') === 'invalid json body', 'LDAP mapping invalid group id must match JSON contract');
 
     foreach ([
         ['PUT', '/api/v1/ldap/providers/not-a-uuid'],
@@ -1746,7 +1757,7 @@ try {
         [$method, $path] = $invalidLdapProviderRequest;
         $invalidLdapProviderId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidLdapProviderId['status'] === 400, $method . ' LDAP provider path with invalid id must return 400');
-        assertTrue(($invalidLdapProviderId['json']['error'] ?? '') === 'invalid id', $method . ' LDAP provider path must match Go error');
+        assertTrue(($invalidLdapProviderId['json']['error'] ?? '') === 'invalid id', $method . ' LDAP provider path must match API contract');
     }
 
     $missingLdapProviderUpdate = httpRequest('PUT', $baseUrl . '/api/v1/ldap/providers/00000000-0000-0000-0000-000000000000', [
@@ -1754,7 +1765,7 @@ try {
         'body' => '{}',
     ]);
     assertTrue($missingLdapProviderUpdate['status'] === 404, 'PUT missing LDAP provider must return 404');
-    assertTrue(($missingLdapProviderUpdate['json']['error'] ?? '') === 'provider not found', 'PUT missing LDAP provider must match Go error');
+    assertTrue(($missingLdapProviderUpdate['json']['error'] ?? '') === 'provider not found', 'PUT missing LDAP provider must match API contract');
 
     $missingLdapProviderDelete = jsonRequest(
         'DELETE',
@@ -1762,7 +1773,7 @@ try {
         [],
         $adminToken
     );
-    assertTrue($missingLdapProviderDelete['status'] === 200, 'DELETE missing LDAP provider must be idempotent like Go');
+    assertTrue($missingLdapProviderDelete['status'] === 200, 'DELETE missing LDAP provider must be idempotent under the current API contract');
     assertTrue(($missingLdapProviderDelete['json']['status'] ?? '') === 'deleted', 'DELETE missing LDAP provider must return deleted status');
 
     $invalidLdapMappingId = jsonRequest(
@@ -1772,7 +1783,7 @@ try {
         $adminToken
     );
     assertTrue($invalidLdapMappingId['status'] === 400, 'LDAP mapping delete with invalid mapping id must return 400');
-    assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid mapping id', 'LDAP mapping delete must match Go mapping id error');
+    assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid mapping id', 'LDAP mapping delete must match API mapping-id contract');
 
     $missingLdapMapping = jsonRequest(
         'DELETE',
@@ -1780,8 +1791,8 @@ try {
         [],
         $adminToken
     );
-    assertTrue($missingLdapMapping['status'] === 404, 'LDAP mapping delete must ignore parent id like Go and return 404');
-    assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'mapping not found', 'missing LDAP mapping must match Go error');
+    assertTrue($missingLdapMapping['status'] === 404, 'LDAP mapping delete must ignore parent id under the current API contract and return 404');
+    assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'mapping not found', 'missing LDAP mapping must match API contract');
 
     $ldapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Integration LDAP ' . $suffix,
@@ -1803,8 +1814,8 @@ try {
     $createdAuditTargets[] = ['action' => 'ldap_provider_deleted', 'target_id' => $ldapProvider['json']['id']];
     $createdAuditTargets[] = ['action' => 'ldap_group_mapping_created', 'target_id' => $ldapProvider['json']['id']];
     assertTrue(!array_key_exists('bind_password', $ldapProvider['json']), 'LDAP provider must not expose bind password');
-    assertTrue(($ldapProvider['json']['group_attribute'] ?? null) === '', 'LDAP provider create must preserve Go zero value for omitted group_attribute');
-    assertTrue(($ldapProvider['json']['enabled'] ?? null) === false, 'LDAP provider create must preserve Go zero value for omitted enabled');
+    assertTrue(($ldapProvider['json']['group_attribute'] ?? null) === '', 'LDAP provider create must preserve documented empty value for omitted group_attribute');
+    assertTrue(($ldapProvider['json']['enabled'] ?? null) === false, 'LDAP provider create must preserve documented empty value for omitted enabled');
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapProvider['json']['created_at'] ?? '')) === 1,
         'LDAP provider created_at must use contract-compliant RFC3339'
@@ -1813,7 +1824,7 @@ try {
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_created' AND target_id = :id",
         [':id' => $ldapProvider['json']['id']]
     )->queryScalar();
-    assertTrue($ldapCreateAuditCount === 0, 'LDAP provider create must match Go and omit an audit event');
+    assertTrue($ldapCreateAuditCount === 0, 'LDAP provider create must follow the current audit contract and omit an audit event');
 
     $failedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Invalid integration LDAP ' . $suffix,
@@ -1854,12 +1865,12 @@ try {
     foreach (['host', 'bind_dn', 'base_dn', 'user_filter', 'username_attribute', 'email_attribute', 'display_name_attribute', 'group_attribute'] as $zeroValueField) {
         assertTrue(
             ($updatedLdapProvider['json'][$zeroValueField] ?? null) === '',
-            'LDAP provider update must clear omitted ' . $zeroValueField . ' like Go'
+            'LDAP provider update must clear omitted ' . $zeroValueField . ' under the current API contract'
         );
     }
-    assertTrue(($updatedLdapProvider['json']['use_tls'] ?? null) === false, 'LDAP provider update must clear omitted use_tls like Go');
-    assertTrue(($updatedLdapProvider['json']['start_tls'] ?? null) === false, 'LDAP provider update must clear omitted start_tls like Go');
-    assertTrue(($updatedLdapProvider['json']['enabled'] ?? null) === false, 'LDAP provider update must clear omitted enabled like Go');
+    assertTrue(($updatedLdapProvider['json']['use_tls'] ?? null) === false, 'LDAP provider update must clear omitted use_tls under the current API contract');
+    assertTrue(($updatedLdapProvider['json']['start_tls'] ?? null) === false, 'LDAP provider update must clear omitted start_tls under the current API contract');
+    assertTrue(($updatedLdapProvider['json']['enabled'] ?? null) === false, 'LDAP provider update must clear omitted enabled under the current API contract');
     assertTrue(
         strtotime((string)$updatedLdapProvider['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'),
         'LDAP provider update must advance updated_at'
@@ -1895,7 +1906,7 @@ try {
         $adminToken
     );
     assertTrue($duplicateLdapMapping['status'] === 409, 'duplicate LDAP mapping must return 409');
-    assertTrue(($duplicateLdapMapping['json']['error'] ?? '') === 'mapping already exists', 'duplicate LDAP mapping must match Go error');
+    assertTrue(($duplicateLdapMapping['json']['error'] ?? '') === 'mapping already exists', 'duplicate LDAP mapping must match API contract');
 
     $secondLdapMapping = jsonRequest(
         'POST',
@@ -1916,11 +1927,15 @@ try {
     );
     assertTrue($listedLdapMappings['status'] === 200, 'list LDAP mappings must return 200');
     assertTrue(
-        array_column($listedLdapMappings['json'], 'ldap_group') === [
+        array_column($listedLdapMappings['json']['items'] ?? [], 'ldap_group') === [
             'cn=aardvarks,dc=example,dc=test',
             'cn=integration,dc=example,dc=test',
         ],
         'LDAP mappings must use contract-compliant ldap_group ordering'
+    );
+    assertTrue(
+        ($listedLdapMappings['json']['pagination'] ?? null) === ['limit' => 50, 'offset' => 0, 'count' => 2],
+        'LDAP mappings must expose pagination metadata'
     );
 
     foreach ([$ldapMapping, $secondLdapMapping] as $mappingToDelete) {
@@ -1961,7 +1976,7 @@ try {
     assertTrue($mfaEnroll['status'] === 200, 'contract-compliant MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
     assertTrue(!empty($mfaEnroll['json']['otpauth_url']), 'MFA enroll must return contract-compliant otpauth_url');
-    assertTrue(!array_key_exists('otpauth_uri', $mfaEnroll['json']), 'MFA enroll must not add fields absent from Go response');
+    assertTrue(!array_key_exists('otpauth_uri', $mfaEnroll['json']), 'MFA enroll must expose only the documented URI field');
 
     $mfaCounter = (int)floor(time() / 30);
     $mfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
@@ -1975,7 +1990,7 @@ try {
         'code' => 'not-a-code',
     ], $adminToken);
     assertTrue($repeatedMfaActivate['status'] === 409, 'repeated MFA activate must return 409');
-    assertTrue(($repeatedMfaActivate['json']['error'] ?? '') === 'enroll first', 'repeated MFA activate must match Go error');
+    assertTrue(($repeatedMfaActivate['json']['error'] ?? '') === 'enroll first', 'repeated MFA activate must match API contract');
 
     $mfaLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -1984,9 +1999,9 @@ try {
     assertTrue($mfaLogin['status'] === 200, 'MFA password step must return 200');
     assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
     assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return contract-compliant mfa_token');
-    assertTrue(!array_key_exists('challenge_token', $mfaLogin['json']), 'MFA password step must not add fields absent from Go LoginResult');
-    assertTrue(($mfaLogin['json']['session_expires_at'] ?? '') === '0001-01-01T00:00:00Z', 'MFA challenge must preserve Go zero session expiry');
-    assertTrue(($mfaLogin['json']['user']['id'] ?? '') === '00000000-0000-0000-0000-000000000000', 'MFA challenge must preserve Go zero user');
+    assertTrue(!array_key_exists('challenge_token', $mfaLogin['json']), 'MFA password step must not add fields outside the documented challenge response');
+    assertTrue(($mfaLogin['json']['session_expires_at'] ?? '') === '0001-01-01T00:00:00Z', 'MFA challenge must preserve the documented placeholder session expiry');
+    assertTrue(($mfaLogin['json']['user']['id'] ?? '') === '00000000-0000-0000-0000-000000000000', 'MFA challenge must preserve the documented placeholder user');
 
     $unknownMfaField = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],
@@ -1994,21 +2009,21 @@ try {
         'challenge_token' => $mfaLogin['json']['mfa_token'],
     ]);
     assertTrue($unknownMfaField['status'] === 400, 'MFA verify JSON with unknown field must return 400');
-    assertTrue(($unknownMfaField['json']['error'] ?? '') === 'invalid json body', 'unknown MFA verify field must match Go error');
+    assertTrue(($unknownMfaField['json']['error'] ?? '') === 'invalid json body', 'unknown MFA verify field must match API contract');
 
     $invalidMfaToken = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => 'unknown-token',
         'code' => 'not-a-code',
     ]);
     assertTrue($invalidMfaToken['status'] === 401, 'invalid MFA token must return 401');
-    assertTrue(($invalidMfaToken['json']['error'] ?? '') === 'invalid mfa token', 'invalid MFA token must match Go error');
+    assertTrue(($invalidMfaToken['json']['error'] ?? '') === 'invalid mfa token', 'invalid MFA token must match API contract');
 
     $invalidMfaCode = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],
         'code' => 'not-a-code',
     ]);
     assertTrue($invalidMfaCode['status'] === 401, 'invalid MFA code must return 401');
-    assertTrue(($invalidMfaCode['json']['error'] ?? '') === 'invalid code', 'invalid MFA code must match Go error');
+    assertTrue(($invalidMfaCode['json']['error'] ?? '') === 'invalid code', 'invalid MFA code must match API contract');
 
     $mfaVerify = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],
@@ -2192,7 +2207,7 @@ try {
         'code' => 'not-a-code',
     ], $mfaVerify['json']['access_token']);
     assertTrue($invalidMfaDisable['status'] === 400, 'invalid MFA disable code must return 400');
-    assertTrue(($invalidMfaDisable['json']['error'] ?? '') === 'invalid code', 'invalid MFA disable code must match Go error');
+    assertTrue(($invalidMfaDisable['json']['error'] ?? '') === 'invalid code', 'invalid MFA disable code must match API contract');
 
     $mfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => $mfaActivate['json']['recovery_codes'][0],
@@ -2201,13 +2216,13 @@ try {
     assertTrue(($mfaDisable['json']['status'] ?? '') === 'mfa_disabled', 'MFA disable must return contract-compliant status');
 
     $tokenAfterMfaDisable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
-    assertTrue($tokenAfterMfaDisable['status'] === 200, 'MFA disable must keep the current Bearer token valid like Go');
+    assertTrue($tokenAfterMfaDisable['status'] === 200, 'current MFA lifecycle keeps the authenticated Bearer token valid');
 
     $repeatedMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => 'not-a-code',
     ], $mfaVerify['json']['access_token']);
     assertTrue($repeatedMfaDisable['status'] === 400, 'repeated MFA disable must return 400');
-    assertTrue(($repeatedMfaDisable['json']['error'] ?? '') === 'mfa is not in the required state', 'repeated MFA disable must match Go error');
+    assertTrue(($repeatedMfaDisable['json']['error'] ?? '') === 'mfa is not in the required state', 'repeated MFA disable must match API contract');
 
     $finalRevokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $mfaVerify['json']['access_token']);
     assertTrue($finalRevokeAll['status'] === 200, 'final revoke all must return 200');

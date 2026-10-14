@@ -159,7 +159,7 @@ class OAuthClientServiceTest extends TestCase
         )->queryScalar());
     }
 
-    public function testCreateClientUsesGoZeroValueDefaults(): void
+    public function testCreateClientUsesDocumentedDefaults(): void
     {
         $clientId = $this->prefix . '_defaults';
         $this->clientIds[] = $clientId;

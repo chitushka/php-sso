@@ -2,7 +2,6 @@
 
 namespace app\controllers;
 
-use app\components\JsonStream;
 use app\components\ApiResponse;
 use app\services\RateLimitService;
 use app\services\AuditService;
@@ -65,7 +64,7 @@ class ApiController extends Controller
      */
     protected function body(array $allowedFields = [], array $fieldTypes = []): array
     {
-        $rawBody = JsonStream::firstValue(Yii::$app->request->rawBody);
+        $rawBody = Yii::$app->request->rawBody;
         $decoded = json_decode($rawBody);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new BadRequestHttpException('invalid json body');
@@ -78,34 +77,30 @@ class ApiController extends Controller
         }
 
         $decodedArray = json_decode($rawBody, true);
-        $canonicalFields = array_combine(array_map('strtolower', $allowedFields), $allowedFields);
         $body = [];
         foreach (get_object_vars($decoded) as $rawField => $value) {
-            $field = $canonicalFields[strtolower($rawField)] ?? null;
-            if ($field === null) {
+            if (!in_array($rawField, $allowedFields, true)) {
                 throw new BadRequestHttpException('invalid json body');
             }
-            $body[$field] = $decodedArray[$rawField];
+            $body[$rawField] = $decodedArray[$rawField];
         }
 
         if ($fieldTypes !== []) {
-            $canonicalTypes = array_combine(array_map('strtolower', array_keys($fieldTypes)), array_keys($fieldTypes));
             foreach (get_object_vars($decoded) as $rawField => $value) {
-                $field = $canonicalTypes[strtolower($rawField)] ?? null;
-                if ($field === null || $value === null) {
+                if (!array_key_exists($rawField, $fieldTypes) || $value === null) {
                     continue;
                 }
-                $type = $fieldTypes[$field];
+                $type = $fieldTypes[$rawField];
                 if (!$this->matchesJsonType($value, $type)) {
                     throw new BadRequestHttpException('invalid json body');
                 }
                 if ($type === 'uuid' && is_string($value)) {
-                    $body[$field] = $this->canonicalUuid($value);
+                    $body[$rawField] = $this->canonicalUuid($value);
                 }
-                if (($type === 'strings' || $type === 'string_map') && isset($body[$field])) {
-                    $body[$field] = array_map(static function ($item): string {
+                if (($type === 'strings' || $type === 'string_map') && isset($body[$rawField])) {
+                    $body[$rawField] = array_map(static function ($item): string {
                         return $item === null ? '' : $item;
-                    }, (array)$body[$field]);
+                    }, (array)$body[$rawField]);
                 }
             }
         }

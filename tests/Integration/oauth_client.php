@@ -257,7 +257,7 @@ try {
     assertTrue(!empty($refresh['json']['refresh_token']), 'RP refresh response must include rotated refresh_token');
     assertTrue($refresh['json']['refresh_token'] !== $token['json']['refresh_token'], 'RP refresh response must rotate refresh_token');
     $refreshIdToken = jwtPart($refresh['json']['id_token'], 1);
-    assertTrue(($refreshIdToken['nonce'] ?? null) === '', 'RP refreshed id_token must carry empty nonce');
+    assertTrue(!array_key_exists('nonce', $refreshIdToken), 'RP refreshed id_token must omit nonce');
     assertTrue(is_int($refreshIdToken['auth_time'] ?? null), 'RP refreshed id_token must include auth_time');
 
     $logout = httpRequest('GET', $discovery['json']['end_session_endpoint'] . '?' . http_build_query([

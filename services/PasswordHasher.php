@@ -12,7 +12,7 @@ final class PasswordHasher
 
     public static function hash(string $value): string
     {
-        // Параметры совпадают с auth.NewArgon2idHasher в Go-сервисе.
+        // Параметры задают минимальный профиль Argon2id для секретов приложения.
         return password_hash($value, PASSWORD_ARGON2ID, self::OPTIONS);
     }
 

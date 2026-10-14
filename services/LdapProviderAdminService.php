@@ -89,7 +89,7 @@ final class LdapProviderAdminService
         }, LdapGroupMapping::find()
             ->where(['provider_id' => $providerId])
             ->andFilterWhere(['ilike', 'ldap_group', $options['q'] ?? null])
-            ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC])
+            ->orderBy(['ldap_group' => SORT_ASC, 'id' => SORT_ASC])
             ->limit($options['limit'] ?? 50)
             ->offset($options['offset'] ?? 0)
             ->all());

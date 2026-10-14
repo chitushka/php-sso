@@ -60,6 +60,9 @@ class JsonBodyContractTest extends TestCase
             'typed string map value' => ['{"attributes":{"department":7}}', ['attributes' => 'string_map']],
             'invalid UUID' => ['{"role_id":"not-a-uuid"}', ['role_id' => 'uuid']],
             'invalid RFC3339 time' => ['{"created_at":"2026-02-30T10:00:00Z"}', ['created_at' => 'time']],
+            'case-sensitive field' => ['{"Name":"admin"}', ['name' => 'string']],
+            'multiple values' => ['{"name":"admin"}{"name":"ignored"}', ['name' => 'string']],
+            'trailing garbage' => ['{"name":"admin"} trailing', ['name' => 'string']],
         ];
     }
 
@@ -81,9 +84,6 @@ class JsonBodyContractTest extends TestCase
             ['id' => 'uuid']
         );
         $this->assertSame('550e8400-e29b-41d4-a716-446655440000', $uuid['id']);
-
-        $caseInsensitive = $this->decode('{"Name":"admin"}', ['name' => 'string']);
-        $this->assertSame(['name' => 'admin'], $caseInsensitive);
 
         $collectionNulls = $this->decode(
             '{"items":["openid",null],"attributes":{"department":null}}',

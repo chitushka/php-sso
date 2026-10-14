@@ -166,7 +166,7 @@ class OAuthTokenServiceTest extends TestCase
         $refreshClaims = $this->jwtPayload($refresh['data']['id_token']);
 
         $this->assertTrue($refresh->isSuccess());
-        $this->assertSame('', $refreshClaims['nonce']);
+        $this->assertArrayNotHasKey('nonce', $refreshClaims);
         $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
     }
 
