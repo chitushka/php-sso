@@ -45,6 +45,9 @@ function httpRequest(string $method, string $url, array $options = []): array
             $pairs[] = $name . '=' . $value;
         }
         $headers[] = 'Cookie: ' . implode('; ', $pairs);
+        if (strtoupper($method) !== 'GET' && isset($cookies['sso_csrf']) && !($options['omit_csrf'] ?? false)) {
+            $headers[] = 'X-CSRF-Token: ' . ($options['csrf_token'] ?? $cookies['sso_csrf']);
+        }
     }
 
     $context = stream_context_create([
@@ -160,7 +163,39 @@ try {
     ]);
     assertTrue($login['status'] === 200, 'browser login must return 200');
     assertTrue(!empty($login['cookies']['sso_session']), 'browser login must set sso_session cookie');
-    $sessionCookie = ['sso_session' => $login['cookies']['sso_session']];
+    assertTrue(!empty($login['cookies']['sso_csrf']), 'browser login must set sso_csrf cookie');
+    $sessionCookie = [
+        'sso_session' => $login['cookies']['sso_session'],
+        'sso_csrf' => $login['cookies']['sso_csrf'],
+    ];
+
+    $restoredSession = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', [
+        'headers' => ['Content-Type: application/json'],
+        'body' => '{}',
+        'cookies' => $sessionCookie,
+    ]);
+    assertTrue($restoredSession['status'] === 200, 'local browser session must be restored after page reload');
+    assertTrue(!empty($restoredSession['json']['access_token']), 'restored local session must include access_token');
+    assertTrue(
+        ($restoredSession['json']['user']['id'] ?? '') === $userId,
+        'restored local session must belong to the logged-in user'
+    );
+
+    $missingRestoreCsrf = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', [
+        'headers' => ['Content-Type: application/json'],
+        'body' => '{}',
+        'cookies' => $sessionCookie,
+        'omit_csrf' => true,
+    ]);
+    assertTrue($missingRestoreCsrf['status'] === 403, 'session restore without CSRF header must return 403');
+
+    $mismatchedRestoreCsrf = httpRequest('POST', $baseUrl . '/api/v1/auth/session-token', [
+        'headers' => ['Content-Type: application/json'],
+        'body' => '{}',
+        'cookies' => $sessionCookie,
+        'csrf_token' => 'mismatched-csrf-token',
+    ]);
+    assertTrue($mismatchedRestoreCsrf['status'] === 403, 'session restore with mismatched CSRF token must return 403');
 
     $verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');

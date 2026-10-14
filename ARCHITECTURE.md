@@ -65,7 +65,7 @@ Email нормализуется как `trim + lowercase` и уникален �
 
 Ошибки прикладного API имеют единый JSON envelope `{"error":"читаемое сообщение","code":"machine_code","details":...}`. Поля `error` и `code` обязательны, `details` присутствует при наличии структурированного контекста. Validation errors возвращают HTTP 400, отсутствующие ресурсы — 404, конфликты уникальности или состояния — 409. OAuth/OIDC endpoints используют нормативные `error` и `error_description`. Auth/token responses содержат `Cache-Control: no-store`. `X-Request-ID` принимается только в допустимом формате либо генерируется сервисом и возвращается клиенту.
 
-Cookie-authenticated изменяющие запросы требуют CSRF token. Admin API требует Bearer token, нужный scope и RBAC permission. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
+Cookie-authenticated изменяющие запросы требуют CSRF token. После загрузки admin UI действующая browser-сессия обменивается на хранимый только в памяти access token через `POST /api/v1/auth/session-token`; запрос передаёт значение cookie `sso_csrf` в `X-CSRF-Token`, а отсутствие или несовпадение токена отклоняется. Admin API требует Bearer token, нужный scope и RBAC permission. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
 
 Семейства публичного контракта:
 

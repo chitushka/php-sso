@@ -7,6 +7,22 @@
       : { 'Content-Type': 'application/json' };
   }
 
+  function cookie(name) {
+    const prefix = encodeURIComponent(name) + '=';
+    const values = document.cookie ? document.cookie.split(';') : [];
+    for (const value of values) {
+      const entry = value.trim();
+      if (entry.indexOf(prefix) === 0) {
+        try {
+          return decodeURIComponent(entry.slice(prefix.length));
+        } catch (error) {
+          return '';
+        }
+      }
+    }
+    return '';
+  }
+
   async function request(accessToken, url, options) {
     const response = await fetch(url, Object.assign({
       headers: headers(accessToken),
@@ -21,10 +37,14 @@
   }
 
   async function restoreSession() {
+    const csrfToken = cookie('sso_csrf');
     const response = await fetch('/api/v1/auth/session-token', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
       body: '{}'
     });
     if (!response.ok) {

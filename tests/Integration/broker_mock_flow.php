@@ -33,7 +33,13 @@ function assertTrue($condition, string $message): void
     }
 }
 
-function httpRequest(string $method, string $url, array $cookies = []): array
+function httpRequest(
+    string $method,
+    string $url,
+    array $cookies = [],
+    ?string $csrfToken = null,
+    bool $omitCsrf = false
+): array
 {
     $headers = [];
     if (!empty($cookies)) {
@@ -42,8 +48,8 @@ function httpRequest(string $method, string $url, array $cookies = []): array
             $pairs[] = $name . '=' . $value;
         }
         $headers[] = 'Cookie: ' . implode('; ', $pairs);
-        if (isset($cookies['sso_csrf'])) {
-            $headers[] = 'X-CSRF-Token: ' . $cookies['sso_csrf'];
+        if (isset($cookies['sso_csrf']) && !$omitCsrf) {
+            $headers[] = 'X-CSRF-Token: ' . ($csrfToken ?? $cookies['sso_csrf']);
         }
     }
     $context = stream_context_create([
@@ -204,6 +210,26 @@ try {
             . $sessionToken['status'] . ': ' . substr((string)$sessionToken['body'], 0, 500)
     );
     assertTrue(!empty($sessionPayload['access_token']), 'session-token response must include access_token');
+
+    $missingSessionCsrf = httpRequest(
+        'POST',
+        $baseUrl . '/api/v1/auth/session-token',
+        $callback['cookies'],
+        null,
+        true
+    );
+    assertTrue($missingSessionCsrf['status'] === 403, 'federated session restore without CSRF header must return 403');
+
+    $mismatchedSessionCsrf = httpRequest(
+        'POST',
+        $baseUrl . '/api/v1/auth/session-token',
+        $callback['cookies'],
+        'mismatched-csrf-token'
+    );
+    assertTrue(
+        $mismatchedSessionCsrf['status'] === 403,
+        'federated session restore with mismatched CSRF token must return 403'
+    );
 
     $user = $db->createCommand(
         'SELECT id, username, email, source, email_verified FROM users WHERE email = :email AND source = :source',
