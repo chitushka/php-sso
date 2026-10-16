@@ -19,6 +19,9 @@ class OAuthClient extends ValidatedActiveRecord
     {
         return array_merge(parent::rules(), [
             [['type'], 'in', 'range' => [self::TYPE_CONFIDENTIAL, self::TYPE_PUBLIC], 'skipOnEmpty' => false],
+            [['client_secret_hash'], 'required', 'when' => static function (self $client): bool {
+                return $client->getAttribute('type') === self::TYPE_CONFIDENTIAL;
+            }],
             [['allow_loopback_redirects'], 'boolean'],
             // Политику HTTPS/private networks проверяет OutboundHttpService с учётом явного allowlist.
             [['backchannel_logout_uri'], 'url', 'validSchemes' => ['http', 'https'], 'skipOnEmpty' => true],

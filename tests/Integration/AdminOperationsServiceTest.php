@@ -101,11 +101,12 @@ final class AdminOperationsServiceTest extends TestCase
     {
         $suffix = bin2hex(random_bytes(5));
         $clientId = (string)Yii::$app->db->createCommand(
-            "INSERT INTO oauth_clients(client_id,name,type,allowed_scopes,enabled)
-             VALUES (:client_id,'Operations machine','confidential',:scopes,true)
+            "INSERT INTO oauth_clients(client_id,name,type,client_secret_hash,allowed_scopes,enabled)
+             VALUES (:client_id,'Operations machine','confidential',:secret_hash,:scopes,true)
              RETURNING id",
             [
                 ':client_id' => 'operations-machine-' . $suffix,
+                ':secret_hash' => password_hash('operations-machine-secret', PASSWORD_DEFAULT),
                 ':scopes' => '{signing_keys:rotate}',
             ]
         )->queryScalar();

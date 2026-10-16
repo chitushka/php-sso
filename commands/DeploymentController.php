@@ -4,6 +4,7 @@ namespace app\commands;
 
 use app\components\Environment;
 use app\services\CryptoService;
+use app\services\DatabaseInvariantService;
 use app\services\DeploymentCheckService;
 use app\services\SecretKeyRotationService;
 use Yii;
@@ -17,7 +18,7 @@ class DeploymentController extends Controller
     public function options($actionID): array
     {
         $options = parent::options($actionID);
-        if ($actionID === 'rotate-encryption-key') {
+        if (in_array($actionID, ['rotate-encryption-key', 'repair-db-invariants'], true)) {
             $options[] = 'apply';
         }
 
@@ -119,6 +120,34 @@ class DeploymentController extends Controller
             $apply ? 'rotated' : 'would be rotated',
             $result['already_rotated_total']
         ));
+
+        return self::EXIT_CODE_NORMAL;
+    }
+
+    public function actionRepairDbInvariants(): int
+    {
+        $apply = filter_var($this->apply, FILTER_VALIDATE_BOOLEAN);
+        $service = new DatabaseInvariantService(
+            Yii::$app->db,
+            new CryptoService(),
+            max(86400, (int)(Yii::$app->params['accessTokenTtl'] ?? 900) + 60)
+        );
+        $diagnosis = $service->diagnose();
+        foreach ($diagnosis['counts'] as $name => $count) {
+            $this->stdout(sprintf("[%s] %s=%d\n", $diagnosis['valid'] ? 'PASS' : 'DRIFT', $name, $count));
+        }
+        if (!$apply) {
+            $this->stdout($diagnosis['valid']
+                ? "No database invariant repair is required\n"
+                : "Dry run only; repeat with --apply=1 to repair drift\n");
+            return $diagnosis['valid'] ? self::EXIT_CODE_NORMAL : self::EXIT_CODE_ERROR;
+        }
+
+        $result = $service->repair();
+        foreach ($result['changes'] as $name => $count) {
+            $this->stdout(sprintf("[APPLIED] %s=%d\n", $name, $count));
+        }
+        $this->stdout("Database security-model invariants repaired and verified\n");
 
         return self::EXIT_CODE_NORMAL;
     }

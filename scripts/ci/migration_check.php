@@ -18,6 +18,7 @@ $run = static function (array $arguments) use ($root, $url): void {
         'SSO_DATABASE_URL' => $url,
         'SSO_ISSUER' => 'http://127.0.0.1:8081',
         'SSO_API_AUDIENCE' => 'http://127.0.0.1:8081/api',
+        'SSO_ENCRYPTION_KEY' => 'test-encryption-key-at-least-32-chars',
     ]);
     $command = array_merge([PHP_BINARY, $root . '/yii'], $arguments);
     $process = proc_open($command, [
@@ -40,25 +41,46 @@ $run = static function (array $arguments) use ($root, $url): void {
 };
 
 try {
-    // Проверяем upgrade со снимка схемы непосредственно перед последней миграцией.
-    $run(['migrate/to', 'm261004_000006_normalize_user_email', '--interactive=0']);
-    $run(['migrate', '--interactive=0']);
+    // Проверяем upgrade с нарушениями, допустимыми старой схемой.
+    $run(['migrate/to', 'm261014_000011_add_audit_principals', '--interactive=0']);
     $db = new PDO("pgsql:host={$host};port={$port};dbname={$database}", $user, $password, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     ]);
-    $column = $db->query(
-        "SELECT count(*) FROM information_schema.columns
-         WHERE table_schema='public' AND table_name='oauth_clients' AND column_name='allow_loopback_redirects'"
+    $db->exec("INSERT INTO users(username,email,status,source) VALUES
+        ('drift-local','drift-local@example.test','active','local'),
+        ('drift-federated','drift-federated@example.test','active','federated')");
+    $db->exec("INSERT INTO oauth_clients(client_id,name,type,client_secret_hash,enabled) VALUES
+        ('drift-public','Drift public','public','unexpected-secret',true),
+        ('drift-confidential','Drift confidential','confidential',NULL,true)");
+    $db->exec("INSERT INTO oidc_signing_keys(kid,alg,private_key_pem,public_key_pem,status) VALUES
+        ('drift-key-1','RS256','enc:v1:invalid','invalid','active'),
+        ('drift-key-2','RS256','enc:v1:invalid','invalid','active')");
+    $run(['migrate', '--interactive=0']);
+    $activeKeys = (int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn();
+    $disabledUsers = (int)$db->query(
+        "SELECT COUNT(*) FROM users WHERE username IN ('drift-local','drift-federated') AND source = 'local' AND status = 'blocked' AND password_hash IS NOT NULL"
     )->fetchColumn();
-    if ((int)$column !== 1) {
-        throw new RuntimeException('up migration did not produce the expected schema');
+    $normalizedClients = (int)$db->query(
+        "SELECT COUNT(*) FROM oauth_clients WHERE
+         (client_id = 'drift-public' AND client_secret_hash IS NULL)
+         OR (client_id = 'drift-confidential' AND client_secret_hash IS NOT NULL AND enabled = false)"
+    )->fetchColumn();
+    if ($activeKeys !== 1 || $disabledUsers !== 2 || $normalizedClients !== 2) {
+        throw new RuntimeException('up migration did not repair security-model drift');
+    }
+
+    // Rollback удаляет ограничения, после чего повторный upgrade снова чинит drift.
+    $run(['migrate/down', '1', '--interactive=0']);
+    $db->exec("UPDATE oidc_signing_keys SET status = 'active', expires_at = NULL");
+    if ((int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn() < 2) {
+        throw new RuntimeException('down migration did not remove the active-key uniqueness invariant');
+    }
+    $run(['migrate', '--interactive=0']);
+    if ((int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn() !== 1) {
+        throw new RuntimeException('re-applied migration did not repair active signing keys');
     }
     $db = null;
-
-    // Rollback проверяется только для явно обратимой последней миграции.
-    $run(['migrate/down', '1', '--interactive=0']);
-    $run(['migrate', '--interactive=0']);
-    echo "Clean upgrade snapshot and reversible migration checks passed\n";
+    echo "Drift repair, upgrade and reversible migration checks passed\n";
 } finally {
     $admin->exec('DROP DATABASE IF EXISTS "' . $database . '" WITH (FORCE)');
 }

@@ -1,4 +1,4 @@
-.PHONY: build build-test runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external ci deployment-check encryption-key-rotate-dry-run encryption-key-rotate local-encryption-key-generate local-secure-runtime-configure backup-restore-test maintenance-on maintenance-off smoke smoke-authenticated smoke-authenticated-local smoke-local
+.PHONY: build build-test runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external ci deployment-check db-invariant-check db-invariant-repair encryption-key-rotate-dry-run encryption-key-rotate local-encryption-key-generate local-secure-runtime-configure backup-restore-test maintenance-on maintenance-off smoke smoke-authenticated smoke-authenticated-local smoke-local
 
 TEST_RUN = docker compose --profile test run --rm test
 TEST_RUN_NODEPS = docker compose --profile test run --rm --no-deps test
@@ -83,6 +83,12 @@ ci: build build-test runtime-check quality migration-check unit phpunit-integrat
 
 deployment-check:
 	docker compose run --rm app php yii deployment/check
+
+db-invariant-check:
+	docker compose run --rm app php yii deployment/repair-db-invariants
+
+db-invariant-repair:
+	docker compose run --rm app php yii deployment/repair-db-invariants --apply=1
 
 encryption-key-rotate-dry-run:
 	docker compose run --rm -e SSO_OLD_ENCRYPTION_KEY -e SSO_NEW_ENCRYPTION_KEY app php yii deployment/rotate-encryption-key

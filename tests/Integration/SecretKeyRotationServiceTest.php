@@ -132,12 +132,13 @@ class SecretKeyRotationServiceTest extends TestCase
             [':code' => 'rotated-' . bin2hex(random_bytes(5)), ':secret' => $newCrypto->encrypt('already-new')]
         )->queryScalar();
         $userId = (string)Yii::$app->db->createCommand(
-            "INSERT INTO users(username,email,status,source,mfa_secret)
-             VALUES (:username,:email,'active','local',:secret)
+            "INSERT INTO users(username,email,password_hash,status,source,mfa_secret)
+             VALUES (:username,:email,:password_hash,'active','local',:secret)
              RETURNING id",
             [
                 ':username' => 'rotation-' . bin2hex(random_bytes(5)),
                 ':email' => 'rotation-' . bin2hex(random_bytes(5)) . '@example.test',
+                ':password_hash' => password_hash('rotation-user-password', PASSWORD_DEFAULT),
                 ':secret' => $oldCrypto->encrypt('mfa-secret'),
             ]
         )->queryScalar();

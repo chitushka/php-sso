@@ -3,6 +3,7 @@
 namespace tests\Integration;
 
 use app\services\CryptoService;
+use app\services\DatabaseInvariantService;
 use app\services\DeploymentCheckService;
 use PHPUnit\Framework\TestCase;
 use Yii;
@@ -32,6 +33,7 @@ class DeploymentCheckServiceTest extends TestCase
         Yii::$app->db->createCommand()->update('identity_providers', ['client_secret' => ''])->execute();
         Yii::$app->db->createCommand()->update('users', ['mfa_secret' => ''])->execute();
         Yii::$app->db->createCommand()->delete('oidc_signing_keys')->execute();
+        (new DatabaseInvariantService(Yii::$app->db, new CryptoService(self::KEY)))->repair();
     }
 
     protected function tearDown(): void
@@ -52,7 +54,26 @@ class DeploymentCheckServiceTest extends TestCase
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.pgcrypto'));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.constraints'));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.indexes'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.triggers'));
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'database.invariants'));
         $this->assertSame(DeploymentCheckService::PASS, $this->status($results, 'secrets.decrypt'));
+    }
+
+    public function testMissingActiveSigningKeyIsDiagnosedAndRepairable(): void
+    {
+        Yii::$app->db->createCommand()->delete('oidc_signing_keys')->execute();
+
+        $results = $this->service()->check();
+        $this->assertSame(DeploymentCheckService::FAIL, $this->status($results, 'database.invariants'));
+        $this->assertStringContainsString(
+            'signing_keys.active_count=0',
+            $this->message($results, 'database.invariants')
+        );
+
+        $repaired = (new DatabaseInvariantService(Yii::$app->db, new CryptoService(self::KEY)))->repair();
+        $this->assertTrue($repaired['after']['valid']);
+        $this->assertSame(1, $repaired['changes']['active_signing_keys_created']);
+        $this->assertSame(DeploymentCheckService::PASS, $this->status($this->service()->check(), 'database.invariants'));
     }
 
     public function testSchemaDriftIsReportedBeforeDeployment(): void

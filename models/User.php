@@ -74,6 +74,9 @@ class User extends ValidatedActiveRecord
             [['email'], 'unique'],
             [['status'], 'in', 'range' => [self::STATUS_ACTIVE, self::STATUS_PENDING, self::STATUS_BLOCKED, self::STATUS_DELETED], 'skipOnEmpty' => false],
             [['source'], 'in', 'range' => [self::SOURCE_LOCAL, self::SOURCE_LDAP, self::SOURCE_FEDERATED], 'skipOnEmpty' => false],
+            [['password_hash'], 'required', 'when' => static function (self $user): bool {
+                return $user->getAttribute('source') === self::SOURCE_LOCAL;
+            }],
         ]);
     }
     private function decodeJson($value): array

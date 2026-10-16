@@ -317,8 +317,8 @@ try {
     }
     if ($userId !== null) {
         $db->createCommand()->delete('sessions', ['user_id' => $userId])->execute();
-        $db->createCommand()->delete('federated_identities', ['user_id' => $userId])->execute();
         $db->createCommand()->delete('audit_logs', ['or', ['actor_user_id' => $userId], ['target_id' => $userId]])->execute();
+        // Federated links удаляются каскадно вместе с user, не оставляя сиротское состояние на commit.
         $db->createCommand()->delete('users', ['id' => $userId])->execute();
     }
     if ($providerId !== null) {

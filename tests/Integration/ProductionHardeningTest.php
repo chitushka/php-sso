@@ -62,6 +62,60 @@ class ProductionHardeningTest extends TestCase
         ])->execute();
     }
 
+    public function testDatabaseRejectsInvalidUserAuthenticationSource(): void
+    {
+        $this->expectException(\yii\db\IntegrityException::class);
+        Yii::$app->db->createCommand()->insert('users', [
+            'username' => 'invalid-local-' . bin2hex(random_bytes(4)),
+            'email' => 'invalid-local-' . bin2hex(random_bytes(4)) . '@example.test',
+            'status' => 'active',
+            'source' => 'local',
+        ])->execute();
+    }
+
+    public function testDatabaseRejectsOAuthClientSecretMismatch(): void
+    {
+        $this->expectException(\yii\db\IntegrityException::class);
+        Yii::$app->db->createCommand()->insert('oauth_clients', [
+            'client_id' => 'invalid-public-' . bin2hex(random_bytes(4)),
+            'name' => 'Invalid public client',
+            'type' => 'public',
+            'client_secret_hash' => password_hash('must-not-exist', PASSWORD_DEFAULT),
+        ])->execute();
+    }
+
+    public function testDatabaseRejectsSecondActiveSigningKey(): void
+    {
+        (new \app\services\OidcService())->jwks();
+        $this->expectException(\yii\db\IntegrityException::class);
+        Yii::$app->db->createCommand()->insert('oidc_signing_keys', [
+            'kid' => 'invalid-' . bin2hex(random_bytes(8)),
+            'alg' => 'RS256',
+            'private_key_pem' => 'enc:v1:invalid',
+            'public_key_pem' => 'invalid',
+            'status' => 'active',
+        ])->execute();
+    }
+
+    public function testDatabaseRejectsOrphanFederatedUserAtConstraintBoundary(): void
+    {
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            Yii::$app->db->createCommand()->insert('users', [
+                'username' => 'orphan-federated-' . bin2hex(random_bytes(4)),
+                'email' => 'orphan-federated-' . bin2hex(random_bytes(4)) . '@example.test',
+                'status' => 'active',
+                'source' => 'federated',
+            ])->execute();
+            $this->expectException(\yii\db\IntegrityException::class);
+            Yii::$app->db->createCommand('SET CONSTRAINTS trg_users_federated_link IMMEDIATE')->execute();
+        } finally {
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+            }
+        }
+    }
+
     public function testCleanupAndAdminQueriesUseExpectedIndexes(): void
     {
         Yii::$app->db->createCommand('SET enable_seqscan = off')->execute();

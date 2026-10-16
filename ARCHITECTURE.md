@@ -55,6 +55,10 @@ PostgreSQL хранит пользователей, сессии, auth artifacts
 
 Email нормализуется как `trim + lowercase` и уникален без учёта регистра. Его смена атомарно сбрасывает `email_verified`, удаляет старые verification tokens и отзывает sessions, refresh tokens и user JWT. Блокировка и soft delete пользователя также отзывают credentials.
 
+Источник пользователя является DB-инвариантом. `local` требует непустой password hash и не содержит LDAP-реквизитов; `ldap` не содержит локального password hash и требует одновременно provider и непустой DN; `federated` не содержит password/LDAP-реквизитов и к концу транзакции имеет хотя бы один federated identity link. Отложенный constraint trigger разрешает только транзакционный JIT-переход `user -> link`, но не позволяет зафиксировать осиротевшую federated-учётную запись. Дополнительные federated links у local/LDAP пользователя допустимы как отдельные способы входа.
+
+Confidential OAuth client всегда имеет непустой secret hash, public client не имеет secret. Все OIDC signing keys имеют алгоритм `RS256`; active key не имеет `expires_at`, retiring/retired key имеет срок окончания, а partial unique index допускает не более одного active key. Отсутствие active key диагностируется deployment check и устраняется атомарным repair use case, который также нормализует старый дрейф перед установкой ограничений.
+
 Сырые session, authorization, refresh, one-time и recovery tokens не хранятся: сохраняются SHA-256 hashes. Пароли и confidential client secrets хэшируются Argon2id. LDAP passwords, MFA secrets, provider secrets и OIDC private keys шифруются AES-256-GCM ключом `SSO_ENCRYPTION_KEY`. Signing, JWT и encryption keys имеют разные назначения и не переиспользуются.
 
 Создание security-артефакта и обязательного audit event выполняется в одной PostgreSQL-транзакции. Ошибка аудита отменяет use case. Одноразовые артефакты и refresh rotation потребляются условным UPDATE или под row lock, поэтому конкурентно успешным может быть только один запрос. Login lockout обновляется атомарным UPSERT.
@@ -107,7 +111,7 @@ Audit хранит тип principal (`user`, `client` или `system`), его �
 
 Rate limits и metrics counters используют атомарные PostgreSQL operations. JSON-логи направляются в stderr и связываются `X-Request-ID`; metric labels имеют ограниченную cardinality, а `/metrics` защищён CIDR allowlist и/или bearer token.
 
-Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов. Baseline-миграция намеренно не использует `IF NOT EXISTS` для таблиц и индексов, поэтому частичная схема не принимается за новую установку. `deployment-check` дополнительно сверяет обязательные таблицы, столбцы, constraints и индексы и должен завершиться до запуска новой версии приложения.
+Cleanup запускается scheduler-контейнером, работает батчами под advisory lock и публикует время последнего успеха, длительность и число удалённых строк. Readiness проверяет PostgreSQL, локальный encryption round trip и OIDC signing round trip без внешних вызовов. Baseline-миграция намеренно не использует `IF NOT EXISTS` для таблиц и индексов, поэтому частичная схема не принимается за новую установку. `deployment-check` дополнительно сверяет обязательные таблицы, столбцы, constraints, triggers и индексы, проверяет фактические security-model invariants и должен завершиться до запуска новой версии приложения.
 
 Admin UI показывает агрегированный operational status: доступность БД, состояние signing keys, версию/среду и timestamp последнего успешного cleanup. Детали соединения, конфигурационные secrets и key material в этот ответ не включаются.
 

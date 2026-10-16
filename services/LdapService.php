@@ -270,6 +270,7 @@ class LdapService
 
         $user->email = $email;
         $user->source = User::SOURCE_LDAP;
+        $user->setAttribute('password_hash', null);
         $user->ldap_provider_id = $provider->id;
         $user->ldap_dn = $userDn;
         $user->save(false);

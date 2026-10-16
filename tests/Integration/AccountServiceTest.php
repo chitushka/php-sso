@@ -46,10 +46,10 @@ class AccountServiceTest extends TestCase
         )->queryScalar();
         Yii::$app->db->createCommand()->batchInsert(
             'oauth_clients',
-            ['client_id', 'name', 'type', 'enabled'],
+            ['client_id', 'name', 'type', 'client_secret_hash', 'enabled'],
             [
-                ['account-test-client', 'Account test client', 'confidential', true],
-                ['change-password-client', 'Change password test client', 'confidential', true],
+                ['account-test-client', 'Account test client', 'confidential', password_hash('account-client-secret', PASSWORD_DEFAULT), true],
+                ['change-password-client', 'Change password test client', 'confidential', password_hash('change-client-secret', PASSWORD_DEFAULT), true],
             ]
         )->execute();
     }

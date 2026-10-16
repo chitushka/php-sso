@@ -47,6 +47,7 @@ class UserLifecycleServiceTest extends TestCase
             'client_id' => $this->clientId,
             'name' => 'Lifecycle test client',
             'type' => 'confidential',
+            'client_secret_hash' => PasswordHasher::hash('lifecycle-client-secret'),
             'enabled' => true,
         ])->execute();
     }

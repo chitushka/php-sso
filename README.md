@@ -79,6 +79,7 @@ Test service всегда задаёт отдельный `SSO_ENV=test` и не
 ```bash
 make cleanup
 make deployment-check
+make db-invariant-check
 make encryption-key-rotate-dry-run
 make encryption-key-rotate
 make backup-restore-test
@@ -96,10 +97,12 @@ make smoke-authenticated
    docker compose --profile operations run --rm migrate
    ```
 
-4. До запуска новой версии выполните `make deployment-check`: проверка fail-closed сверяет обязательные таблицы, столбцы, constraints и индексы и обнаруживает schema drift.
+4. До запуска новой версии выполните `make deployment-check`: проверка fail-closed сверяет обязательные таблицы, столбцы, constraints, triggers и индексы, а также диагностирует нарушения DB-модели пользователей, OAuth clients и signing keys.
 5. Запустите приложение, проверьте readiness, `make smoke` и `make smoke-authenticated`, затем выключите maintenance mode.
 
 Перед миграциями нормализации email необходимо заранее устранить адреса, совпадающие после `trim + lowercase`: такие конфликты намеренно не разрешаются автоматически. Откат приложения и обратимые миграции выполняются только после остановки writers; необратимые изменения восстанавливаются из проверенной резервной копии.
+
+Если `deployment-check` сообщает `database.invariants` как repairable drift, сначала сохраните backup и остановите writers. `make db-invariant-check` повторно показывает только безопасные счётчики, а `make db-invariant-repair` атомарно нормализует данные: блокирует учётные записи без пригодного способа входа, отключает confidential clients без известного secret, удаляет неподдерживаемые signing keys и восстанавливает ровно один active RS256 key. Команда не печатает hashes, secrets или key material; после неё обязательны повторные `make deployment-check` и smoke-проверки.
 
 ### Резервное копирование и восстановление
 

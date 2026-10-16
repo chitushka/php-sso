@@ -40,6 +40,7 @@ class DeploymentCheckService
 
         $schemaResults = $this->checkSchema();
         $results = array_merge($results, $schemaResults);
+        $results[] = $this->checkDatabaseInvariants();
         if (self::hasFailures($schemaResults)) {
             return $results;
         }
@@ -226,6 +227,10 @@ class DeploymentCheckService
             'chk_metric_counters_nonnegative',
             'chk_audit_actor',
             'ux_mfa_recovery_codes_user_code',
+            'chk_users_auth_source',
+            'chk_oauth_clients_secret',
+            'chk_oidc_signing_keys_alg',
+            'chk_oidc_signing_keys_lifecycle',
         ];
         $indexes = [
             'idx_sessions_cleanup',
@@ -244,11 +249,61 @@ class DeploymentCheckService
             'idx_audit_logs_actor_list',
             'idx_audit_logs_principal',
             'idx_audit_logs_action_list',
+            'ux_oidc_signing_keys_one_active',
         ];
         $results[] = $this->schemaObjectResult('constraint', 'database.constraints', $constraints);
         $results[] = $this->schemaObjectResult('index', 'database.indexes', $indexes);
+        $results[] = $this->schemaTriggerResult();
 
         return $results;
+    }
+
+    private function checkDatabaseInvariants(): array
+    {
+        try {
+            $diagnosis = (new DatabaseInvariantService($this->db, $this->crypto))->diagnose();
+        } catch (\Throwable $exception) {
+            return $this->result(
+                self::FAIL,
+                'database.invariants',
+                'database invariants could not be inspected; apply all migrations first'
+            );
+        }
+
+        if ($diagnosis['valid']) {
+            return $this->result(self::PASS, 'database.invariants', 'security model invariants are satisfied');
+        }
+
+        $drift = [];
+        foreach ($diagnosis['counts'] as $name => $count) {
+            if (($name === 'signing_keys.active_count' && $count !== 1) || ($name !== 'signing_keys.active_count' && $count > 0)) {
+                $drift[] = $name . '=' . $count;
+            }
+        }
+
+        return $this->result(
+            self::FAIL,
+            'database.invariants',
+            'repairable security-model drift: ' . implode(', ', $drift)
+                . '; run deployment/repair-db-invariants --apply=1'
+        );
+    }
+
+    private function schemaTriggerResult(): array
+    {
+        $expected = ['trg_users_federated_link', 'trg_federated_identities_user_link'];
+        $actual = $this->db->createCommand(
+            "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname = ANY(:names)"
+        )->bindValue(':names', '{' . implode(',', $expected) . '}')->queryColumn();
+        $missing = array_values(array_diff($expected, $actual));
+
+        return $this->result(
+            $missing === [] ? self::PASS : self::FAIL,
+            'database.triggers',
+            $missing === []
+                ? 'required database constraint triggers are present'
+                : 'missing database constraint triggers: ' . implode(', ', $missing)
+        );
     }
 
     private function schemaObjectResult(string $type, string $check, array $expected): array

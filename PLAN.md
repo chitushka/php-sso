@@ -9,16 +9,7 @@
 
 ## P1 — безопасность и корректность
 
-### 1. Довести DB-инварианты до фактической модели безопасности
-
-- Добавить partial unique index, допускающий не более одного `active` OIDC signing key, и проверяемый repair path для нуля/нескольких активных ключей.
-- Закрепить согласованность `users.source` с `password_hash`, `ldap_provider_id`/`ldap_dn` и federated links либо формализовать допустимые переходные состояния.
-- Закрепить соответствие OAuth client type и secret (`confidential` с hash, `public` без secret), алгоритм signing key `RS256`, а также согласованность `status` и `expires_at` ключей.
-- Миграция должна сначала диагностировать/нормализовать существующие нарушения и иметь rollback-тест.
-
-Критерий готовности: некорректные состояния нельзя записать напрямую в PostgreSQL, deployment check диагностирует repairable drift, fresh/upgrade/down проверки проходят.
-
-### 2. Усилить MFA lifecycle
+### 1. Усилить MFA lifecycle
 
 - MFA login challenge возвращает фиктивного zero-user и timestamps `0001-01-01`, оставшиеся от исторического wire format, вместо минимального типизированного challenge response.
 - Recovery codes имеют только 40 бит (`bin2hex(random_bytes(5))`) и хранятся как быстрый SHA-256; увеличить энтропию и использовать keyed/slow verification с безопасной миграцией или принудительной регенерацией.
@@ -27,7 +18,7 @@
 
 Критерий готовности: MFA response не содержит фиктивных сущностей, recovery codes устойчивы к offline перебору, а изменение MFA инвалидирует credentials согласно документированной политике.
 
-### 3. Унифицировать access-token claims и валидацию
+### 2. Унифицировать access-token claims и валидацию
 
 - First-party токены из `AuthService::issueAccessToken()` не содержат `iss`, `aud` и явного purpose, а `authenticate()` проверяет issuer/audience только при наличии `client_id` или `client_credentials`.
 - Ввести единый профиль access token, всегда проверять тип, issuer, audience, временные claims и revocation; отделить browser/admin tokens от OAuth resource tokens, если у них разные аудитории.
@@ -35,7 +26,7 @@
 
 Критерий готовности: ни один подписанный JWT другого назначения или аудитории не принимается как API access token.
 
-### 4. Сделать operational status достоверным и fail-closed
+### 3. Сделать operational status достоверным и fail-closed
 
 - Готовность signing keys определяется только количеством строк `active`, без дешифрования private key и пробной подписи; повреждённый ключ отображается как ready.
 - После успешного `SELECT 1` последующие запросы summary/cleanup не перехватывают сбой БД и превращают status endpoint в необработанный `500`.
