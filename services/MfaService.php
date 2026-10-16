@@ -4,6 +4,8 @@ namespace app\services;
 
 use app\models\MfaRecoveryCode;
 use app\models\OneTimeToken;
+use app\models\RefreshToken;
+use app\models\Session;
 use app\models\User;
 use yii\db\Expression;
 
@@ -14,6 +16,7 @@ class MfaService
     private const TOTP_WINDOW = 1;
     private const CHALLENGE_TTL = 300;
     private const RECOVERY_CODES_COUNT = 8;
+    private const RECOVERY_CODE_BYTES = 16;
 
     public function setup(User $user): array
     {
@@ -59,16 +62,26 @@ class MfaService
             return ['status' => 409, 'data' => ['error' => 'enroll first']];
         }
 
-        if ($secret === '') {
-            $secret = (new CryptoService())->decrypt((string)$user->mfa_secret);
-        }
-
-        if ($secret === '') {
-            return ['status' => 409, 'data' => ['error' => 'enroll first']];
-        }
-
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
+            $locked = ApplicationRuntime::db()->createCommand(
+                'SELECT mfa_enabled, mfa_secret, mfa_last_used_counter FROM users WHERE id = :id FOR UPDATE',
+                [':id' => $user->getPrimaryKey()]
+            )->queryOne();
+            if (!$locked || (bool)$locked['mfa_enabled']) {
+                $transaction->rollBack();
+                return ['status' => 409, 'data' => ['error' => 'enroll first']];
+            }
+            $user->mfa_secret = (string)$locked['mfa_secret'];
+            $user->mfa_last_used_counter = (int)$locked['mfa_last_used_counter'];
+            $storedSecret = (new CryptoService())->decrypt((string)$locked['mfa_secret']);
+            if ($secret === '') {
+                $secret = $storedSecret;
+            }
+            if ($secret === '' || !hash_equals($storedSecret, $secret)) {
+                $transaction->rollBack();
+                return ['status' => 409, 'data' => ['error' => 'enroll first']];
+            }
             $counter = null;
             if (!$this->verifyTotp($secret, $code, (int)$user->mfa_last_used_counter, $counter)) {
                 $transaction->rollBack();
@@ -81,6 +94,7 @@ class MfaService
                 throw new \RuntimeException('failed to enable MFA');
             }
             $codes = $this->replaceRecoveryCodes($user);
+            $this->revokeCredentials($user);
             AuditService::record($user->id, 'mfa_enabled', 'user', $user->id);
             $transaction->commit();
         } catch (\Throwable $exception) {
@@ -101,6 +115,17 @@ class MfaService
 
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
+            $locked = ApplicationRuntime::db()->createCommand(
+                'SELECT mfa_enabled, mfa_secret, mfa_last_used_counter FROM users WHERE id = :id FOR UPDATE',
+                [':id' => $user->getPrimaryKey()]
+            )->queryOne();
+            if (!$locked || !(bool)$locked['mfa_enabled']) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'mfa is not in the required state']];
+            }
+            $user->setAttribute('mfa_enabled', true);
+            $user->mfa_secret = (string)$locked['mfa_secret'];
+            $user->mfa_last_used_counter = (int)$locked['mfa_last_used_counter'];
             if (!$this->verifyUserCode($user, $code)) {
                 $transaction->rollBack();
                 return ['status' => 400, 'data' => ['error' => 'invalid code']];
@@ -112,6 +137,7 @@ class MfaService
                 throw new \RuntimeException('failed to disable MFA');
             }
             MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
+            $this->revokeCredentials($user);
             AuditService::record($user->id, 'mfa_disabled', 'user', $user->id);
             $transaction->commit();
         } catch (\Throwable $exception) {
@@ -128,6 +154,17 @@ class MfaService
     {
         $transaction = ApplicationRuntime::db()->beginTransaction();
         try {
+            $locked = ApplicationRuntime::db()->createCommand(
+                'SELECT mfa_enabled, mfa_secret, mfa_last_used_counter FROM users WHERE id = :id FOR UPDATE',
+                [':id' => $user->getPrimaryKey()]
+            )->queryOne();
+            if (!$locked || !(bool)$locked['mfa_enabled']) {
+                $transaction->rollBack();
+                return ['status' => 400, 'data' => ['error' => 'mfa is not in the required state']];
+            }
+            $user->setAttribute('mfa_enabled', true);
+            $user->mfa_secret = (string)$locked['mfa_secret'];
+            $user->mfa_last_used_counter = (int)$locked['mfa_last_used_counter'];
             if (!$this->verifyUserCode($user, $code)) {
                 $transaction->rollBack();
                 return ['status' => 400, 'data' => ['error' => 'invalid mfa code']];
@@ -157,26 +194,7 @@ class MfaService
             throw new \RuntimeException('failed to create MFA challenge');
         }
 
-        return [
-            'user' => [
-                'id' => '00000000-0000-0000-0000-000000000000',
-                'username' => '',
-                'email' => '',
-                'status' => '',
-                'source' => '',
-                'first_name' => '',
-                'last_name' => '',
-                'attributes' => null,
-                'email_verified' => false,
-                'mfa_enabled' => false,
-                'created_at' => '0001-01-01T00:00:00Z',
-                'updated_at' => '0001-01-01T00:00:00Z',
-            ],
-            'access_token_expires_at' => '0001-01-01T00:00:00Z',
-            'session_expires_at' => '0001-01-01T00:00:00Z',
-            'mfa_required' => true,
-            'mfa_token' => $token,
-        ];
+        return ['mfa_required' => true, 'mfa_token' => $token];
     }
 
     public function verifyLoginChallenge(string $challengeToken, string $code): ?User
@@ -285,14 +303,29 @@ class MfaService
 
     private function verifyRecoveryCode(User $user, string $code): bool
     {
-        if ($code === '') {
+        $normalized = strtolower(str_replace('-', '', trim($code)));
+        if (preg_match('/^[a-f0-9]{32}$/D', $normalized) !== 1) {
             return false;
         }
 
-        return MfaRecoveryCode::updateAll(
-            ['used_at' => new Expression('now()')],
-            ['user_id' => $user->id, 'code_hash' => hash('sha256', $code), 'used_at' => null]
-        ) > 0;
+        $rows = ApplicationRuntime::db()->createCommand(
+            'SELECT id, code_hash FROM mfa_recovery_codes
+             WHERE user_id = :user_id AND used_at IS NULL
+             ORDER BY id FOR UPDATE',
+            [':user_id' => $user->getPrimaryKey()]
+        )->queryAll();
+        foreach ($rows as $row) {
+            if (!PasswordHasher::verify($normalized, (string)$row['code_hash'])) {
+                continue;
+            }
+
+            return MfaRecoveryCode::updateAll(
+                ['used_at' => new Expression('now()')],
+                ['id' => $row['id'], 'used_at' => null]
+            ) === 1;
+        }
+
+        return false;
     }
 
     private function replaceRecoveryCodes(User $user): array
@@ -304,12 +337,13 @@ class MfaService
             MfaRecoveryCode::deleteAll(['user_id' => $user->id]);
             $codes = [];
             for ($index = 0; $index < self::RECOVERY_CODES_COUNT; $index++) {
-                $plain = bin2hex(random_bytes(5));
+                $normalized = bin2hex(random_bytes(self::RECOVERY_CODE_BYTES));
+                $plain = implode('-', str_split($normalized, 4));
                 $codes[] = $plain;
 
                 $model = new MfaRecoveryCode();
                 $model->user_id = $user->id;
-                $model->code_hash = hash('sha256', $plain);
+                $model->code_hash = PasswordHasher::hash($normalized);
                 if (!$model->save(false)) {
                     throw new \RuntimeException('failed to create recovery code');
                 }
@@ -324,6 +358,37 @@ class MfaService
             }
             throw $exception;
         }
+    }
+
+    private function revokeCredentials(User $user): void
+    {
+        $userId = (string)$user->getPrimaryKey();
+        $invalidBefore = ApplicationRuntime::db()->createCommand(
+            "UPDATE users
+             SET tokens_invalid_before = GREATEST(
+                 now(),
+                 COALESCE(tokens_invalid_before, '-infinity'::timestamptz) + interval '1 second'
+             )
+             WHERE id = :id
+             RETURNING tokens_invalid_before",
+            [':id' => $userId]
+        )->queryScalar();
+        if ($invalidBefore === false) {
+            throw new \RuntimeException('failed to invalidate MFA credentials');
+        }
+        $user->setAttribute('tokens_invalid_before', $invalidBefore);
+        Session::updateAll(
+            ['revoked_at' => new Expression('now()')],
+            ['user_id' => $userId, 'revoked_at' => null]
+        );
+        RefreshToken::updateAll(
+            ['revoked_at' => new Expression('now()')],
+            ['user_id' => $userId, 'revoked_at' => null]
+        );
+        OneTimeToken::deleteAll([
+            'user_id' => $userId,
+            'purpose' => OneTimeToken::PURPOSE_MFA_LOGIN,
+        ]);
     }
 
     private function totp(string $secretBytes, int $counter): string

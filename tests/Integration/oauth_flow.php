@@ -2024,6 +2024,18 @@ try {
     )->queryScalar();
     assertTrue($ldapDeleteAuditCount === 1, 'only successful LDAP provider delete must write an audit event');
 
+    $staleMfaToken = (new \app\services\AuthService())->issueAccessToken(
+        \app\models\User::findOne(['id' => $adminId]),
+        null,
+        time() - 301
+    );
+    $staleMfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $staleMfaToken);
+    assertTrue($staleMfaEnroll['status'] === 401, 'MFA changes must require authentication not older than five minutes');
+    assertTrue(($staleMfaEnroll['json']['error'] ?? '') === 'recent authentication required', 'stale MFA authentication must return the documented error');
+    $oauthMfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $token['json']['access_token']);
+    assertTrue($oauthMfaEnroll['status'] === 401, 'OAuth resource tokens must not authorize MFA changes');
+    assertTrue(($oauthMfaEnroll['json']['error'] ?? '') === 'recent authentication required', 'OAuth MFA rejection must not disclose token details');
+
     $mfaEnroll = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/enroll', [], $adminToken);
     assertTrue($mfaEnroll['status'] === 200, 'contract-compliant MFA enroll must return 200');
     assertTrue(!empty($mfaEnroll['json']['secret']), 'MFA enroll must return secret');
@@ -2037,12 +2049,11 @@ try {
     assertTrue($mfaActivate['status'] === 200, 'contract-compliant MFA activate must return 200');
     assertTrue(($mfaActivate['json']['status'] ?? '') === 'mfa_enabled', 'MFA activate must return mfa_enabled status');
     assertTrue(count($mfaActivate['json']['recovery_codes'] ?? []) === 8, 'MFA activate must return contract-compliant recovery code count');
-
-    $repeatedMfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
-        'code' => 'not-a-code',
-    ], $adminToken);
-    assertTrue($repeatedMfaActivate['status'] === 409, 'repeated MFA activate must return 409');
-    assertTrue(($repeatedMfaActivate['json']['error'] ?? '') === 'enroll first', 'repeated MFA activate must match API contract');
+    foreach ($mfaActivate['json']['recovery_codes'] as $recoveryCode) {
+        assertTrue(preg_match('/^[a-f0-9]{4}(?:-[a-f0-9]{4}){7}$/D', $recoveryCode) === 1, 'MFA recovery codes must contain 128 bits of entropy');
+    }
+    $revokedAfterMfaEnable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
+    assertTrue($revokedAfterMfaEnable['status'] === 401, 'MFA enable must invalidate the previous access token');
 
     $mfaLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $adminUsername,
@@ -2051,9 +2062,7 @@ try {
     assertTrue($mfaLogin['status'] === 200, 'MFA password step must return 200');
     assertTrue(($mfaLogin['json']['mfa_required'] ?? false) === true, 'MFA password step must require MFA');
     assertTrue(!empty($mfaLogin['json']['mfa_token']), 'MFA password step must return contract-compliant mfa_token');
-    assertTrue(!array_key_exists('challenge_token', $mfaLogin['json']), 'MFA password step must not add fields outside the documented challenge response');
-    assertTrue(($mfaLogin['json']['session_expires_at'] ?? '') === '0001-01-01T00:00:00Z', 'MFA challenge must preserve the documented placeholder session expiry');
-    assertTrue(($mfaLogin['json']['user']['id'] ?? '') === '00000000-0000-0000-0000-000000000000', 'MFA challenge must preserve the documented placeholder user');
+    assertTrue(array_keys($mfaLogin['json']) === ['mfa_required', 'mfa_token'], 'MFA password step must return only the typed challenge fields');
 
     $unknownMfaField = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', [
         'mfa_token' => $mfaLogin['json']['mfa_token'],
@@ -2083,6 +2092,18 @@ try {
     ]);
     assertTrue($mfaVerify['status'] === 200, 'MFA verify with mfa_token must return 200');
     assertTrue(!empty($mfaVerify['json']['access_token']), 'MFA verify must issue access token');
+    assertTrue(!empty($mfaVerify['cookies']['sso_session']), 'MFA verify must create a new session');
+    $adminToken = $mfaVerify['json']['access_token'];
+    $sessionCookie = [
+        'sso_session' => $mfaVerify['cookies']['sso_session'],
+        'sso_csrf' => $mfaVerify['cookies']['sso_csrf'],
+    ];
+
+    $repeatedMfaActivate = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/activate', [
+        'code' => 'not-a-code',
+    ], $adminToken);
+    assertTrue($repeatedMfaActivate['status'] === 409, 'repeated MFA activate must return 409');
+    assertTrue(($repeatedMfaActivate['json']['error'] ?? '') === 'enroll first', 'repeated MFA activate must match API contract');
 
     $unsupported = formRequest($baseUrl . '/oauth2/token', [
         'grant_type' => 'password',
@@ -2291,29 +2312,36 @@ try {
 
     $invalidMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => 'not-a-code',
-    ], $mfaVerify['json']['access_token']);
+    ], $adminToken);
     assertTrue($invalidMfaDisable['status'] === 400, 'invalid MFA disable code must return 400');
     assertTrue(($invalidMfaDisable['json']['error'] ?? '') === 'invalid code', 'invalid MFA disable code must match API contract');
 
     $mfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => $mfaActivate['json']['recovery_codes'][0],
-    ], $mfaVerify['json']['access_token']);
+    ], $adminToken);
     assertTrue($mfaDisable['status'] === 200, 'MFA disable must return 200');
     assertTrue(($mfaDisable['json']['status'] ?? '') === 'mfa_disabled', 'MFA disable must return contract-compliant status');
 
-    $tokenAfterMfaDisable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
-    assertTrue($tokenAfterMfaDisable['status'] === 200, 'current MFA lifecycle keeps the authenticated Bearer token valid');
+    $tokenAfterMfaDisable = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
+    assertTrue($tokenAfterMfaDisable['status'] === 401, 'MFA disable must invalidate the current access token');
+
+    $postMfaLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $adminUsername,
+        'password' => $password,
+    ]);
+    assertTrue($postMfaLogin['status'] === 200, 'login after MFA disable must succeed');
+    $adminToken = $postMfaLogin['json']['access_token'];
 
     $repeatedMfaDisable = jsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/disable', [
         'code' => 'not-a-code',
-    ], $mfaVerify['json']['access_token']);
+    ], $adminToken);
     assertTrue($repeatedMfaDisable['status'] === 400, 'repeated MFA disable must return 400');
     assertTrue(($repeatedMfaDisable['json']['error'] ?? '') === 'mfa is not in the required state', 'repeated MFA disable must match API contract');
 
-    $finalRevokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $mfaVerify['json']['access_token']);
+    $finalRevokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
     assertTrue($finalRevokeAll['status'] === 200, 'final revoke all must return 200');
 
-    $firstPartyAfterRevokeAll = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $mfaVerify['json']['access_token']);
+    $firstPartyAfterRevokeAll = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
     assertTrue($firstPartyAfterRevokeAll['status'] === 401, 'revoke all must invalidate first-party token');
 
     $externalTokenAfterRevokeAll = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', [], $token['json']['access_token']);

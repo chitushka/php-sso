@@ -84,14 +84,20 @@ class AuthController extends ApiController
     public function actionSessionToken(): array
     {
         $auth = $this->auth;
-        $user = $auth->userBySession((string)Yii::$app->request->cookies->getValue('sso_session', ''));
-        if (!$user) {
+        $authentication = $auth->sessionAuthentication(
+            (string)Yii::$app->request->cookies->getValue('sso_session', '')
+        );
+        if (!$authentication) {
             return $this->fail(401, 'invalid session');
         }
 
         return [
-            'access_token' => $auth->issueAccessToken($user),
-            'user' => $user->publicData(),
+            'access_token' => $auth->issueAccessToken(
+                $authentication['user'],
+                null,
+                (int)$authentication['auth_time']
+            ),
+            'user' => $authentication['user']->publicData(),
         ];
     }
 
@@ -240,7 +246,7 @@ class AuthController extends ApiController
 
     public function actionMfaSetup(): array
     {
-        $user = $this->requireUser();
+        $user = $this->requireRecentUser();
         if (is_array($user)) {
             return $user;
         }
@@ -254,7 +260,7 @@ class AuthController extends ApiController
 
     public function actionMfaEnable(): array
     {
-        $user = $this->requireUser();
+        $user = $this->requireRecentUser();
         if (is_array($user)) {
             return $user;
         }
@@ -266,12 +272,16 @@ class AuthController extends ApiController
             (string)($body['code'] ?? '')
         );
         Yii::$app->response->statusCode = $result['status'];
+        if ($result['status'] === 200) {
+            Yii::$app->response->cookies->remove('sso_session');
+            Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
+        }
         return $result['data'];
     }
 
     public function actionMfaDisable(): array
     {
-        $user = $this->requireUser();
+        $user = $this->requireRecentUser();
         if (is_array($user)) {
             return $user;
         }
@@ -281,12 +291,16 @@ class AuthController extends ApiController
             (string)($this->body(['code'], ['code' => 'string'])['code'] ?? '')
         );
         Yii::$app->response->statusCode = $result['status'];
+        if ($result['status'] === 200) {
+            Yii::$app->response->cookies->remove('sso_session');
+            Yii::$app->response->cookies->remove(\app\services\BrowserSecurityService::CSRF_COOKIE);
+        }
         return $result['data'];
     }
 
     public function actionMfaRecoveryCodes(): array
     {
-        $user = $this->requireUser();
+        $user = $this->requireRecentUser();
         if (is_array($user)) {
             return $user;
         }

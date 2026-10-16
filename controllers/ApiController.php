@@ -299,4 +299,21 @@ class ApiController extends Controller
 
         return $authentication['user'];
     }
+
+    protected function requireRecentUser(int $maximumAge = 300)
+    {
+        $authentication = (new AuthService())->authenticate(Yii::$app->request);
+        if (!$authentication['user']) {
+            return $this->fail(401, $authentication['error']);
+        }
+        if (!empty($authentication['claims']['client_id'])) {
+            return $this->fail(401, 'recent authentication required');
+        }
+        $authTime = $authentication['claims']['auth_time'] ?? null;
+        if (!is_int($authTime) || $authTime < time() - $maximumAge || $authTime > time() + 60) {
+            return $this->fail(401, 'recent authentication required');
+        }
+
+        return $authentication['user'];
+    }
 }

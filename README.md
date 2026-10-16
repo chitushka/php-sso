@@ -104,6 +104,8 @@ make smoke-authenticated
 
 Если `deployment-check` сообщает `database.invariants` как repairable drift, сначала сохраните backup и остановите writers. `make db-invariant-check` повторно показывает только безопасные счётчики, а `make db-invariant-repair` атомарно нормализует данные: блокирует учётные записи без пригодного способа входа, отключает confidential clients без известного secret, удаляет неподдерживаемые signing keys и восстанавливает ровно один active RS256 key. Команда не печатает hashes, secrets или key material; после неё обязательны повторные `make deployment-check` и smoke-проверки.
 
+Миграция усиления MFA удаляет старые 40-битные recovery codes: преобразовать быстрый SHA-256 hash в безопасный Argon2id без исходного кода невозможно. После обновления пользователи с включённым MFA должны войти с TOTP и выпустить новый набор recovery codes. Enable и disable MFA отзывают все access/refresh tokens и browser sessions, поэтому после успешной операции требуется повторный вход.
+
 ### Резервное копирование и восстановление
 
 - Создавайте ежедневный зашифрованный логический dump и храните его в отдельном fault domain; рекомендуемое хранение — 35 ежедневных и 12 ежемесячных копий.

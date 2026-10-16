@@ -55,6 +55,9 @@ try {
     $db->exec("INSERT INTO oidc_signing_keys(kid,alg,private_key_pem,public_key_pem,status) VALUES
         ('drift-key-1','RS256','enc:v1:invalid','invalid','active'),
         ('drift-key-2','RS256','enc:v1:invalid','invalid','active')");
+    $db->exec("INSERT INTO mfa_recovery_codes(user_id,code_hash)
+        SELECT id, encode(digest('legacy-recovery-code', 'sha256'), 'hex')
+        FROM users WHERE username = 'drift-local'");
     $run(['migrate', '--interactive=0']);
     $activeKeys = (int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn();
     $disabledUsers = (int)$db->query(
@@ -65,19 +68,28 @@ try {
          (client_id = 'drift-public' AND client_secret_hash IS NULL)
          OR (client_id = 'drift-confidential' AND client_secret_hash IS NOT NULL AND enabled = false)"
     )->fetchColumn();
-    if ($activeKeys !== 1 || $disabledUsers !== 2 || $normalizedClients !== 2) {
+    $legacyRecoveryCodes = (int)$db->query(
+        "SELECT COUNT(*) FROM mfa_recovery_codes WHERE code_hash NOT LIKE '\$argon2id\$%'"
+    )->fetchColumn();
+    if ($activeKeys !== 1 || $disabledUsers !== 2 || $normalizedClients !== 2 || $legacyRecoveryCodes !== 0) {
         throw new RuntimeException('up migration did not repair security-model drift');
     }
 
     // Rollback удаляет ограничения, после чего повторный upgrade снова чинит drift.
-    $run(['migrate/down', '1', '--interactive=0']);
+    $run(['migrate/down', '2', '--interactive=0']);
     $db->exec("UPDATE oidc_signing_keys SET status = 'active', expires_at = NULL");
+    $db->exec("INSERT INTO mfa_recovery_codes(user_id,code_hash)
+        SELECT id, encode(digest('second-legacy-recovery-code', 'sha256'), 'hex')
+        FROM users WHERE username = 'drift-local'");
     if ((int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn() < 2) {
         throw new RuntimeException('down migration did not remove the active-key uniqueness invariant');
     }
     $run(['migrate', '--interactive=0']);
     if ((int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn() !== 1) {
         throw new RuntimeException('re-applied migration did not repair active signing keys');
+    }
+    if ((int)$db->query('SELECT COUNT(*) FROM mfa_recovery_codes')->fetchColumn() !== 0) {
+        throw new RuntimeException('re-applied migration did not invalidate legacy MFA recovery codes');
     }
     $db = null;
     echo "Drift repair, upgrade and reversible migration checks passed\n";

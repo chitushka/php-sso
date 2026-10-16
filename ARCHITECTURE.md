@@ -32,7 +32,7 @@ Production image собирается отдельным multi-stage target бе
 
 - Authentication: local password, LDAP fallback, federated login, SSO cookie и Bearer JWT.
 - Account: profile, password change/reset, email verification и session management.
-- MFA: TOTP enrollment/verification, replay counter и recovery codes.
+- MFA: TOTP enrollment/verification, replay counter, одноразовые recovery codes и отзыв credentials при смене MFA-состояния.
 - OAuth/OIDC Provider: clients, authorization code + PKCE, refresh tokens, client credentials, revoke, introspect, consent, Discovery, JWKS, ID Token, UserInfo и logout.
 - Federation Broker: external providers, signed state, callback, identity linking и JIT provisioning.
 - Authorization: direct roles, group roles, permissions и scope checks.
@@ -59,7 +59,7 @@ Email нормализуется как `trim + lowercase` и уникален �
 
 Confidential OAuth client всегда имеет непустой secret hash, public client не имеет secret. Все OIDC signing keys имеют алгоритм `RS256`; active key не имеет `expires_at`, retiring/retired key имеет срок окончания, а partial unique index допускает не более одного active key. Отсутствие active key диагностируется deployment check и устраняется атомарным repair use case, который также нормализует старый дрейф перед установкой ограничений.
 
-Сырые session, authorization, refresh, one-time и recovery tokens не хранятся: сохраняются SHA-256 hashes. Пароли и confidential client secrets хэшируются Argon2id. LDAP passwords, MFA secrets, provider secrets и OIDC private keys шифруются AES-256-GCM ключом `SSO_ENCRYPTION_KEY`. Signing, JWT и encryption keys имеют разные назначения и не переиспользуются.
+Сырые session, authorization, refresh и one-time tokens не хранятся: сохраняются SHA-256 hashes. Recovery codes имеют 128 бит энтропии, показываются только при создании и хранятся как Argon2id hashes; миграция на этот формат удаляет прежние 40-битные SHA-256 codes, поэтому пользователю с включённым MFA требуется выпустить новый набор. Пароли и confidential client secrets также хэшируются Argon2id. LDAP passwords, MFA secrets, provider secrets и OIDC private keys шифруются AES-256-GCM ключом `SSO_ENCRYPTION_KEY`. Signing, JWT и encryption keys имеют разные назначения и не переиспользуются.
 
 Создание security-артефакта и обязательного audit event выполняется в одной PostgreSQL-транзакции. Ошибка аудита отменяет use case. Одноразовые артефакты и refresh rotation потребляются условным UPDATE или под row lock, поэтому конкурентно успешным может быть только один запрос. Login lockout обновляется атомарным UPSERT.
 
@@ -70,6 +70,8 @@ Confidential OAuth client всегда имеет непустой secret hash, 
 Ошибки прикладного API имеют единый JSON envelope `{"error":"читаемое сообщение","code":"machine_code","details":...}`. Поля `error` и `code` обязательны, `details` присутствует при наличии структурированного контекста. Validation errors возвращают HTTP 400, отсутствующие ресурсы — 404, конфликты уникальности или состояния — 409. OAuth/OIDC endpoints используют нормативные `error` и `error_description`. Auth/token responses содержат `Cache-Control: no-store`. `X-Request-ID` принимается только в допустимом формате либо генерируется сервисом и возвращается клиенту.
 
 Cookie-authenticated изменяющие запросы требуют CSRF token. После загрузки admin UI действующая browser-сессия обменивается на хранимый только в памяти access token через `POST /api/v1/auth/session-token`; запрос передаёт значение cookie `sso_csrf` в `X-CSRF-Token`, а отсутствие или несовпадение токена отклоняется. Admin API требует Bearer token и нужный scope. User principal дополнительно проходит RBAC-проверку. Machine principal из `client_credentials` допускается только к явному allowlist операций чтения, LDAP test и ротации signing key; прочие изменения требуют user principal. Bearer-аутентификация не зависит от CSRF. Logout с cookie инвалидирует серверную сессию; RP-initiated и back-channel logout дополнительно валидируют client, redirect и token hints.
+
+Парольный шаг входа при включённом MFA возвращает только `{"mfa_required":true,"mfa_token":"..."}` без фиктивного пользователя, access/session timestamps или иных account-данных. Enrollment, enable, disable и перевыпуск recovery codes принимают только first-party access token с `auth_time` не старше пяти минут; OAuth resource token для этих операций не подходит. Обмен browser session на access token сохраняет исходное время аутентификации и не продлевает это окно. Успешные enable и disable атомарно отзывают все sessions и refresh tokens пользователя, инвалидируют ранее выпущенные access tokens и требуют нового входа. TOTP counter и recovery code потребляются атомарно, поэтому replay и конкурентный повтор не могут завершить второй challenge.
 
 Семейства публичного контракта:
 

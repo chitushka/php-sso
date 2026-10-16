@@ -863,8 +863,9 @@ const app = Vue.createApp({
       });
       this.mfaRecoveryCodes = data.recovery_codes || [];
       this.mfaSetup = { secret: '', otpauth_url: '', code: '' };
-      this.message = 'MFA enabled. Save recovery codes now.';
-      await this.refresh();
+      this.message = 'MFA enabled. Save recovery codes now: ' + this.mfaRecoveryCodes.join(', ') + '. Sign in again.';
+      this.accessToken = '';
+      this.user = null;
     },
     async disableMfa() {
       await this.api('/api/v1/auth/mfa/disable', {
@@ -873,8 +874,9 @@ const app = Vue.createApp({
       });
       this.mfaManageForm.code = '';
       this.mfaRecoveryCodes = [];
-      this.message = 'MFA disabled';
-      await this.refresh();
+      this.message = 'MFA disabled. Sign in again.';
+      this.accessToken = '';
+      this.user = null;
     },
     async regenerateRecoveryCodes() {
       const data = await this.api('/api/v1/auth/mfa/recovery-codes', {

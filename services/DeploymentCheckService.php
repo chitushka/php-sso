@@ -227,6 +227,7 @@ class DeploymentCheckService
             'chk_metric_counters_nonnegative',
             'chk_audit_actor',
             'ux_mfa_recovery_codes_user_code',
+            'chk_mfa_recovery_codes_argon2id',
             'chk_users_auth_source',
             'chk_oauth_clients_secret',
             'chk_oidc_signing_keys_alg',

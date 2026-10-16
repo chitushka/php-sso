@@ -139,7 +139,7 @@ class AuthService
             $issuedAt = max($issuedAt, strtotime((string)$user->tokens_invalid_before) + 1);
         }
 
-        $jwt = $this->issueAccessToken($user, $issuedAt);
+        $jwt = $this->issueAccessToken($user, $issuedAt, $now);
 
         return ServiceResult::success([
             'access_token' => $jwt,
@@ -177,7 +177,7 @@ class AuthService
         return $this->issueLogin($user, $request);
     }
 
-    public function issueAccessToken(User $user, ?int $issuedAt = null): string
+    public function issueAccessToken(User $user, ?int $issuedAt = null, ?int $authTime = null): string
     {
         $issuedAt = $issuedAt ?? $this->clock->now()->getTimestamp();
         if ($user->tokens_invalid_before) {
@@ -188,6 +188,7 @@ class AuthService
             'username' => $user->username,
             'email' => $user->email,
             'source' => $user->source,
+            'auth_time' => $authTime ?? $issuedAt,
         ], null, $issuedAt);
     }
 
@@ -312,6 +313,12 @@ class AuthService
 
     public function userBySession(string $sessionToken): ?User
     {
+        $authentication = $this->sessionAuthentication($sessionToken);
+        return $authentication ? $authentication['user'] : null;
+    }
+
+    public function sessionAuthentication(string $sessionToken): ?array
+    {
         if ($sessionToken === '') {
             return null;
         }
@@ -324,7 +331,15 @@ class AuthService
             ->andWhere(['>', 'expires_at', new Expression('now()')])
             ->one();
 
-        return $session ? User::findOne(['id' => $session->user_id, 'status' => User::STATUS_ACTIVE]) : null;
+        if (!$session) {
+            return null;
+        }
+        $user = User::findOne(['id' => $session->user_id, 'status' => User::STATUS_ACTIVE]);
+
+        return $user ? [
+            'user' => $user,
+            'auth_time' => strtotime((string)$session->getAttribute('created_at')),
+        ] : null;
     }
 
     public function logout(string $sessionToken): void

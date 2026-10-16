@@ -106,6 +106,15 @@ class AuthServiceTest extends TestCase
         $sessionToken = $login->metadata['cookie']->value;
         $this->assertSame($this->userId, $service->userBySession($sessionToken)->id);
         $this->assertSame(1, $this->activeSessionCount());
+        $originalAuthenticationTime = time() - 600;
+        Yii::$app->db->createCommand()->update(
+            'sessions',
+            ['created_at' => gmdate('Y-m-d H:i:sP', $originalAuthenticationTime)],
+            ['token_hash' => hash('sha256', $sessionToken)]
+        )->execute();
+        $sessionAuthentication = $service->sessionAuthentication($sessionToken);
+        $this->assertSame($this->userId, $sessionAuthentication['user']->id);
+        $this->assertSame($originalAuthenticationTime, $sessionAuthentication['auth_time']);
 
         $jwtRequest = $this->request();
         $jwtRequest->headers->set('Authorization', 'Bearer ' . $login['data']['access_token']);

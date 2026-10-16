@@ -9,16 +9,7 @@
 
 ## P1 — безопасность и корректность
 
-### 1. Усилить MFA lifecycle
-
-- MFA login challenge возвращает фиктивного zero-user и timestamps `0001-01-01`, оставшиеся от исторического wire format, вместо минимального типизированного challenge response.
-- Recovery codes имеют только 40 бит (`bin2hex(random_bytes(5))`) и хранятся как быстрый SHA-256; увеличить энтропию и использовать keyed/slow verification с безопасной миграцией или принудительной регенерацией.
-- После enable/disable MFA пересмотреть отзыв существующих access/refresh tokens и sessions; текущий smoke прямо требует сохранения bearer token после отключения MFA.
-- Добавить replay/concurrency тесты TOTP и recovery code, re-authentication policy для изменения MFA и проверку отсутствия MFA-секретов в ответах/логах.
-
-Критерий готовности: MFA response не содержит фиктивных сущностей, recovery codes устойчивы к offline перебору, а изменение MFA инвалидирует credentials согласно документированной политике.
-
-### 2. Унифицировать access-token claims и валидацию
+### 1. Унифицировать access-token claims и валидацию
 
 - First-party токены из `AuthService::issueAccessToken()` не содержат `iss`, `aud` и явного purpose, а `authenticate()` проверяет issuer/audience только при наличии `client_id` или `client_credentials`.
 - Ввести единый профиль access token, всегда проверять тип, issuer, audience, временные claims и revocation; отделить browser/admin tokens от OAuth resource tokens, если у них разные аудитории.
@@ -26,7 +17,7 @@
 
 Критерий готовности: ни один подписанный JWT другого назначения или аудитории не принимается как API access token.
 
-### 3. Сделать operational status достоверным и fail-closed
+### 2. Сделать operational status достоверным и fail-closed
 
 - Готовность signing keys определяется только количеством строк `active`, без дешифрования private key и пробной подписи; повреждённый ключ отображается как ready.
 - После успешного `SELECT 1` последующие запросы summary/cleanup не перехватывают сбой БД и превращают status endpoint в необработанный `500`.
