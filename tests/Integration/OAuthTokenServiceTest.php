@@ -91,7 +91,21 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame($this->username . '@example.test', $accessClaims['email']);
         $this->assertSame('local', $accessClaims['source']);
         $this->assertSame(Yii::$app->params['issuer'], $accessClaims['iss']);
+        $this->assertSame(Yii::$app->params['apiAudience'], $accessClaims['aud']);
+        $this->assertSame(JwtService::PURPOSE_OAUTH_USER, $accessClaims['purpose']);
+        $this->assertSame($accessClaims['iat'], $accessClaims['nbf']);
         $this->assertSame($this->userId, (new AuthService())->currentUser($this->bearerRequest($token['data']['access_token']))->id);
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['enabled' => false],
+            ['client_id' => $clientId]
+        )->execute();
+        $this->assertNull((new AuthService())->currentUser($this->bearerRequest($token['data']['access_token'])));
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['enabled' => true],
+            ['client_id' => $clientId]
+        )->execute();
         $this->assertSame(1, $this->usedAuthorizationCodeCount($clientId));
         $this->assertSame(1, $this->refreshTokenCount($clientId));
 
@@ -217,6 +231,22 @@ class OAuthTokenServiceTest extends TestCase
         $this->assertSame('', $tokenClaims['email']);
         $this->assertSame('client', $tokenClaims['source']);
         $this->assertSame(Yii::$app->params['issuer'], $tokenClaims['iss']);
+        $this->assertSame(Yii::$app->params['apiAudience'], $tokenClaims['aud']);
+        $this->assertSame(JwtService::PURPOSE_CLIENT_CREDENTIALS, $tokenClaims['purpose']);
+        $machineRequest = $this->bearerRequest($token['data']['access_token']);
+        $this->assertSame($clientId, (new AuthService())->authenticate($machineRequest)['client']->client_id);
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['enabled' => false],
+            ['client_id' => $clientId]
+        )->execute();
+        $disabledAuthentication = (new AuthService())->authenticate($machineRequest);
+        $this->assertNull($disabledAuthentication['client'] ?? null);
+        Yii::$app->db->createCommand()->update(
+            'oauth_clients',
+            ['enabled' => true],
+            ['client_id' => $clientId]
+        )->execute();
 
         $emptyScopeRequest = $this->postRequest(['grant_type' => 'client_credentials']);
         $emptyScopeRequest->headers->set(

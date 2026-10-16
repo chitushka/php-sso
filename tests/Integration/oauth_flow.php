@@ -264,6 +264,11 @@ try {
     ]);
     assertTrue($login['status'] === 200, 'admin login must return 200');
     assertTrue(!empty($login['json']['access_token']), 'admin login must return access_token');
+    $firstPartyClaims = jwtPart($login['json']['access_token'], 1);
+    assertTrue(($firstPartyClaims['iss'] ?? '') === Yii::$app->params['issuer'], 'first-party token issuer must match configuration');
+    assertTrue(($firstPartyClaims['aud'] ?? '') === Yii::$app->params['apiAudience'], 'first-party token audience must match API');
+    assertTrue(($firstPartyClaims['purpose'] ?? '') === \app\services\JwtService::PURPOSE_FIRST_PARTY, 'first-party token must have an explicit purpose');
+    assertTrue(($firstPartyClaims['nbf'] ?? null) === ($firstPartyClaims['iat'] ?? null), 'first-party token must have a consistent nbf');
     assertTrue(strpos((string)responseHeader($login, 'Cache-Control'), 'no-store') !== false, 'login response must not be cached');
     assertTrue(responseHeader($login, 'Pragma') === 'no-cache', 'login response must disable shared caches');
     assertTrue(responseHeader($login, 'Permissions-Policy') !== null, 'login response must include Permissions-Policy');
@@ -564,6 +569,13 @@ try {
     assertTrue(!empty($rotatedClient['json']['client_secret']), 'OAuth client secret rotation must return new secret');
     assertTrue($rotatedClient['json']['client_secret'] !== $clientSecret, 'OAuth client secret rotation must replace secret');
     assertTrue(strtotime((string)$rotatedClient['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'OAuth client secret rotation must advance updated_at');
+    $oldSecretAfterRotation = formRequest($baseUrl . '/oauth2/token', [
+        'grant_type' => 'client_credentials',
+        'client_id' => $client['json']['client_id'],
+        'client_secret' => $clientSecret,
+        'scope' => 'profile',
+    ]);
+    assertOAuthError($oldSecretAfterRotation, 401, 'invalid_client', 'rotated client secret');
     $client['json']['client_secret'] = $rotatedClient['json']['client_secret'];
 
     $unknownOAuthClientField = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
@@ -805,6 +817,10 @@ try {
     assertTrue(!array_key_exists('iss', $introspection['json']), 'introspection must not leak JWT-only issuer claim');
     assertTrue(($introspection['json']['iat'] ?? 0) <= time(), 'access token introspection must include issued-at timestamp');
     $accessTokenClaims = jwtPart($token['json']['access_token'], 1);
+    assertTrue(($accessTokenClaims['purpose'] ?? '') === \app\services\JwtService::PURPOSE_OAUTH_USER, 'OAuth user token must have an explicit purpose');
+    assertTrue(($accessTokenClaims['iss'] ?? '') === Yii::$app->params['issuer'], 'OAuth user token issuer must match configuration');
+    assertTrue(($accessTokenClaims['aud'] ?? '') === Yii::$app->params['apiAudience'], 'OAuth user token audience must match API');
+    assertTrue(($accessTokenClaims['nbf'] ?? null) === ($accessTokenClaims['iat'] ?? null), 'OAuth user token must have a consistent nbf');
     assertTrue(($accessTokenClaims['email'] ?? '') === $adminUsername . '@example.test', 'OAuth access token must include user email');
     assertTrue(($accessTokenClaims['source'] ?? '') === 'local', 'OAuth access token must include user source');
     assertTrue(
@@ -2143,7 +2159,9 @@ try {
 
     $clientCredentialsClaims = jwtPart($clientCredentials['json']['access_token'], 1);
     assertTrue(($clientCredentialsClaims['client_id'] ?? '') === $client['json']['client_id'], 'client_credentials token must include client_id');
-    assertTrue(($clientCredentialsClaims['purpose'] ?? '') === 'client_credentials', 'client_credentials token must include purpose');
+    assertTrue(($clientCredentialsClaims['purpose'] ?? '') === \app\services\JwtService::PURPOSE_CLIENT_CREDENTIALS, 'client_credentials token must include purpose');
+    assertTrue(($clientCredentialsClaims['aud'] ?? '') === Yii::$app->params['apiAudience'], 'client_credentials audience must match API');
+    assertTrue(($clientCredentialsClaims['nbf'] ?? null) === ($clientCredentialsClaims['iat'] ?? null), 'client_credentials token must have a consistent nbf');
     assertTrue(($clientCredentialsClaims['email'] ?? null) === '', 'client_credentials token must include empty email');
     assertTrue(($clientCredentialsClaims['source'] ?? '') === 'client', 'client_credentials token must identify client source');
     assertTrue(($clientCredentialsClaims['iss'] ?? '') === $configuration['json']['issuer'], 'client_credentials token issuer must match discovery');

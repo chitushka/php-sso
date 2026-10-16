@@ -25,7 +25,10 @@ class OidcController extends ApiController
         if (!$authentication['user']) {
             return $this->fail(401, $authentication['error']);
         }
-        $claims = $auth->currentClaims(Yii::$app->request);
+        $claims = $authentication['claims'];
+        if (($claims['purpose'] ?? '') !== \app\services\JwtService::PURPOSE_OAUTH_USER) {
+            return $this->fail(401, 'invalid token');
+        }
         $user = $authentication['user'];
 
         $scope = (string)($claims['scope'] ?? '');

@@ -9,15 +9,7 @@
 
 ## P1 — безопасность и корректность
 
-### 1. Унифицировать access-token claims и валидацию
-
-- First-party токены из `AuthService::issueAccessToken()` не содержат `iss`, `aud` и явного purpose, а `authenticate()` проверяет issuer/audience только при наличии `client_id` или `client_credentials`.
-- Ввести единый профиль access token, всегда проверять тип, issuer, audience, временные claims и revocation; отделить browser/admin tokens от OAuth resource tokens, если у них разные аудитории.
-- Покрыть wrong issuer/audience, future `iat`/`nbf`, неверный purpose, disabled client/user и key/secret rotation.
-
-Критерий готовности: ни один подписанный JWT другого назначения или аудитории не принимается как API access token.
-
-### 2. Сделать operational status достоверным и fail-closed
+### 1. Сделать operational status достоверным и fail-closed
 
 - Готовность signing keys определяется только количеством строк `active`, без дешифрования private key и пробной подписи; повреждённый ключ отображается как ready.
 - После успешного `SELECT 1` последующие запросы summary/cleanup не перехватывают сбой БД и превращают status endpoint в необработанный `500`.

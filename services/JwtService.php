@@ -4,6 +4,11 @@ namespace app\services;
 
 class JwtService
 {
+    public const PURPOSE_FIRST_PARTY = 'first_party_access';
+    public const PURPOSE_OAUTH_USER = 'oauth_access';
+    public const PURPOSE_CLIENT_CREDENTIALS = 'client_credentials';
+    private const CLOCK_SKEW_SECONDS = 60;
+
     private string $secret;
 
     public function __construct()
@@ -19,6 +24,7 @@ class JwtService
             'sub' => $subject,
             'jti' => $claims['jti'] ?? self::base64url(random_bytes(16)),
             'iat' => $now,
+            'nbf' => $now,
             'exp' => $now + $ttl,
         ]);
 
@@ -41,7 +47,11 @@ class JwtService
         }
 
         $headerData = json_decode($decodedHeader, true);
-        if (!is_array($headerData) || ($headerData['alg'] ?? '') !== 'HS256') {
+        if (
+            !is_array($headerData)
+            || ($headerData['typ'] ?? '') !== 'JWT'
+            || ($headerData['alg'] ?? '') !== 'HS256'
+        ) {
             return null;
         }
 
@@ -56,18 +66,29 @@ class JwtService
             return null;
         }
 
-        $now = time();
+        $subject = $data['sub'] ?? null;
+        $tokenId = $data['jti'] ?? null;
+        $issuedAt = $data['iat'] ?? null;
+        $notBefore = $data['nbf'] ?? null;
         $expiresAt = $data['exp'] ?? null;
         if (
-            (!is_int($expiresAt) && !is_float($expiresAt))
-            || $expiresAt <= $now
+            !is_string($subject) || $subject === ''
+            || !is_string($tokenId) || $tokenId === ''
+            || !is_int($issuedAt)
+            || !is_int($notBefore)
+            || !is_int($expiresAt)
         ) {
             return null;
         }
 
+        $now = time();
         if (
-            array_key_exists('nbf', $data)
-            && ((!is_int($data['nbf']) && !is_float($data['nbf'])) || $data['nbf'] > $now)
+            $issuedAt > $now + self::CLOCK_SKEW_SECONDS
+            || $notBefore > $now + self::CLOCK_SKEW_SECONDS
+            || $expiresAt <= $now
+            || $expiresAt <= $issuedAt
+            || $notBefore > $expiresAt
+            || $expiresAt - $issuedAt > (int)ApplicationRuntime::param('accessTokenTtl')
         ) {
             return null;
         }

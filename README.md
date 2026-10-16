@@ -11,6 +11,7 @@
 - Управление пользователями, ролями, permissions, группами, OAuth-клиентами и провайдерами; аудит различает user, OAuth client и system principals.
 - LDAP group mappings строго привязаны к provider, а обновление LDAP provider сохраняет все пропущенные поля и существующий пароль.
 - Machine-токены `client_credentials` ограничены явным allowlist операций чтения, LDAP test и ротации signing key; остальные изменения требуют пользователя.
+- Access tokens разделены по назначению (`first_party_access`, `oauth_access`, `client_credentials`) и всегда проверяются по issuer, audience, временным claims, состоянию principal и revocation.
 - Vue admin UI, health probes, Prometheus metrics, cleanup и ротация зашифрованных секретов.
 
 ## Быстрый старт

@@ -739,7 +739,7 @@ class OAuthService
             'username' => $client->client_id,
             'email' => '',
             'source' => 'client',
-            'purpose' => 'client_credentials',
+            'purpose' => JwtService::PURPOSE_CLIENT_CREDENTIALS,
         ];
         if ($scope !== '') {
             $claims['scope'] = $scope;
@@ -771,6 +771,7 @@ class OAuthService
             'iss' => ApplicationRuntime::param('issuer'),
             'client_id' => $client->client_id,
             'aud' => ApplicationRuntime::param('apiAudience'),
+            'purpose' => JwtService::PURPOSE_OAUTH_USER,
             'username' => $user ? $user->username : '',
             'email' => $user ? $user->email : '',
             'source' => $user ? $user->source : '',

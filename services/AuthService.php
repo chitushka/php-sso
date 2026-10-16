@@ -185,6 +185,9 @@ class AuthService
         }
 
         return $this->jwt->issue($user->id, [
+            'iss' => ApplicationRuntime::param('issuer'),
+            'aud' => ApplicationRuntime::param('apiAudience'),
+            'purpose' => JwtService::PURPOSE_FIRST_PARTY,
             'username' => $user->username,
             'email' => $user->email,
             'source' => $user->source,
@@ -205,7 +208,7 @@ class AuthService
         }
 
         $claims = $this->jwt->verify(trim(substr($header, 7)));
-        if (!$claims || empty($claims['sub']) || empty($claims['jti'])) {
+        if (!$claims || !$this->hasValidAccessTokenProfile($claims)) {
             return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
         }
 
@@ -218,36 +221,25 @@ class AuthService
             return ['user' => null, 'claims' => null, 'error' => 'token revoked'];
         }
 
-        if (($claims['purpose'] ?? '') === 'client_credentials') {
+        $purpose = (string)$claims['purpose'];
+        if ($purpose === JwtService::PURPOSE_CLIENT_CREDENTIALS) {
             $client = OAuthClient::findOne([
                 'id' => (string)$claims['sub'],
                 'client_id' => (string)($claims['client_id'] ?? ''),
                 'enabled' => true,
             ]);
-            if (
-                !$client
-                || ($claims['aud'] ?? '') !== ApplicationRuntime::param('apiAudience')
-                || ($claims['iss'] ?? '') !== ApplicationRuntime::param('issuer')
-            ) {
+            if (!$client) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
             return ['user' => null, 'client' => $client, 'claims' => $claims, 'error' => null];
         }
 
-        if (!empty($claims['purpose'])) {
-            return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
-        }
-
-        if (!empty($claims['client_id'])) {
+        if ($purpose === JwtService::PURPOSE_OAUTH_USER) {
             $client = OAuthClient::findOne([
                 'client_id' => (string)$claims['client_id'],
                 'enabled' => true,
             ]);
-            if (
-                !$client
-                || ($claims['aud'] ?? '') !== ApplicationRuntime::param('apiAudience')
-                || ($claims['iss'] ?? '') !== ApplicationRuntime::param('issuer')
-            ) {
+            if (!$client) {
                 return ['user' => null, 'claims' => null, 'error' => 'invalid token'];
             }
         }
@@ -272,12 +264,9 @@ class AuthService
 
     public function revokeAccessToken(Request $request): void
     {
-        $header = (string)$request->headers->get('Authorization', '');
-        if (stripos($header, 'Bearer ') !== 0) {
-            return;
-        }
-        $claims = $this->jwt->verify(trim(substr($header, 7)));
-        if (!$claims || empty($claims['jti']) || empty($claims['exp'])) {
+        $authentication = $this->authenticate($request);
+        $claims = $authentication['claims'];
+        if (!$claims) {
             return;
         }
         ApplicationRuntime::db()->createCommand(
@@ -288,27 +277,40 @@ class AuthService
 
     public function currentClaims(Request $request): ?array
     {
-        $header = (string)$request->headers->get('Authorization', '');
-        if (stripos($header, 'Bearer ') !== 0) {
-            return null;
-        }
-
-        $claims = $this->jwt->verify(trim(substr($header, 7)));
-        if (!$claims || empty($claims['sub'])) {
-            return null;
-        }
-
-        return $claims;
+        return $this->authenticate($request)['claims'];
     }
 
     public function tokenAllowsPermission(array $claims, string $resource, string $action): bool
     {
-        if (empty($claims['client_id'])) {
+        if (($claims['purpose'] ?? '') === JwtService::PURPOSE_FIRST_PARTY) {
             return true;
         }
 
         $scopes = preg_split('/\s+/', trim((string)($claims['scope'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
         return in_array($resource . ':' . $action, $scopes, true);
+    }
+
+    private function hasValidAccessTokenProfile(array $claims): bool
+    {
+        if (
+            ($claims['iss'] ?? null) !== ApplicationRuntime::param('issuer')
+            || ($claims['aud'] ?? null) !== ApplicationRuntime::param('apiAudience')
+        ) {
+            return false;
+        }
+
+        $purpose = $claims['purpose'] ?? null;
+        if ($purpose === JwtService::PURPOSE_FIRST_PARTY) {
+            return !array_key_exists('client_id', $claims);
+        }
+        if ($purpose === JwtService::PURPOSE_OAUTH_USER) {
+            return is_string($claims['client_id'] ?? null) && $claims['client_id'] !== '';
+        }
+        if ($purpose === JwtService::PURPOSE_CLIENT_CREDENTIALS) {
+            return is_string($claims['client_id'] ?? null) && $claims['client_id'] !== '';
+        }
+
+        return false;
     }
 
     public function userBySession(string $sessionToken): ?User

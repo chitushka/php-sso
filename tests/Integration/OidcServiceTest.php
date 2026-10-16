@@ -178,26 +178,53 @@ class OidcServiceTest extends TestCase
     public function testUserinfoFiltersClaimsByScope(): void
     {
         $controller = new OidcController('oidc', Yii::$app);
+        $clientId = 'userinfo-' . bin2hex(random_bytes(4));
+        $this->clientIds[] = $clientId;
+        $this->clientDbIds[] = (string)Yii::$app->db->createCommand(
+            "INSERT INTO oauth_clients(client_id,name,type,enabled)
+             VALUES (:client_id,'UserInfo test client','public',true) RETURNING id",
+            [':client_id' => $clientId]
+        )->queryScalar();
+        $baseClaims = [
+            'iss' => Yii::$app->params['issuer'],
+            'aud' => Yii::$app->params['apiAudience'],
+            'purpose' => JwtService::PURPOSE_OAUTH_USER,
+            'client_id' => $clientId,
+        ];
 
-        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue($this->userId, ['scope' => 'profile'])));
+        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue(
+            $this->userId,
+            array_merge($baseClaims, ['scope' => 'profile'])
+        )));
         $profile = $controller->actionUserinfo();
         $this->assertSame($this->userId, $profile['sub']);
         $this->assertSame($this->username, $profile['preferred_username']);
         $this->assertSame('local', $profile['source']);
         $this->assertArrayNotHasKey('email', $profile);
 
-        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue($this->userId, ['scope' => 'email'])));
+        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue(
+            $this->userId,
+            array_merge($baseClaims, ['scope' => 'email'])
+        )));
         $email = $controller->actionUserinfo();
         $this->assertSame($this->userId, $email['sub']);
         $this->assertSame($this->username . '@example.test', $email['email']);
         $this->assertArrayNotHasKey('preferred_username', $email);
 
-        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue($this->userId)));
+        Yii::$app->set('request', $this->bearerRequest((new JwtService())->issue($this->userId, $baseClaims)));
         $full = $controller->actionUserinfo();
         $this->assertSame($this->username, $full['preferred_username']);
         $this->assertSame($this->username . '@example.test', $full['email']);
         $this->assertArrayNotHasKey('name', $full);
         $this->assertArrayNotHasKey('email_verified', $full);
+
+        $firstParty = (new \app\services\AuthService())->issueAccessToken(
+            \app\models\User::findOne(['id' => $this->userId])
+        );
+        Yii::$app->set('request', $this->bearerRequest($firstParty));
+        $rejected = $controller->actionUserinfo();
+        $this->assertSame('invalid token', $rejected['error']);
+        $this->assertSame(401, Yii::$app->response->statusCode);
     }
 
     public function testLogoutWithIdTokenHintValidatesRedirectAndRevokesRefreshTokens(): void

@@ -123,8 +123,11 @@ class AuthServiceTest extends TestCase
         $this->assertSame($this->username, $claims['username']);
         $this->assertSame($this->email, $claims['email']);
         $this->assertSame(User::SOURCE_LOCAL, $claims['source']);
+        $this->assertSame(Yii::$app->params['issuer'], $claims['iss']);
+        $this->assertSame(Yii::$app->params['apiAudience'], $claims['aud']);
+        $this->assertSame(JwtService::PURPOSE_FIRST_PARTY, $claims['purpose']);
+        $this->assertSame($claims['iat'], $claims['nbf']);
         $this->assertNotEmpty($claims['jti']);
-        $this->assertArrayNotHasKey('iss', $claims);
 
         $this->assertSame(1, $this->auditCount('login_success'));
 
@@ -271,19 +274,27 @@ class AuthServiceTest extends TestCase
         $this->assertNull($jwt->verify($jwt->issue($this->userId, [], 0)));
         $this->assertNull($jwt->verify($this->signedToken(
             ['typ' => 'JWT', 'alg' => 'HS256'],
-            ['sub' => $this->userId, 'iat' => time(), 'exp' => 'tomorrow']
+            array_merge($this->accessClaims(), ['exp' => 'tomorrow'])
         )));
         $this->assertNull($jwt->verify($this->signedToken(
             ['typ' => 'JWT', 'alg' => 'HS256'],
-            ['sub' => $this->userId, 'iat' => time(), 'nbf' => time() + 60, 'exp' => time() + 120]
+            array_merge($this->accessClaims(), ['nbf' => time() + 61, 'exp' => time() + 120])
         )));
         $this->assertNull($jwt->verify($this->signedToken(
             ['typ' => 'JWT', 'alg' => 'HS256'],
-            ['sub' => $this->userId, 'iat' => time(), 'nbf' => 'now', 'exp' => time() + 120]
+            array_merge($this->accessClaims(), ['nbf' => 'now'])
+        )));
+        $this->assertNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            array_merge($this->accessClaims(), ['iat' => time() + 61, 'nbf' => time() + 61])
+        )));
+        $this->assertNull($jwt->verify($this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            array_merge($this->accessClaims(), ['exp' => time() + Yii::$app->params['accessTokenTtl'] + 1])
         )));
         $this->assertNotNull($jwt->verify($this->signedToken(
             ['typ' => 'JWT', 'alg' => 'HS256'],
-            ['sub' => $this->userId, 'iat' => time(), 'nbf' => time() - 1, 'exp' => time() + 120]
+            array_merge($this->accessClaims(), ['nbf' => time() - 1, 'exp' => time() + 120])
         )));
 
         $paddedHeader = $parts[0] . '=';
@@ -299,9 +310,10 @@ class AuthServiceTest extends TestCase
     public function testOAuthScopesRestrictAdministrativePermissions(): void
     {
         $service = new AuthService();
-        $firstParty = ['sub' => $this->userId];
+        $firstParty = ['sub' => $this->userId, 'purpose' => JwtService::PURPOSE_FIRST_PARTY];
         $oauth = [
             'sub' => $this->userId,
+            'purpose' => JwtService::PURPOSE_OAUTH_USER,
             'client_id' => 'scope-test-client',
             'scope' => 'openid profile users:read',
         ];
@@ -310,6 +322,52 @@ class AuthServiceTest extends TestCase
         $this->assertTrue($service->tokenAllowsPermission($oauth, 'users', 'read'));
         $this->assertFalse($service->tokenAllowsPermission($oauth, 'users', 'delete'));
         $this->assertFalse($service->tokenAllowsPermission($oauth, 'roles', 'read'));
+        $this->assertFalse($service->tokenAllowsPermission(['sub' => $this->userId], 'users', 'read'));
+    }
+
+    public function testAuthenticationRejectsWrongProfilesDisabledPrincipalsAndRotatedKey(): void
+    {
+        $service = new AuthService();
+        foreach ([
+            ['iss' => 'https://wrong-issuer.example'],
+            ['aud' => 'https://wrong-audience.example/api'],
+            ['purpose' => 'id_token'],
+            ['purpose' => JwtService::PURPOSE_FIRST_PARTY, 'client_id' => 'unexpected-client'],
+        ] as $override) {
+            $request = $this->request();
+            $request->headers->set('Authorization', 'Bearer ' . $this->signedToken(
+                ['typ' => 'JWT', 'alg' => 'HS256'],
+                array_merge($this->accessClaims(), $override)
+            ));
+            $this->assertNull($service->currentUser($request));
+        }
+
+        $validRequest = $this->request();
+        $validRequest->headers->set('Authorization', 'Bearer ' . $this->signedToken(
+            ['typ' => 'JWT', 'alg' => 'HS256'],
+            $this->accessClaims()
+        ));
+        $this->assertSame($this->userId, $service->currentUser($validRequest)->id);
+
+        Yii::$app->db->createCommand()->update(
+            'users',
+            ['status' => User::STATUS_BLOCKED],
+            ['id' => $this->userId]
+        )->execute();
+        $this->assertNull($service->currentUser($validRequest));
+        Yii::$app->db->createCommand()->update(
+            'users',
+            ['status' => User::STATUS_ACTIVE],
+            ['id' => $this->userId]
+        )->execute();
+
+        $originalSecret = Yii::$app->params['jwtSecret'];
+        Yii::$app->params['jwtSecret'] = 'rotated-test-jwt-secret-at-least-32-characters';
+        try {
+            $this->assertNull((new AuthService())->currentUser($validRequest));
+        } finally {
+            Yii::$app->params['jwtSecret'] = $originalSecret;
+        }
     }
 
     public function testMfaVerificationDistinguishesTokenCodeAndLockout(): void
@@ -445,6 +503,21 @@ class AuthServiceTest extends TestCase
         ));
 
         return $encodedHeader . '.' . $encodedPayload . '.' . $signature;
+    }
+
+    private function accessClaims(array $overrides = []): array
+    {
+        $now = time();
+        return array_merge([
+            'iss' => Yii::$app->params['issuer'],
+            'aud' => Yii::$app->params['apiAudience'],
+            'purpose' => JwtService::PURPOSE_FIRST_PARTY,
+            'sub' => $this->userId,
+            'jti' => JwtService::base64url(random_bytes(16)),
+            'iat' => $now,
+            'nbf' => $now,
+            'exp' => $now + 120,
+        ], $overrides);
     }
 
     private function totpCode(string $secret): string

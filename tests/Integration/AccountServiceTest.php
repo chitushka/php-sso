@@ -81,9 +81,13 @@ class AccountServiceTest extends TestCase
         $this->assertTrue($login->isSuccess());
         $this->assertSame(1, $this->activeSessionCount());
         $externalAccessToken = (new JwtService())->issue($this->userId, [
-            'client_id' => 'external-account-test-client',
+            'iss' => Yii::$app->params['issuer'],
+            'aud' => Yii::$app->params['apiAudience'],
+            'purpose' => JwtService::PURPOSE_OAUTH_USER,
+            'client_id' => 'account-test-client',
             'scope' => 'openid profile',
         ]);
+        $this->assertSame($this->userId, $auth->currentUser($this->bearerRequest($externalAccessToken))->id);
 
         Yii::$app->db->createCommand(
             "INSERT INTO refresh_tokens(token_hash,family_id,user_id,client_id,scope,expires_at)

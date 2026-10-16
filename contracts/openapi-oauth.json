@@ -25,7 +25,7 @@
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+      "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "OAuth access token with purpose=oauth_access and required iss, aud, sub, client_id, jti, iat, nbf and exp claims."},
       "clientBasic": {"type": "http", "scheme": "basic"},
       "cookieAuth": {"type": "apiKey", "in": "cookie", "name": "sso_session"}
     },
