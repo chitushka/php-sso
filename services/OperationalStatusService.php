@@ -6,6 +6,9 @@ use app\components\Rfc3339;
 
 final class OperationalStatusService
 {
+    private const CLEANUP_STALE_MULTIPLIER = 2;
+    private const CLOCK_SKEW_SECONDS = 60;
+
     public function status(): array
     {
         $databaseAvailable = false;
@@ -16,20 +19,39 @@ final class OperationalStatusService
             // Статус остаётся fail-closed и не раскрывает текст ошибки БД.
         }
 
-        $signing = $databaseAvailable ? $this->signingSummary() : [
-            'ready' => false,
-            'active' => 0,
-            'retiring' => 0,
-            'retired' => 0,
+        $signing = $this->unavailableSigningSummary();
+        $cleanup = $this->unavailableCleanupStatus();
+        if ($databaseAvailable) {
+            try {
+                $signing = $this->signingSummary();
+            } catch (\Throwable $exception) {
+                // Последующий отказ БД не должен раскрывать исключение или оставлять ложный ready.
+                $databaseAvailable = false;
+            }
+        }
+        if ($databaseAvailable) {
+            try {
+                $cleanup = $this->cleanupStatus();
+            } catch (\Throwable $exception) {
+                // Все DB-backed компоненты fail-closed даже после успешного первоначального probe.
+                $databaseAvailable = false;
+            }
+        }
+
+        $database = [
+            'status' => $databaseAvailable ? 'ready' : 'degraded',
+            'ready' => $databaseAvailable,
         ];
 
         return [
-            'status' => $databaseAvailable && $signing['ready'] ? 'ready' : 'degraded',
+            'status' => $databaseAvailable && $signing['ready'] && $cleanup['ready']
+                ? 'ready'
+                : 'degraded',
             'version' => (string)ApplicationRuntime::param('version'),
             'environment' => (string)ApplicationRuntime::param('environment'),
-            'database' => ['ready' => $databaseAvailable],
+            'database' => $database,
             'signing_keys' => $signing,
-            'cleanup' => $databaseAvailable ? $this->cleanupStatus() : ['last_success_at' => null],
+            'cleanup' => $cleanup,
         ];
     }
 
@@ -45,7 +67,12 @@ final class OperationalStatusService
             }
         }
 
-        return array_merge(['ready' => $counts['active'] === 1], $counts);
+        $ready = $counts['active'] === 1 && (new OidcService())->signingReady();
+
+        return array_merge([
+            'status' => $ready ? 'ready' : 'degraded',
+            'ready' => $ready,
+        ], $counts);
     }
 
     private function cleanupStatus(): array
@@ -55,10 +82,50 @@ final class OperationalStatusService
              WHERE metric_key = 'operations:cleanup_last_success_timestamp_seconds'"
         )->queryScalar();
 
+        $interval = max(60, (int)ApplicationRuntime::param('cleanupInterval', 3600));
+        $maxAge = $interval * self::CLEANUP_STALE_MULTIPLIER;
+        $lastSuccess = $timestamp === false ? 0 : (int)$timestamp;
+        $now = time();
+        $validTimestamp = $lastSuccess > 0 && $lastSuccess <= $now + self::CLOCK_SKEW_SECONDS;
+        $age = $validTimestamp ? max(0, $now - $lastSuccess) : null;
+        $ready = $age !== null && $age <= $maxAge;
+
         return [
-            'last_success_at' => $timestamp === false || (float)$timestamp <= 0
-                ? null
-                : Rfc3339::format(gmdate('Y-m-d H:i:s', (int)$timestamp) . '+00'),
+            'status' => $ready ? 'ready' : 'degraded',
+            'ready' => $ready,
+            'stale' => !$ready,
+            'last_success_at' => $lastSuccess > 0
+                ? Rfc3339::format(gmdate('Y-m-d H:i:s', $lastSuccess) . '+00')
+                : null,
+            'age_seconds' => $age,
+            'interval_seconds' => $interval,
+            'max_age_seconds' => $maxAge,
+        ];
+    }
+
+    private function unavailableSigningSummary(): array
+    {
+        return [
+            'status' => 'degraded',
+            'ready' => false,
+            'active' => 0,
+            'retiring' => 0,
+            'retired' => 0,
+        ];
+    }
+
+    private function unavailableCleanupStatus(): array
+    {
+        $interval = max(60, (int)ApplicationRuntime::param('cleanupInterval', 3600));
+
+        return [
+            'status' => 'degraded',
+            'ready' => false,
+            'stale' => true,
+            'last_success_at' => null,
+            'age_seconds' => null,
+            'interval_seconds' => $interval,
+            'max_age_seconds' => $interval * self::CLEANUP_STALE_MULTIPLIER,
         ];
     }
 }

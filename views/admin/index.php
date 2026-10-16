@@ -542,9 +542,9 @@ $this->title = 'SSO Admin';
         <button class="primary" @click="loadOperations">Refresh status</button>
         <div class="grid" v-if="operationalStatus.status">
           <div class="metric"><strong>Overall</strong><p class="muted">{{ operationalStatus.status }}</p></div>
-          <div class="metric"><strong>Database</strong><p class="muted">{{ operationalStatus.database?.ready ? 'ready' : 'unavailable' }}</p></div>
-          <div class="metric"><strong>Signing</strong><p class="muted">{{ operationalStatus.signing_keys?.ready ? 'ready' : 'degraded' }}</p></div>
-          <div class="metric"><strong>Last cleanup</strong><p class="muted">{{ operationalStatus.cleanup?.last_success_at || 'not recorded' }}</p></div>
+          <div class="metric"><strong>Database</strong><p class="muted">{{ operationalStatus.database?.status || 'degraded' }}</p></div>
+          <div class="metric"><strong>Signing</strong><p class="muted">{{ operationalStatus.signing_keys?.status || 'degraded' }}</p></div>
+          <div class="metric"><strong>Cleanup</strong><p class="muted">{{ operationalStatus.cleanup?.status || 'degraded' }} · {{ operationalStatus.cleanup?.last_success_at || 'not recorded' }}<template v-if="operationalStatus.cleanup?.age_seconds !== null && operationalStatus.cleanup?.age_seconds !== undefined"> · {{ operationalStatus.cleanup.age_seconds }}s ago</template></p></div>
           <div class="metric"><strong>Version</strong><p class="muted">{{ operationalStatus.version }} / {{ operationalStatus.environment }}</p></div>
         </div>
 

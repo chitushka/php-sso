@@ -4,6 +4,7 @@ namespace tests\Integration;
 
 use app\services\FederatedIdentityService;
 use app\services\AuditService;
+use app\services\CryptoService;
 use app\services\OidcService;
 use app\services\OperationalStatusService;
 use PHPUnit\Framework\TestCase;
@@ -86,6 +87,7 @@ final class AdminOperationsServiceTest extends TestCase
         $oidc->jwks();
         $rotated = $oidc->rotateSigningKey($actorId);
         $keys = $oidc->listSigningKeys();
+        $this->setCleanupTimestamp(time());
         $status = (new OperationalStatusService())->status();
 
         $this->assertSame('active', $rotated['status']);
@@ -93,8 +95,86 @@ final class AdminOperationsServiceTest extends TestCase
         $this->assertArrayNotHasKey('private_key_pem', $rotated);
         $this->assertArrayNotHasKey('public_key_pem', $rotated);
         $this->assertSame('ready', $status['status']);
+        $this->assertSame('ready', $status['database']['status']);
         $this->assertTrue($status['database']['ready']);
+        $this->assertSame('ready', $status['signing_keys']['status']);
         $this->assertTrue($status['signing_keys']['ready']);
+        $this->assertSame('ready', $status['cleanup']['status']);
+        $this->assertTrue($status['cleanup']['ready']);
+        $this->assertFalse($status['cleanup']['stale']);
+        $this->assertNotNull($status['cleanup']['last_success_at']);
+        $this->assertIsInt($status['cleanup']['age_seconds']);
+        $this->assertSame((int)Yii::$app->params['cleanupInterval'], $status['cleanup']['interval_seconds']);
+        $this->assertSame(
+            (int)Yii::$app->params['cleanupInterval'] * 2,
+            $status['cleanup']['max_age_seconds']
+        );
+    }
+
+    public function testOperationalStatusDegradesForStaleCleanupAndCorruptSigningKey(): void
+    {
+        $oidc = new OidcService();
+        $oidc->jwks();
+        $interval = (int)Yii::$app->params['cleanupInterval'];
+        $this->setCleanupTimestamp(time() - ($interval * 2) - 1);
+
+        $stale = (new OperationalStatusService())->status();
+
+        $this->assertSame('degraded', $stale['status']);
+        $this->assertTrue($stale['database']['ready']);
+        $this->assertTrue($stale['signing_keys']['ready']);
+        $this->assertFalse($stale['cleanup']['ready']);
+        $this->assertTrue($stale['cleanup']['stale']);
+        $this->assertGreaterThan($stale['cleanup']['max_age_seconds'], $stale['cleanup']['age_seconds']);
+
+        $this->setCleanupTimestamp(time());
+        Yii::$app->db->createCommand()->update(
+            'oidc_signing_keys',
+            ['private_key_pem' => (new CryptoService())->encrypt('not a private key')],
+            ['status' => 'active']
+        )->execute();
+
+        $corrupt = (new OperationalStatusService())->status();
+
+        $this->assertSame('degraded', $corrupt['status']);
+        $this->assertTrue($corrupt['database']['ready']);
+        $this->assertSame('degraded', $corrupt['signing_keys']['status']);
+        $this->assertFalse($corrupt['signing_keys']['ready']);
+        $this->assertTrue($corrupt['cleanup']['ready']);
+        $this->assertStringNotContainsString('private key', (string)json_encode($corrupt));
+    }
+
+    public function testOperationalStatusContainsSubsequentDatabaseFailure(): void
+    {
+        (new OidcService())->jwks();
+        $this->setCleanupTimestamp(time());
+        Yii::$app->db->createCommand('ALTER TABLE metric_counters RENAME TO metric_counters_unavailable')->execute();
+
+        $status = (new OperationalStatusService())->status();
+
+        $this->assertSame('degraded', $status['status']);
+        $this->assertSame(['status' => 'degraded', 'ready' => false], $status['database']);
+        $this->assertTrue($status['signing_keys']['ready']);
+        $this->assertSame('degraded', $status['cleanup']['status']);
+        $this->assertFalse($status['cleanup']['ready']);
+        $this->assertNull($status['cleanup']['last_success_at']);
+        $this->assertArrayNotHasKey('error', $status);
+    }
+
+    public function testOperationalStatusContainsSigningSummaryDatabaseFailure(): void
+    {
+        Yii::$app->db->createCommand(
+            'ALTER TABLE oidc_signing_keys RENAME TO oidc_signing_keys_unavailable'
+        )->execute();
+
+        $status = (new OperationalStatusService())->status();
+
+        $this->assertSame('degraded', $status['status']);
+        $this->assertSame(['status' => 'degraded', 'ready' => false], $status['database']);
+        $this->assertSame('degraded', $status['signing_keys']['status']);
+        $this->assertFalse($status['signing_keys']['ready']);
+        $this->assertSame('degraded', $status['cleanup']['status']);
+        $this->assertArrayNotHasKey('error', $status);
     }
 
     public function testSigningRotationAttributesMachinePrincipal(): void
@@ -126,6 +206,16 @@ final class AdminOperationsServiceTest extends TestCase
         } finally {
             AuditService::setCurrentActor(null);
         }
+    }
+
+    private function setCleanupTimestamp(int $timestamp): void
+    {
+        Yii::$app->db->createCommand(
+            "INSERT INTO metric_counters(metric_key, metric_value)
+             VALUES ('operations:cleanup_last_success_timestamp_seconds', :timestamp)
+             ON CONFLICT (metric_key) DO UPDATE SET metric_value = EXCLUDED.metric_value, updated_at = now()",
+            [':timestamp' => $timestamp]
+        )->execute();
     }
 
     private function fixtures(bool $withPassword, string $source, bool $withIdentity = true): array

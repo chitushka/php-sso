@@ -318,7 +318,13 @@ try {
     assertTrue($anonymousOperations['status'] === 401, 'operational status must require authentication');
     $operationalStatus = jsonRequest('GET', $baseUrl . '/api/v1/operations/status', [], $adminToken);
     assertTrue($operationalStatus['status'] === 200, 'admin must read operational status');
+    assertTrue(($operationalStatus['json']['status'] ?? '') === 'degraded', 'missing cleanup history must degrade operational status');
+    assertTrue(($operationalStatus['json']['database']['status'] ?? '') === 'ready', 'operational status must expose database component state');
     assertTrue(($operationalStatus['json']['database']['ready'] ?? false) === true, 'operational status must report database readiness');
+    assertTrue(($operationalStatus['json']['signing_keys']['status'] ?? '') === 'ready', 'operational status must verify the active signing key');
+    assertTrue(($operationalStatus['json']['cleanup']['status'] ?? '') === 'degraded', 'missing cleanup timestamp must be degraded');
+    assertTrue(($operationalStatus['json']['cleanup']['stale'] ?? false) === true, 'missing cleanup timestamp must be stale');
+    assertTrue(($operationalStatus['json']['cleanup']['interval_seconds'] ?? 0) > 0, 'operational status must expose cleanup interval');
     $rotatedSigningKey = jsonRequest(
         'POST',
         $baseUrl . '/api/v1/operations/signing-keys/rotate',
