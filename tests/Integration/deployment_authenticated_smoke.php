@@ -1,5 +1,7 @@
 <?php
 
+require_once dirname(__DIR__, 2) . '/scripts/ci/OpenApiValidator.php';
+
 defined('YII_DEBUG') or define('YII_DEBUG', false);
 defined('YII_ENV') or define('YII_ENV', 'prod');
 
@@ -158,6 +160,9 @@ $logoutRedirectUri = deploymentEnv('SSO_DEPLOYMENT_SMOKE_LOGOUT_REDIRECT_URI');
 $scope = deploymentEnv('SSO_DEPLOYMENT_SMOKE_SCOPE', false) ?: 'openid profile email';
 $grantConsent = deploymentEnvBool('SSO_DEPLOYMENT_SMOKE_GRANT_CONSENT');
 $tlsInsecure = deploymentEnvBool('SSO_TEST_TLS_INSECURE');
+$root = dirname(__DIR__, 2);
+$adminContract = new OpenApiValidator($root . '/contracts/openapi-admin.json');
+$oauthContract = new OpenApiValidator($root . '/contracts/openapi-oauth.json');
 
 deploymentAssert(parse_url($baseUrl, PHP_URL_SCHEME) === 'https', 'authenticated deployment smoke must use HTTPS');
 deploymentAssert(parse_url($expectedIssuer, PHP_URL_SCHEME) === 'https', 'expected issuer must use HTTPS');
@@ -189,19 +194,25 @@ $tokenEndpoint = deploymentTransportUrl($discovery['json']['token_endpoint'], $e
 $userinfoEndpoint = deploymentTransportUrl($discovery['json']['userinfo_endpoint'], $expectedIssuer, $baseUrl);
 $logoutEndpoint = deploymentTransportUrl($discovery['json']['end_session_endpoint'], $expectedIssuer, $baseUrl);
 
-$login = deploymentJsonRequest('POST', $baseUrl . '/api/v1/auth/login', $tlsInsecure, [
+$loginPayload = [
     'username' => $username,
     'password' => $password,
-]);
+];
+$adminContract->validateRequest('POST', '/api/v1/auth/login', 'application/json', $loginPayload);
+$login = deploymentJsonRequest('POST', $baseUrl . '/api/v1/auth/login', $tlsInsecure, $loginPayload);
 deploymentAssert($login['status'] === 200, 'local login must return HTTP 200');
+$adminContract->validateResponse('POST', '/api/v1/auth/login', $login['status'], $login['json']);
 if (($login['json']['mfa_required'] ?? false) === true) {
     deploymentAssert($mfaCode !== '', 'SSO_DEPLOYMENT_SMOKE_MFA_CODE is required for this user');
     deploymentAssert(is_string($login['json']['mfa_token'] ?? null), 'MFA login did not return mfa_token');
-    $login = deploymentJsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', $tlsInsecure, [
+    $mfaPayload = [
         'mfa_token' => $login['json']['mfa_token'],
         'code' => $mfaCode,
-    ]);
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/auth/mfa/verify', 'application/json', $mfaPayload);
+    $login = deploymentJsonRequest('POST', $baseUrl . '/api/v1/auth/mfa/verify', $tlsInsecure, $mfaPayload);
     deploymentAssert($login['status'] === 200, 'MFA verification must return HTTP 200');
+    $adminContract->validateResponse('POST', '/api/v1/auth/mfa/verify', $login['status'], $login['json']);
 }
 
 deploymentAssert(is_string($login['json']['access_token'] ?? null), 'login did not return access_token');
@@ -213,6 +224,7 @@ $me = deploymentRequest('GET', $baseUrl . '/api/v1/auth/me', $tlsInsecure, [
     'headers' => ['Authorization: Bearer ' . $accessToken, 'Accept: application/json'],
 ]);
 deploymentAssert($me['status'] === 200, '/api/v1/auth/me must return HTTP 200');
+$adminContract->validateResponse('GET', '/api/v1/auth/me', $me['status'], $me['json']);
 deploymentAssert(($me['json']['username'] ?? '') === $username, '/api/v1/auth/me returned another user');
 
 $suffix = bin2hex(random_bytes(8));
@@ -261,8 +273,10 @@ $tokenPayload = [
     'code_verifier' => $verifier,
 ];
 $tokenHeaders = deploymentClientAuthentication($clientId, $clientSecret, $tokenPayload);
+$oauthContract->validateRequest('POST', '/oauth2/token', 'application/x-www-form-urlencoded', $tokenPayload);
 $token = deploymentFormRequest($tokenEndpoint, $tlsInsecure, $tokenPayload, $tokenHeaders);
 deploymentAssert($token['status'] === 200, 'authorization code exchange must return HTTP 200');
+$oauthContract->validateResponse('POST', '/oauth2/token', $token['status'], $token['json']);
 foreach (['access_token', 'refresh_token', 'id_token'] as $field) {
     deploymentAssert(is_string($token['json'][$field] ?? null), 'token response is missing ' . $field);
 }
@@ -271,6 +285,7 @@ $userinfo = deploymentRequest('GET', $userinfoEndpoint, $tlsInsecure, [
     'headers' => ['Authorization: Bearer ' . $token['json']['access_token'], 'Accept: application/json'],
 ]);
 deploymentAssert($userinfo['status'] === 200, 'UserInfo must return HTTP 200');
+$oauthContract->validateResponse('GET', '/oauth2/userinfo', $userinfo['status'], $userinfo['json']);
 deploymentAssert(is_string($userinfo['json']['sub'] ?? null), 'UserInfo did not return sub');
 
 $refreshPayload = [
@@ -278,8 +293,10 @@ $refreshPayload = [
     'refresh_token' => $token['json']['refresh_token'],
 ];
 $refreshHeaders = deploymentClientAuthentication($clientId, $clientSecret, $refreshPayload);
+$oauthContract->validateRequest('POST', '/oauth2/token', 'application/x-www-form-urlencoded', $refreshPayload);
 $refresh = deploymentFormRequest($tokenEndpoint, $tlsInsecure, $refreshPayload, $refreshHeaders);
 deploymentAssert($refresh['status'] === 200, 'refresh token exchange must return HTTP 200');
+$oauthContract->validateResponse('POST', '/oauth2/token', $refresh['status'], $refresh['json']);
 deploymentAssert(is_string($refresh['json']['access_token'] ?? null), 'refresh response is missing access_token');
 deploymentAssert(is_string($refresh['json']['refresh_token'] ?? null), 'refresh response is missing refresh_token');
 deploymentAssert($refresh['json']['refresh_token'] !== $token['json']['refresh_token'], 'refresh token was not rotated');

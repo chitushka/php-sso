@@ -1,8 +1,13 @@
 <?php
 
+require_once dirname(__DIR__, 2) . '/scripts/ci/OpenApiValidator.php';
+
 $baseUrl = rtrim((string)(getenv('SSO_TEST_BASE_URL') ?: getenv('SSO_ISSUER')), '/');
 $expectedIssuer = rtrim((string)(getenv('SSO_TEST_EXPECTED_ISSUER') ?: getenv('SSO_ISSUER')), '/');
 $tlsInsecure = filter_var(getenv('SSO_TEST_TLS_INSECURE') ?: false, FILTER_VALIDATE_BOOLEAN);
+$root = dirname(__DIR__, 2);
+$adminContract = new OpenApiValidator($root . '/contracts/openapi-admin.json');
+$oauthContract = new OpenApiValidator($root . '/contracts/openapi-oauth.json');
 
 function failSmoke(string $message): void
 {
@@ -111,9 +116,11 @@ $version = smokeJson($baseUrl, '/health/version', $tlsInsecure);
 assertSmoke(is_string($version['version'] ?? null) && $version['version'] !== '', 'version must be non-empty');
 
 $bootstrap = smokeJson($baseUrl, '/api/v1/bootstrap/status', $tlsInsecure);
+$adminContract->validateResponse('GET', '/api/v1/bootstrap/status', 200, $bootstrap);
 assertSmoke(is_bool($bootstrap['initialized'] ?? null), 'bootstrap status must contain a boolean initialized field');
 
 $providers = smokeJson($baseUrl, '/api/v1/broker/providers', $tlsInsecure);
+$adminContract->validateResponse('GET', '/api/v1/broker/providers', 200, $providers);
 foreach ($providers as $provider) {
     assertSmoke(is_array($provider), 'public identity provider must be an object');
     assertSmoke(isset($provider['code'], $provider['name'], $provider['type']), 'public provider fields are incomplete');
@@ -121,6 +128,7 @@ foreach ($providers as $provider) {
 }
 
 $discovery = smokeJson($baseUrl, '/.well-known/openid-configuration', $tlsInsecure);
+$oauthContract->validateResponse('GET', '/.well-known/openid-configuration', 200, $discovery);
 assertSmoke(($discovery['issuer'] ?? '') === $expectedIssuer, 'OIDC issuer differs from the expected issuer');
 
 $endpointPaths = [
@@ -143,6 +151,7 @@ assertSmoke(in_array('code', $discovery['response_types_supported'] ?? [], true)
 assertSmoke(in_array('RS256', $discovery['id_token_signing_alg_values_supported'] ?? [], true), 'RS256 is missing');
 
 $jwks = smokeJson($baseUrl, '/.well-known/jwks.json', $tlsInsecure);
+$oauthContract->validateResponse('GET', '/.well-known/jwks.json', 200, $jwks);
 assertSmoke(isset($jwks['keys']) && is_array($jwks['keys']) && count($jwks['keys']) > 0, 'JWKS must publish keys');
 $activeSigningKeyFound = false;
 foreach ($jwks['keys'] as $key) {

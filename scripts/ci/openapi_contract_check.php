@@ -45,6 +45,32 @@ foreach ($documents as $file) {
     if (!is_array($document['paths'] ?? null) || $document['paths'] === []) {
         throw new RuntimeException(basename($file) . ' has no paths');
     }
+    $securitySchemes = $document['components']['securitySchemes'] ?? [];
+    if (!is_array($securitySchemes)) {
+        throw new RuntimeException(basename($file) . ' has invalid securitySchemes');
+    }
+
+    $validateSecurity = static function ($requirements, string $location) use ($securitySchemes): void {
+        if (!is_array($requirements)) {
+            throw new RuntimeException('Invalid security requirements at ' . $location);
+        }
+        foreach ($requirements as $requirement) {
+            if (!is_array($requirement)) {
+                throw new RuntimeException('Invalid security requirement at ' . $location);
+            }
+            foreach ($requirement as $scheme => $scopes) {
+                if (!isset($securitySchemes[$scheme])) {
+                    throw new RuntimeException('Unknown security scheme ' . $scheme . ' at ' . $location);
+                }
+                if (!is_array($scopes)) {
+                    throw new RuntimeException('Security scopes must be an array at ' . $location);
+                }
+            }
+        }
+    };
+    if (array_key_exists('security', $document)) {
+        $validateSecurity($document['security'], basename($file));
+    }
 
     $walk = static function ($value) use (&$walk, $document, $resolvePointer): void {
         if (!is_array($value)) {
@@ -77,6 +103,26 @@ foreach ($documents as $file) {
             }
             if (!is_array($operation['responses'] ?? null) || $operation['responses'] === []) {
                 throw new RuntimeException('Missing responses at ' . strtoupper($method) . ' ' . $path);
+            }
+            $location = strtoupper($method) . ' ' . $path;
+            if (array_key_exists('security', $operation)) {
+                $validateSecurity($operation['security'], $location);
+            }
+            foreach ($operation['responses'] as $status => $response) {
+                if ($status !== 'default' && preg_match('/^[1-5](?:\d{2}|XX)$/', (string)$status) !== 1) {
+                    throw new RuntimeException('Invalid response status ' . $status . ' at ' . $location);
+                }
+                if (isset($response['$ref'])) {
+                    $response = $resolvePointer($document, $response['$ref']);
+                }
+                if (!is_array($response) || !is_string($response['description'] ?? null)) {
+                    throw new RuntimeException('Invalid response object for status ' . $status . ' at ' . $location);
+                }
+                foreach ($response['content'] ?? [] as $mediaType => $media) {
+                    if (!is_array($media) || !is_array($media['schema'] ?? null)) {
+                        throw new RuntimeException('Missing schema for ' . $mediaType . ' response ' . $status . ' at ' . $location);
+                    }
+                }
             }
             $parameters = array_merge($pathParameters, $operation['parameters'] ?? []);
             foreach ($matches[1] as $name) {
