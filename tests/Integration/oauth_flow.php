@@ -559,6 +559,138 @@ try {
         'sso_csrf' => $login['cookies']['sso_csrf'],
     ];
 
+    $accountUsername = 'itest-account-' . $suffix;
+    $accountPassword = 'AccountPass123!';
+    $resetPassword = 'ResetPass123!';
+    $changedPassword = 'ChangedPass123!';
+    $accountId = createUser($db, $accountUsername, $accountPassword);
+    $createdUserIds[] = $accountId;
+
+    $accountLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $accountUsername,
+        'password' => $accountPassword,
+    ]);
+    assertTrue($accountLogin['status'] === 200, 'account contract login must return 200');
+    $accountToken = $accountLogin['json']['access_token'];
+
+    $profilePayload = [
+        'first_name' => ' Ada ',
+        'last_name' => ' Lovelace ',
+        'attributes' => ['department' => 'Security', 'level' => '3'],
+    ];
+    $adminContract->validateRequest('PUT', '/api/v1/auth/profile', 'application/json', $profilePayload);
+    $profile = jsonRequest('PUT', $baseUrl . '/api/v1/auth/profile', $profilePayload, $accountToken);
+    assertTrue($profile['status'] === 200, 'profile update must return 200');
+    $adminContract->validateResponse('PUT', '/api/v1/auth/profile', $profile['status'], $profile['json']);
+    assertTrue(($profile['json']['first_name'] ?? '') === 'Ada', 'profile update must trim first_name');
+    assertTrue(($profile['json']['last_name'] ?? '') === 'Lovelace', 'profile update must trim last_name');
+
+    $db->createCommand()->update('users', ['email_verified' => false], ['id' => $accountId])->execute();
+    $emailRequest = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/auth/email/request',
+        [],
+        $accountToken
+    );
+    assertTrue($emailRequest['status'] === 500, 'email request without configured SMTP must return 500');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/email/request',
+        $emailRequest['status'],
+        $emailRequest['json']
+    );
+
+    $emailToken = 'verify-' . bin2hex(random_bytes(16));
+    $db->createCommand(
+        "INSERT INTO one_time_tokens(user_id,purpose,token_hash,expires_at)
+         VALUES (:user_id,'email_verify',:token_hash,now() + interval '1 hour')",
+        [':user_id' => $accountId, ':token_hash' => hash('sha256', $emailToken)]
+    )->execute();
+    $emailVerifyPayload = ['token' => $emailToken];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/auth/email/verify',
+        'application/json',
+        $emailVerifyPayload
+    );
+    $emailVerify = jsonRequest('POST', $baseUrl . '/api/v1/auth/email/verify', $emailVerifyPayload);
+    assertTrue($emailVerify['status'] === 200, 'email verification must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/email/verify',
+        $emailVerify['status'],
+        $emailVerify['json']
+    );
+
+    $forgotPayload = ['login' => $accountUsername];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/auth/password/forgot',
+        'application/json',
+        $forgotPayload
+    );
+    $forgot = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/forgot', $forgotPayload);
+    assertTrue($forgot['status'] === 200, 'password forgot must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/password/forgot',
+        $forgot['status'],
+        $forgot['json']
+    );
+
+    $resetToken = 'reset-' . bin2hex(random_bytes(16));
+    $db->createCommand(
+        "INSERT INTO one_time_tokens(user_id,purpose,token_hash,expires_at)
+         VALUES (:user_id,'password_reset',:token_hash,now() + interval '1 hour')",
+        [':user_id' => $accountId, ':token_hash' => hash('sha256', $resetToken)]
+    )->execute();
+    $resetPayload = ['token' => $resetToken, 'password' => $resetPassword];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/auth/password/reset',
+        'application/json',
+        $resetPayload
+    );
+    $reset = jsonRequest('POST', $baseUrl . '/api/v1/auth/password/reset', $resetPayload);
+    assertTrue($reset['status'] === 200, 'password reset must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/password/reset',
+        $reset['status'],
+        $reset['json']
+    );
+
+    $accountLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+        'username' => $accountUsername,
+        'password' => $resetPassword,
+    ]);
+    assertTrue($accountLogin['status'] === 200, 'login after password reset must return 200');
+    $accountToken = $accountLogin['json']['access_token'];
+
+    $changePasswordPayload = [
+        'old_password' => $resetPassword,
+        'new_password' => $changedPassword,
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/auth/password/change',
+        'application/json',
+        $changePasswordPayload
+    );
+    $passwordChange = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/auth/password/change',
+        $changePasswordPayload,
+        $accountToken
+    );
+    assertTrue($passwordChange['status'] === 200, 'password change must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/password/change',
+        $passwordChange['status'],
+        $passwordChange['json']
+    );
+
     $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
     assertTrue($backchannelReset['status'] === 204, 'back-channel logout fixture must be available');
 
