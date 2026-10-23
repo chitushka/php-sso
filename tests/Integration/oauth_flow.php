@@ -5,6 +5,7 @@ defined('YII_ENV') or define('YII_ENV', 'test');
 
 require __DIR__ . '/../../vendor/autoload.php';
 require __DIR__ . '/../../vendor/yiisoft/yii2/Yii.php';
+require_once __DIR__ . '/../../scripts/ci/OpenApiValidator.php';
 
 $config = require __DIR__ . '/../../config/console.php';
 $app = new yii\console\Application($config);
@@ -23,6 +24,7 @@ $createdProviderIds = [];
 $createdLdapProviderIds = [];
 $createdAuditActions = [];
 $createdAuditTargets = [];
+$adminContract = new OpenApiValidator(__DIR__ . '/../../contracts/openapi-admin.json');
 
 function failTest(string $message): void
 {
@@ -458,14 +460,23 @@ try {
     assertTrue($unknownResetField['status'] === 400, 'password reset JSON with unknown field must return 400');
     assertTrue(($unknownResetField['json']['error'] ?? '') === 'invalid json body', 'unknown password reset field must match API contract');
 
-    $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+    $secondLoginPayload = [
         'username' => $adminUsername,
         'password' => $password,
-    ]);
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/auth/login', 'application/json', $secondLoginPayload);
+    $secondLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', $secondLoginPayload);
     assertTrue($secondLogin['status'] === 200, 'second admin login must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/auth/login',
+        $secondLogin['status'],
+        $secondLogin['json']
+    );
 
     $sessions = jsonRequest('GET', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
     assertTrue($sessions['status'] === 200, 'session list must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/auth/sessions', $sessions['status'], $sessions['json']);
     assertTrue(count($sessions['json'] ?? []) === 2, 'session list must include both active sessions');
     assertTrue(($sessions['json'][0]['user_id'] ?? '') === $adminId, 'session list must include contract-compliant user_id');
     assertTrue(!array_key_exists('token_hash', $sessions['json'][0]), 'session list must not expose token hash');
@@ -481,6 +492,12 @@ try {
 
     $invalidSession = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions/not-a-uuid', [], $adminToken);
     assertTrue($invalidSession['status'] === 400, 'invalid session id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/auth/sessions/{id}',
+        $invalidSession['status'],
+        $invalidSession['json']
+    );
     assertTrue(($invalidSession['json']['error'] ?? '') === 'invalid session id', 'invalid session id must match API contract');
 
     $revokedSession = jsonRequest(
@@ -490,24 +507,52 @@ try {
         $adminToken
     );
     assertTrue($revokedSession['status'] === 200, 'owned session revoke must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/auth/sessions/{id}',
+        $revokedSession['status'],
+        $revokedSession['json']
+    );
     assertTrue(($revokedSession['json']['status'] ?? '') === 'revoked', 'owned session revoke must return revoked status');
 
     $remainingSessions = jsonRequest('GET', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
+    assertTrue($remainingSessions['status'] === 200, 'remaining session list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/auth/sessions',
+        $remainingSessions['status'],
+        $remainingSessions['json']
+    );
     assertTrue(count($remainingSessions['json'] ?? []) === 1, 'revoked session must disappear from active session list');
 
     $revokeAll = jsonRequest('DELETE', $baseUrl . '/api/v1/auth/sessions', [], $adminToken);
     assertTrue($revokeAll['status'] === 200, 'revoke all sessions must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/auth/sessions',
+        $revokeAll['status'],
+        $revokeAll['json']
+    );
     assertTrue(($revokeAll['json']['status'] ?? '') === 'all_revoked', 'revoke all sessions must return all_revoked status');
 
     $revokedToken = jsonRequest('GET', $baseUrl . '/api/v1/auth/me', [], $adminToken);
     assertTrue($revokedToken['status'] === 401, 'revoke all sessions must invalidate existing bearer token');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/auth/me',
+        $revokedToken['status'],
+        $revokedToken['json']
+    );
     assertTrue(($revokedToken['json']['error'] ?? '') === 'token revoked', 'revoked first-party token must match API contract');
 
-    $login = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
+    $reloginPayload = [
         'username' => $adminUsername,
         'password' => $password,
-    ]);
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/auth/login', 'application/json', $reloginPayload);
+    $login = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', $reloginPayload);
     assertTrue($login['status'] === 200, 'admin relogin after revoke all must return 200');
+    $adminContract->validateResponse('POST', '/api/v1/auth/login', $login['status'], $login['json']);
     $adminToken = $login['json']['access_token'];
     $sessionCookie = [
         'sso_session' => $login['cookies']['sso_session'],
