@@ -85,7 +85,7 @@ final class OpenApiValidator
             throw new RuntimeException($pointer . ' has an invalid type');
         }
 
-        if (($schema['type'] ?? null) === 'object' && is_array($value)) {
+        if ($this->hasType($schema, 'object') && is_array($value)) {
             if ($value !== [] && array_is_list($value)) {
                 throw new RuntimeException($pointer . ' must be an object');
             }
@@ -110,7 +110,7 @@ final class OpenApiValidator
             }
         }
 
-        if (($schema['type'] ?? null) === 'array' && is_array($value)) {
+        if ($this->hasType($schema, 'array') && is_array($value)) {
             if (!array_is_list($value)) {
                 throw new RuntimeException($pointer . ' must be an array');
             }
@@ -155,6 +155,11 @@ final class OpenApiValidator
             }
         }
         return false;
+    }
+
+    private function hasType(array $schema, string $expected): bool
+    {
+        return in_array($expected, (array)($schema['type'] ?? []), true);
     }
 
     private function resolve(array $value): array
