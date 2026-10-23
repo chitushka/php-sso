@@ -59,6 +59,12 @@ final class OpenApiValidator
     private function validate($value, array $schema, string $pointer): void
     {
         $schema = $this->resolve($schema);
+        if (isset($schema['allOf'])) {
+            foreach ($schema['allOf'] as $candidate) {
+                $this->validate($value, $candidate, $pointer);
+            }
+            unset($schema['allOf']);
+        }
         if (isset($schema['oneOf'])) {
             $matches = 0;
             foreach ($schema['oneOf'] as $candidate) {

@@ -16,6 +16,15 @@ final class OpenApiValidatorTest extends TestCase
         $this->oauth = new OpenApiValidator($root . '/contracts/openapi-oauth.json');
     }
 
+    public function testAdminContractHasNoGenericPayloadSchemas(): void
+    {
+        $contract = (string)file_get_contents(dirname(__DIR__, 2) . '/contracts/openapi-admin.json');
+
+        foreach (['GenericObject', 'JsonObject', 'JsonSuccess', 'JsonArray', 'JsonPage'] as $name) {
+            $this->assertStringNotContainsString('"' . $name . '"', $contract);
+        }
+    }
+
     public function testValidatesConcreteResponseAndRequestFixtures(): void
     {
         $this->admin->validateResponse('GET', '/api/v1/bootstrap/status', 200, ['initialized' => true]);
@@ -237,6 +246,171 @@ final class OpenApiValidatorTest extends TestCase
                     'created_at' => '2026-10-23T12:00:00+00:00',
                 ]],
             ],
+        ];
+    }
+
+    public function testValidatesProviderAndOAuthClientFixtures(): void
+    {
+        $this->admin->validateRequest('POST', '/api/v1/ldap/providers', 'application/json', [
+            'name' => 'Corporate LDAP',
+            'host' => 'ldap.example.org',
+            'bind_dn' => 'cn=service,dc=example,dc=org',
+            'bind_password' => 'secret',
+            'base_dn' => 'dc=example,dc=org',
+        ]);
+        $this->admin->validateRequest('POST', '/api/v1/identity-providers', 'application/json', [
+            'code' => 'corporate',
+            'name' => 'Corporate IdP',
+            'client_id' => 'sso',
+            'authorize_url' => 'https://idp.example.org/authorize',
+            'token_url' => 'https://idp.example.org/token',
+            'userinfo_url' => 'https://idp.example.org/userinfo',
+        ]);
+        $this->admin->validateRequest('POST', '/api/v1/oauth/clients', 'application/json', [
+            'client_id' => 'portal',
+            'name' => 'Portal',
+            'type' => 'public',
+            'redirect_uris' => ['https://portal.example.org/callback'],
+        ]);
+        $this->admin->validateResponse('GET', '/api/v1/ldap/providers', 200, [
+            'items' => [$this->ldapProviderFixture()],
+            'pagination' => ['limit' => 50, 'offset' => 0, 'count' => 1],
+        ]);
+        $this->admin->validateResponse('GET', '/api/v1/identity-providers', 200, [
+            'items' => [$this->identityProviderFixture()],
+            'pagination' => ['limit' => 50, 'offset' => 0, 'count' => 1],
+        ]);
+        $this->admin->validateResponse('POST', '/api/v1/oauth/clients', 201, [
+            'client' => $this->oauthClientFixture('public'),
+        ]);
+        $rotated = $this->oauthClientFixture('confidential');
+        $rotated['client_secret'] = 'one-time-secret';
+        $this->admin->validateResponse('POST', '/api/v1/oauth/clients/{id}/rotate-secret', 200, $rotated);
+
+        $this->addToAssertionCount(7);
+    }
+
+    /**
+     * @dataProvider invalidProviderAndOAuthClientPayloads
+     */
+    public function testRejectsProviderAndOAuthClientContractDrift(
+        string $kind,
+        string $method,
+        string $path,
+        int $status,
+        array $payload
+    ): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        if ($kind === 'request') {
+            $this->admin->validateRequest($method, $path, 'application/json', $payload);
+            return;
+        }
+        $this->admin->validateResponse($method, $path, $status, $payload);
+    }
+
+    public function invalidProviderAndOAuthClientPayloads(): array
+    {
+        $ldap = $this->ldapProviderFixture();
+        $ldap['bind_password'] = 'must-not-leak';
+        $identityProvider = $this->identityProviderFixture();
+        $identityProvider['client_secret'] = 'must-not-leak';
+        $client = $this->oauthClientFixture('confidential');
+        $client['client_secret_hash'] = 'must-not-leak';
+
+        return [
+            'LDAP create missing secret' => ['request', 'POST', '/api/v1/ldap/providers', 0, [
+                'name' => 'Corporate LDAP',
+                'host' => 'ldap.example.org',
+                'bind_dn' => 'cn=service,dc=example,dc=org',
+                'base_dn' => 'dc=example,dc=org',
+            ]],
+            'IdP create missing endpoint' => ['request', 'POST', '/api/v1/identity-providers', 0, [
+                'code' => 'corporate',
+                'name' => 'Corporate IdP',
+                'client_id' => 'sso',
+                'authorize_url' => 'https://idp.example.org/authorize',
+                'token_url' => 'https://idp.example.org/token',
+            ]],
+            'OAuth client create missing name' => ['request', 'POST', '/api/v1/oauth/clients', 0, [
+                'client_id' => 'portal',
+            ]],
+            'LDAP bind password leak' => ['response', 'POST', '/api/v1/ldap/providers', 201, $ldap],
+            'IdP client secret leak' => [
+                'response',
+                'POST',
+                '/api/v1/identity-providers',
+                201,
+                $identityProvider,
+            ],
+            'OAuth client hash leak' => ['response', 'GET', '/api/v1/oauth/clients/{id}', 200, $client],
+            'rotated secret missing' => [
+                'response',
+                'POST',
+                '/api/v1/oauth/clients/{id}/rotate-secret',
+                200,
+                $this->oauthClientFixture('confidential'),
+            ],
+        ];
+    }
+
+    private function ldapProviderFixture(): array
+    {
+        return [
+            'id' => '550e8400-e29b-41d4-a716-446655440010',
+            'name' => 'Corporate LDAP',
+            'host' => 'ldap.example.org',
+            'port' => 389,
+            'use_tls' => false,
+            'start_tls' => true,
+            'bind_dn' => 'cn=service,dc=example,dc=org',
+            'base_dn' => 'dc=example,dc=org',
+            'user_filter' => '(uid={username})',
+            'username_attribute' => 'uid',
+            'email_attribute' => 'mail',
+            'display_name_attribute' => 'displayName',
+            'group_attribute' => 'memberOf',
+            'enabled' => true,
+            'created_at' => '2026-10-22T12:00:00+00:00',
+            'updated_at' => '2026-10-23T12:00:00+00:00',
+        ];
+    }
+
+    private function identityProviderFixture(): array
+    {
+        return [
+            'id' => '550e8400-e29b-41d4-a716-446655440011',
+            'code' => 'corporate',
+            'name' => 'Corporate IdP',
+            'type' => 'oidc',
+            'client_id' => 'sso',
+            'authorize_url' => 'https://idp.example.org/authorize',
+            'token_url' => 'https://idp.example.org/token',
+            'userinfo_url' => 'https://idp.example.org/userinfo',
+            'scopes' => 'openid profile email',
+            'enabled' => true,
+            'created_at' => '2026-10-22T12:00:00+00:00',
+            'updated_at' => '2026-10-23T12:00:00+00:00',
+        ];
+    }
+
+    private function oauthClientFixture(string $type): array
+    {
+        return [
+            'id' => '550e8400-e29b-41d4-a716-446655440012',
+            'client_id' => 'portal',
+            'name' => 'Portal',
+            'type' => $type,
+            'redirect_uris' => ['https://portal.example.org/callback'],
+            'allowed_scopes' => ['openid', 'profile'],
+            'post_logout_redirect_uris' => ['https://portal.example.org/logout'],
+            'backchannel_logout_uri' => '',
+            'skip_consent' => false,
+            'allow_loopback_redirects' => false,
+            'enabled' => true,
+            'created_at' => '2026-10-22T12:00:00+00:00',
+            'updated_at' => '2026-10-23T12:00:00+00:00',
         ];
     }
 
