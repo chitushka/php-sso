@@ -11,7 +11,7 @@
 
 ### 1. Сделать OpenAPI действительно машиночитаемым контрактом
 
-- После contract-среза account/session/MFA ещё 30 ответов используют общий `JsonSuccess`, 3 request body — `JsonObject`, 7 списков — `JsonPage` и 5 — `JsonArray`; заменить их отдельными schemas для admin resources, inputs и pages с точными required/nullable/additionalProperties.
+- После contract-срезов account/session/MFA и users/RBAC/federation ещё 14 ответов используют общий `JsonSuccess`, 3 request body — `JsonObject` и 4 списка — `JsonPage`; заменить их отдельными schemas для оставшихся LDAP, identity provider и OAuth client resources, inputs и pages с точными required/nullable/additionalProperties.
 - Дополнить оставшиеся операции полным применимым набором `400/401/403/404/409/429/500`; статическая проверка уже валидирует формат status codes, response content schemas и ссылки на OAuth security schemes.
 - Расширить OpenAPI-валидацию реальных HTTP-ответов и request fixtures с публичного bootstrap/provider, login/MFA, `/auth/me`, token, UserInfo, Discovery и JWKS на остальные integration-сценарии.
 

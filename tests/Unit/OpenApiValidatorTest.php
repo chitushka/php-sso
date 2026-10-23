@@ -125,6 +125,121 @@ final class OpenApiValidatorTest extends TestCase
         ];
     }
 
+    public function testValidatesUserAndRbacFixtures(): void
+    {
+        $this->admin->validateRequest('POST', '/api/v1/users', 'application/json', [
+            'username' => 'operator',
+            'email' => 'operator@example.org',
+            'password' => 'strong-password',
+            'attributes' => ['department' => 'security'],
+        ]);
+        $this->admin->validateRequest('POST', '/api/v1/roles', 'application/json', [
+            'code' => 'auditor',
+            'name' => 'Auditor',
+        ]);
+        $this->admin->validateRequest(
+            'POST',
+            '/api/v1/roles/{roleID}/permissions',
+            'application/json',
+            ['permission_id' => '550e8400-e29b-41d4-a716-446655440002']
+        );
+        $this->admin->validateResponse('GET', '/api/v1/roles', 200, [
+            'items' => [[
+                'id' => '550e8400-e29b-41d4-a716-446655440000',
+                'code' => 'auditor',
+                'name' => 'Auditor',
+                'created_at' => '2026-10-22T12:00:00+00:00',
+                'updated_at' => '2026-10-23T12:00:00+00:00',
+            ]],
+            'pagination' => ['limit' => 50, 'offset' => 0, 'count' => 1],
+        ]);
+        $this->admin->validateResponse(
+            'GET',
+            '/api/v1/users/{userID}/federated-identities',
+            200,
+            [[
+                'provider_id' => '550e8400-e29b-41d4-a716-446655440003',
+                'provider_code' => 'corporate',
+                'provider_name' => 'Corporate IdP',
+                'external_subject' => 'subject-1',
+                'email' => 'operator@example.org',
+                'created_at' => '2026-10-23T12:00:00+00:00',
+            ]]
+        );
+
+        $this->addToAssertionCount(5);
+    }
+
+    /**
+     * @dataProvider invalidUserAndRbacPayloads
+     */
+    public function testRejectsUserAndRbacContractDrift(
+        string $kind,
+        string $method,
+        string $path,
+        int $status,
+        array $payload
+    ): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        if ($kind === 'request') {
+            $this->admin->validateRequest($method, $path, 'application/json', $payload);
+            return;
+        }
+        $this->admin->validateResponse($method, $path, $status, $payload);
+    }
+
+    public function invalidUserAndRbacPayloads(): array
+    {
+        return [
+            'user create missing password' => ['request', 'POST', '/api/v1/users', 0, [
+                'username' => 'operator',
+                'email' => 'operator@example.org',
+            ]],
+            'user create secret field' => ['request', 'POST', '/api/v1/users', 0, [
+                'username' => 'operator',
+                'email' => 'operator@example.org',
+                'password' => 'strong-password',
+                'password_hash' => 'secret',
+            ]],
+            'role create missing code' => ['request', 'POST', '/api/v1/roles', 0, [
+                'name' => 'Auditor',
+            ]],
+            'wrong assignment field' => [
+                'request',
+                'POST',
+                '/api/v1/roles/{roleID}/permissions',
+                0,
+                ['role_id' => '550e8400-e29b-41d4-a716-446655440002'],
+            ],
+            'role page secret field' => ['response', 'GET', '/api/v1/roles', 200, [
+                'items' => [[
+                    'id' => '550e8400-e29b-41d4-a716-446655440000',
+                    'code' => 'auditor',
+                    'name' => 'Auditor',
+                    'created_at' => '2026-10-22T12:00:00+00:00',
+                    'updated_at' => '2026-10-23T12:00:00+00:00',
+                    'internal' => true,
+                ]],
+                'pagination' => ['limit' => 50, 'offset' => 0, 'count' => 1],
+            ]],
+            'federated identity missing provider' => [
+                'response',
+                'GET',
+                '/api/v1/users/{userID}/federated-identities',
+                200,
+                [[
+                    'provider_code' => 'corporate',
+                    'provider_name' => 'Corporate IdP',
+                    'external_subject' => 'subject-1',
+                    'email' => 'operator@example.org',
+                    'created_at' => '2026-10-23T12:00:00+00:00',
+                ]],
+            ],
+        ];
+    }
+
     /**
      * @dataProvider invalidBootstrapResponses
      */
