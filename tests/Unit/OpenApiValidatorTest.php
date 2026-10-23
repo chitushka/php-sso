@@ -62,6 +62,39 @@ final class OpenApiValidatorTest extends TestCase
         $this->addToAssertionCount(8);
     }
 
+    public function testValidatesStrictConsentFixtures(): void
+    {
+        $this->oauth->validateResponse('GET', '/oauth2/consent', 200, [
+            'client_id' => 'portal',
+            'client_name' => 'Portal',
+            'requested_scopes' => ['openid', 'profile'],
+            'granted_scopes' => ['openid'],
+        ]);
+        $this->oauth->validateRequest('POST', '/oauth2/consent', 'application/json', [
+            'client_id' => 'portal',
+            'scope' => 'openid profile',
+        ]);
+        $this->oauth->validateResponse('POST', '/oauth2/consent', 200, ['status' => 'granted']);
+        $this->oauth->validateResponse('POST', '/oauth2/consent', 403, [
+            'error' => 'csrf validation failed',
+            'code' => 'csrf_validation_failed',
+        ]);
+
+        $this->addToAssertionCount(4);
+    }
+
+    public function testRejectsConsentResponseDrift(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        $this->oauth->validateResponse('GET', '/oauth2/consent', 200, [
+            'client_id' => 'portal',
+            'client_name' => 'Portal',
+            'requested_scopes' => ['openid'],
+            'scopes' => ['openid'],
+        ]);
+    }
+
     public function testValidatesAccountRequestAndResponseFixtures(): void
     {
         $this->admin->validateRequest('POST', '/api/v1/auth/password/reset', 'application/json', [

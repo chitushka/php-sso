@@ -25,6 +25,7 @@ $createdLdapProviderIds = [];
 $createdAuditActions = [];
 $createdAuditTargets = [];
 $adminContract = new OpenApiValidator(__DIR__ . '/../../contracts/openapi-admin.json');
+$oauthContract = new OpenApiValidator(__DIR__ . '/../../contracts/openapi-oauth.json');
 
 function failTest(string $message): void
 {
@@ -1194,6 +1195,7 @@ try {
     $consentClient['json'] = $consentClient['json']['client'];
     $createdClientIds[] = $consentClient['json']['id'];
     $createdAuditTargets[] = ['action' => 'consent_granted', 'target_id' => $consentClient['json']['client_id']];
+    $createdAuditTargets[] = ['action' => 'consent_revoked', 'target_id' => $consentClient['json']['client_id']];
 
     $consentAuthorizeUrl = $baseUrl . '/oauth2/authorize?' . http_build_query([
         'response_type' => 'code',
@@ -1217,6 +1219,12 @@ try {
     ]);
     $anonymousConsentInfo = httpRequest('GET', $consentInfoUrl, ['headers' => ['Accept: application/json']]);
     assertOAuthError($anonymousConsentInfo, 401, 'login_required', 'anonymous consent info');
+    $oauthContract->validateResponse(
+        'GET',
+        '/oauth2/consent',
+        $anonymousConsentInfo['status'],
+        $anonymousConsentInfo['json']
+    );
     assertTrue(($anonymousConsentInfo['json']['error_description'] ?? '') === 'no active session', 'anonymous consent info must match OAuth error contract');
 
     $unknownConsentClient = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
@@ -1224,6 +1232,12 @@ try {
         'scope' => 'openid',
     ]), ['headers' => ['Accept: application/json'], 'cookies' => $sessionCookie]);
     assertOAuthError($unknownConsentClient, 400, 'invalid_request', 'unknown consent client');
+    $oauthContract->validateResponse(
+        'GET',
+        '/oauth2/consent',
+        $unknownConsentClient['status'],
+        $unknownConsentClient['json']
+    );
     assertTrue(($unknownConsentClient['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown consent client must match OAuth error contract');
 
     $invalidConsentScope = httpRequest('GET', $baseUrl . '/oauth2/consent?' . http_build_query([
@@ -1231,12 +1245,19 @@ try {
         'scope' => 'admin',
     ]), ['headers' => ['Accept: application/json'], 'cookies' => $sessionCookie]);
     assertOAuthError($invalidConsentScope, 400, 'invalid_scope', 'invalid consent info scope');
+    $oauthContract->validateResponse(
+        'GET',
+        '/oauth2/consent',
+        $invalidConsentScope['status'],
+        $invalidConsentScope['json']
+    );
 
     $consentInfo = httpRequest('GET', $consentInfoUrl, [
         'headers' => ['Accept: application/json'],
         'cookies' => $sessionCookie,
     ]);
     assertTrue($consentInfo['status'] === 200, 'consent info must return 200');
+    $oauthContract->validateResponse('GET', '/oauth2/consent', $consentInfo['status'], $consentInfo['json']);
     assertTrue(($consentInfo['json']['client_id'] ?? '') === $consentClient['json']['client_id'], 'consent info must include client_id');
     assertTrue(($consentInfo['json']['requested_scopes'] ?? []) === ['openid', 'profile'], 'consent info must include requested scopes');
     assertTrue(($consentInfo['json']['granted_scopes'] ?? null) === [], 'consent info must initially report no granted scopes');
@@ -1251,6 +1272,12 @@ try {
         'omit_csrf' => true,
     ]);
     assertTrue($missingConsentCsrf['status'] === 403, 'cookie-authenticated consent without CSRF token must return 403');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $missingConsentCsrf['status'],
+        $missingConsentCsrf['json']
+    );
 
     $malformedConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
         'headers' => ['Content-Type: application/json', 'Accept: application/json'],
@@ -1258,6 +1285,12 @@ try {
         'cookies' => $sessionCookie,
     ]);
     assertOAuthError($malformedConsent, 400, 'invalid_request', 'malformed consent JSON');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $malformedConsent['status'],
+        $malformedConsent['json']
+    );
     assertTrue(($malformedConsent['json']['error_description'] ?? '') === 'invalid json body', 'malformed consent JSON must match OAuth error contract');
 
     $arrayConsent = httpRequest('POST', $baseUrl . '/oauth2/consent', [
@@ -1266,6 +1299,12 @@ try {
         'cookies' => $sessionCookie,
     ]);
     assertOAuthError($arrayConsent, 400, 'invalid_request', 'non-object consent JSON');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $arrayConsent['status'],
+        $arrayConsent['json']
+    );
     assertTrue(($arrayConsent['json']['error_description'] ?? '') === 'invalid json body', 'non-object consent JSON must match OAuth error contract');
 
     $unknownConsentField = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
@@ -1274,38 +1313,115 @@ try {
         'unexpected' => true,
     ], null, $sessionCookie);
     assertOAuthError($unknownConsentField, 400, 'invalid_request', 'consent JSON with unknown field');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $unknownConsentField['status'],
+        $unknownConsentField['json']
+    );
     assertTrue(($unknownConsentField['json']['error_description'] ?? '') === 'invalid json body', 'unknown consent field must match OAuth error contract');
 
-    $invalidConsentClientGrant = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+    $invalidConsentClientPayload = [
         'client_id' => 'missing-client-' . $suffix,
         'scope' => 'openid',
-    ], null, $sessionCookie);
+    ];
+    $oauthContract->validateRequest(
+        'POST',
+        '/oauth2/consent',
+        'application/json',
+        $invalidConsentClientPayload
+    );
+    $invalidConsentClientGrant = jsonRequest(
+        'POST',
+        $baseUrl . '/oauth2/consent',
+        $invalidConsentClientPayload,
+        null,
+        $sessionCookie
+    );
     assertOAuthError($invalidConsentClientGrant, 400, 'invalid_request', 'grant consent for unknown client');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $invalidConsentClientGrant['status'],
+        $invalidConsentClientGrant['json']
+    );
     assertTrue(($invalidConsentClientGrant['json']['error_description'] ?? '') === 'invalid client credentials', 'unknown grant consent client must match OAuth error contract');
 
-    $grantOpenidConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+    $grantOpenidPayload = [
         'client_id' => $consentClient['json']['client_id'],
         'scope' => 'openid',
-    ], null, $sessionCookie);
+    ];
+    $oauthContract->validateRequest(
+        'POST',
+        '/oauth2/consent',
+        'application/json',
+        $grantOpenidPayload
+    );
+    $grantOpenidConsent = jsonRequest(
+        'POST',
+        $baseUrl . '/oauth2/consent',
+        $grantOpenidPayload,
+        null,
+        $sessionCookie
+    );
     assertTrue($grantOpenidConsent['status'] === 200, 'grant initial consent must return 200');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $grantOpenidConsent['status'],
+        $grantOpenidConsent['json']
+    );
     assertTrue(($grantOpenidConsent['json']['status'] ?? '') === 'granted', 'grant initial consent must return granted status');
 
     $partialConsentInfo = httpRequest('GET', $consentInfoUrl, [
         'headers' => ['Accept: application/json'],
         'cookies' => $sessionCookie,
     ]);
+    assertTrue($partialConsentInfo['status'] === 200, 'partial consent info must return 200');
+    $oauthContract->validateResponse(
+        'GET',
+        '/oauth2/consent',
+        $partialConsentInfo['status'],
+        $partialConsentInfo['json']
+    );
     assertTrue(($partialConsentInfo['json']['granted_scopes'] ?? []) === ['openid'], 'consent info must expose already granted scopes');
 
-    $grantProfileConsent = jsonRequest('POST', $baseUrl . '/oauth2/consent', [
+    $grantProfilePayload = [
         'client_id' => $consentClient['json']['client_id'],
         'scope' => 'profile',
-    ], null, $sessionCookie);
+    ];
+    $oauthContract->validateRequest(
+        'POST',
+        '/oauth2/consent',
+        'application/json',
+        $grantProfilePayload
+    );
+    $grantProfileConsent = jsonRequest(
+        'POST',
+        $baseUrl . '/oauth2/consent',
+        $grantProfilePayload,
+        null,
+        $sessionCookie
+    );
     assertTrue($grantProfileConsent['status'] === 200, 'grant additional consent must return 200');
+    $oauthContract->validateResponse(
+        'POST',
+        '/oauth2/consent',
+        $grantProfileConsent['status'],
+        $grantProfileConsent['json']
+    );
 
     $mergedConsentInfo = httpRequest('GET', $consentInfoUrl, [
         'headers' => ['Accept: application/json'],
         'cookies' => $sessionCookie,
     ]);
+    assertTrue($mergedConsentInfo['status'] === 200, 'merged consent info must return 200');
+    $oauthContract->validateResponse(
+        'GET',
+        '/oauth2/consent',
+        $mergedConsentInfo['status'],
+        $mergedConsentInfo['json']
+    );
     assertTrue(($mergedConsentInfo['json']['granted_scopes'] ?? []) === ['openid', 'profile'], 'additional consent must merge with existing scopes');
 
     $consentAuditCount = (int)$db->createCommand(
@@ -1319,6 +1435,28 @@ try {
     $consentedLocationParts = parse_url($consentedAuthorize['location']);
     parse_str($consentedLocationParts['query'] ?? '', $consentedQuery);
     assertTrue(!empty($consentedQuery['code']), 'authorize after consent must include code');
+
+    $accountConsents = jsonRequest('GET', $baseUrl . '/api/v1/auth/consents', [], $adminToken);
+    assertTrue($accountConsents['status'] === 200, 'account consent list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/auth/consents',
+        $accountConsents['status'],
+        $accountConsents['json']
+    );
+    $consentRevoked = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/auth/consents/' . rawurlencode($consentClient['json']['client_id']),
+        [],
+        $adminToken
+    );
+    assertTrue($consentRevoked['status'] === 200, 'account consent revoke must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/auth/consents/{clientId}',
+        $consentRevoked['status'],
+        $consentRevoked['json']
+    );
 
     $plainLogin = jsonRequest('POST', $baseUrl . '/api/v1/auth/login', [
         'username' => $userUsername,
