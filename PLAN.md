@@ -12,7 +12,7 @@
 ### 1. Сделать OpenAPI действительно машиночитаемым контрактом
 
 - Дополнить оставшиеся операции полным применимым набором `400/404/409/500`; для permission-protected administrative operations набор `401/403` уже полный, а `429` синхронизирован со всеми `rateLimitedRoutes` — оба правила закреплены статической проверкой, которая также валидирует формат status codes, response content schemas и ссылки на OAuth security schemes.
-- Расширить OpenAPI-валидацию реальных HTTP-ответов и request fixtures с уже покрытых публичного bootstrap/provider, login/MFA, `/auth/me`, account sessions, password/profile/email, consent, token, UserInfo, Discovery и JWKS на административные integration-сценарии.
+- Расширить OpenAPI-валидацию реальных HTTP-ответов и request fixtures с уже покрытых публичного bootstrap/provider, login/MFA, `/auth/me`, account sessions, password/profile/email, consent, token, UserInfo, Discovery, JWKS, operations и OAuth clients на users/RBAC, audit, LDAP и federation administrative integration-сценарии.
 
 Критерий готовности: изменение имени, типа, обязательности или секретности поля ломает contract test до выпуска.
 

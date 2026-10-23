@@ -319,8 +319,20 @@ try {
 
     $anonymousOperations = jsonRequest('GET', $baseUrl . '/api/v1/operations/status', []);
     assertTrue($anonymousOperations['status'] === 401, 'operational status must require authentication');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/operations/status',
+        $anonymousOperations['status'],
+        $anonymousOperations['json']
+    );
     $operationalStatus = jsonRequest('GET', $baseUrl . '/api/v1/operations/status', [], $adminToken);
     assertTrue($operationalStatus['status'] === 200, 'admin must read operational status');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/operations/status',
+        $operationalStatus['status'],
+        $operationalStatus['json']
+    );
     assertTrue(($operationalStatus['json']['status'] ?? '') === 'degraded', 'missing cleanup history must degrade operational status');
     assertTrue(($operationalStatus['json']['database']['status'] ?? '') === 'ready', 'operational status must expose database component state');
     assertTrue(($operationalStatus['json']['database']['ready'] ?? false) === true, 'operational status must report database readiness');
@@ -328,6 +340,14 @@ try {
     assertTrue(($operationalStatus['json']['cleanup']['status'] ?? '') === 'degraded', 'missing cleanup timestamp must be degraded');
     assertTrue(($operationalStatus['json']['cleanup']['stale'] ?? false) === true, 'missing cleanup timestamp must be stale');
     assertTrue(($operationalStatus['json']['cleanup']['interval_seconds'] ?? 0) > 0, 'operational status must expose cleanup interval');
+    $signingKeys = jsonRequest('GET', $baseUrl . '/api/v1/operations/signing-keys', [], $adminToken);
+    assertTrue($signingKeys['status'] === 200, 'admin must list signing keys');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/operations/signing-keys',
+        $signingKeys['status'],
+        $signingKeys['json']
+    );
     $rotatedSigningKey = jsonRequest(
         'POST',
         $baseUrl . '/api/v1/operations/signing-keys/rotate',
@@ -335,6 +355,12 @@ try {
         $adminToken
     );
     assertTrue($rotatedSigningKey['status'] === 201, 'admin must rotate the signing key');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/operations/signing-keys/rotate',
+        $rotatedSigningKey['status'],
+        $rotatedSigningKey['json']
+    );
     assertTrue(($rotatedSigningKey['json']['status'] ?? '') === 'active', 'rotated signing key must be active');
     assertTrue(!array_key_exists('private_key_pem', $rotatedSigningKey['json']), 'signing API must not expose private key material');
     assertTrue(!array_key_exists('public_key_pem', $rotatedSigningKey['json']), 'signing metadata API must not expose PEM material');
@@ -695,7 +721,7 @@ try {
     $backchannelReset = httpRequest('POST', $backchannelUrl . '/reset');
     assertTrue($backchannelReset['status'] === 204, 'back-channel logout fixture must be available');
 
-    $client = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
+    $clientPayload = [
         'name' => 'Integration test client ' . $suffix,
         'client_id' => 'itest-client-' . $suffix,
         'type' => 'confidential',
@@ -705,10 +731,23 @@ try {
         'backchannel_logout_uri' => $backchannelUrl . '/logout',
         'skip_consent' => true,
         'enabled' => true,
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/oauth/clients',
+        'application/json',
+        $clientPayload
+    );
+    $client = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', $clientPayload, $adminToken);
     assertTrue(
         $client['status'] === 201,
         'create oauth client must return 201: ' . json_encode($client, JSON_UNESCAPED_SLASHES)
+    );
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/oauth/clients',
+        $client['status'],
+        $client['json']
     );
     assertTrue(!empty($client['json']['client_secret']), 'create oauth client must return client_secret');
     assertTrue(isset($client['json']['client']), 'create oauth client must return contract-compliant nested client');
@@ -717,6 +756,27 @@ try {
     $client['json']['client_secret'] = $clientSecret;
     $createdClientIds[] = $client['json']['id'];
     $createdAuditTargets[] = ['action' => 'refresh_token_revoked', 'target_id' => $client['json']['client_id']];
+    $clientList = jsonRequest('GET', $baseUrl . '/api/v1/oauth/clients?type=confidential', [], $adminToken);
+    assertTrue($clientList['status'] === 200, 'OAuth client list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/oauth/clients',
+        $clientList['status'],
+        $clientList['json']
+    );
+    $clientRead = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/oauth/clients/' . $client['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($clientRead['status'] === 200, 'OAuth client read must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/oauth/clients/{id}',
+        $clientRead['status'],
+        $clientRead['json']
+    );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($client['json']['created_at'] ?? '')) === 1,
         'OAuth client created_at must use contract-compliant RFC3339'
@@ -731,7 +791,7 @@ try {
         ['updated_at' => '2000-01-01 00:00:00+00'],
         ['id' => $client['json']['id']]
     )->execute();
-    $updatedClient = jsonRequest('PUT', $baseUrl . '/api/v1/oauth/clients/' . $client['json']['id'], [
+    $clientUpdatePayload = [
         'name' => $client['json']['name'],
         'redirect_uris' => $client['json']['redirect_uris'],
         'allowed_scopes' => $client['json']['allowed_scopes'],
@@ -739,8 +799,26 @@ try {
         'backchannel_logout_uri' => $client['json']['backchannel_logout_uri'],
         'skip_consent' => $client['json']['skip_consent'],
         'enabled' => true,
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest(
+        'PUT',
+        '/api/v1/oauth/clients/{id}',
+        'application/json',
+        $clientUpdatePayload
+    );
+    $updatedClient = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/oauth/clients/' . $client['json']['id'],
+        $clientUpdatePayload,
+        $adminToken
+    );
     assertTrue($updatedClient['status'] === 200, 'OAuth client update must return 200');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/oauth/clients/{id}',
+        $updatedClient['status'],
+        $updatedClient['json']
+    );
     assertTrue(strtotime((string)$updatedClient['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'OAuth client update must advance updated_at');
 
     $rotatedClient = jsonRequest(
@@ -750,6 +828,12 @@ try {
         $adminToken
     );
     assertTrue($rotatedClient['status'] === 200, 'OAuth client secret rotation must return 200');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/oauth/clients/{id}/rotate-secret',
+        $rotatedClient['status'],
+        $rotatedClient['json']
+    );
     assertTrue(!empty($rotatedClient['json']['client_secret']), 'OAuth client secret rotation must return new secret');
     assertTrue($rotatedClient['json']['client_secret'] !== $clientSecret, 'OAuth client secret rotation must replace secret');
     assertTrue(strtotime((string)$rotatedClient['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'OAuth client secret rotation must advance updated_at');
@@ -770,6 +854,12 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownOAuthClientField['status'] === 400, 'OAuth client JSON with unknown field must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/oauth/clients',
+        $unknownOAuthClientField['status'],
+        $unknownOAuthClientField['json']
+    );
     assertTrue(($unknownOAuthClientField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client field must match API contract');
 
     $typedOAuthClient = jsonRequest('POST', $baseUrl . '/api/v1/oauth/clients', [
@@ -779,17 +869,29 @@ try {
         'enabled' => 'false',
     ], $adminToken);
     assertTrue($typedOAuthClient['status'] === 400, 'OAuth client with invalid slice/bool types must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/oauth/clients',
+        $typedOAuthClient['status'],
+        $typedOAuthClient['json']
+    );
     assertTrue(($typedOAuthClient['json']['error'] ?? '') === 'invalid json body', 'typed OAuth client error must match JSON contract');
 
     foreach ([
-        ['GET', '/api/v1/oauth/clients/not-a-uuid'],
-        ['PUT', '/api/v1/oauth/clients/not-a-uuid'],
-        ['DELETE', '/api/v1/oauth/clients/not-a-uuid'],
-        ['POST', '/api/v1/oauth/clients/not-a-uuid/rotate-secret'],
+        ['GET', '/api/v1/oauth/clients/not-a-uuid', '/api/v1/oauth/clients/{id}'],
+        ['PUT', '/api/v1/oauth/clients/not-a-uuid', '/api/v1/oauth/clients/{id}'],
+        ['DELETE', '/api/v1/oauth/clients/not-a-uuid', '/api/v1/oauth/clients/{id}'],
+        ['POST', '/api/v1/oauth/clients/not-a-uuid/rotate-secret', '/api/v1/oauth/clients/{id}/rotate-secret'],
     ] as $invalidClientRequest) {
-        [$method, $path] = $invalidClientRequest;
+        [$method, $path, $contractPath] = $invalidClientRequest;
         $invalidClientId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidClientId['status'] === 400, $method . ' OAuth client with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidClientId['status'],
+            $invalidClientId['json']
+        );
         assertTrue(($invalidClientId['json']['error'] ?? '') === 'invalid id', $method . ' OAuth client must match API contract');
     }
 
@@ -800,6 +902,12 @@ try {
         $adminToken
     );
     assertTrue($missingClient['status'] === 404, 'missing OAuth client must return 404');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/oauth/clients/{id}',
+        $missingClient['status'],
+        $missingClient['json']
+    );
     assertTrue(($missingClient['json']['error'] ?? '') === 'client not found', 'missing OAuth client must match API contract');
 
     $unknownOAuthUpdateField = jsonRequest(
@@ -809,6 +917,12 @@ try {
         $adminToken
     );
     assertTrue($unknownOAuthUpdateField['status'] === 400, 'OAuth client update with unsupported type field must return 400');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/oauth/clients/{id}',
+        $unknownOAuthUpdateField['status'],
+        $unknownOAuthUpdateField['json']
+    );
     assertTrue(($unknownOAuthUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown OAuth client update field must match API contract');
 
     $missingConfidentialClient = jsonRequest(
@@ -818,6 +932,12 @@ try {
         $adminToken
     );
     assertTrue($missingConfidentialClient['status'] === 404, 'missing confidential OAuth client must return 404');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/oauth/clients/{id}/rotate-secret',
+        $missingConfidentialClient['status'],
+        $missingConfidentialClient['json']
+    );
     assertTrue(($missingConfidentialClient['json']['error'] ?? '') === 'confidential client not found', 'missing confidential OAuth client must match API contract');
 
     $configuration = httpRequest('GET', $baseUrl . '/.well-known/openid-configuration', [
