@@ -6,6 +6,7 @@ $documents = [
     $root . '/contracts/openapi-oauth.json',
 ];
 $methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+$permissionProtectedTags = ['Users', 'RBAC', 'Audit', 'Operations', 'LDAP', 'Federation', 'OAuth clients'];
 $operations = [];
 $operationIds = [];
 
@@ -105,6 +106,22 @@ foreach ($documents as $file) {
                 throw new RuntimeException('Missing responses at ' . strtoupper($method) . ' ' . $path);
             }
             $location = strtoupper($method) . ' ' . $path;
+            $isPublicOperation = array_key_exists('security', $operation) && $operation['security'] === [];
+            $tags = is_array($operation['tags'] ?? null) ? $operation['tags'] : [];
+            if (
+                basename($file) === 'openapi-admin.json'
+                && !$isPublicOperation
+                && array_intersect($tags, $permissionProtectedTags) !== []
+            ) {
+                foreach (['401', '403'] as $requiredStatus) {
+                    if (!array_key_exists($requiredStatus, $operation['responses'])) {
+                        throw new RuntimeException(
+                            'Permission-protected operation must declare '
+                            . $requiredStatus . ' at ' . $location
+                        );
+                    }
+                }
+            }
             if (array_key_exists('security', $operation)) {
                 $validateSecurity($operation['security'], $location);
             }

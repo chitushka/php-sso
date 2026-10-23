@@ -28,6 +28,14 @@ final class OpenApiValidatorTest extends TestCase
     public function testValidatesConcreteResponseAndRequestFixtures(): void
     {
         $this->admin->validateResponse('GET', '/api/v1/bootstrap/status', 200, ['initialized' => true]);
+        $this->admin->validateResponse('GET', '/api/v1/users/{id}', 401, [
+            'error' => 'Authentication required',
+            'code' => 'unauthorized',
+        ]);
+        $this->admin->validateResponse('GET', '/api/v1/users/{id}', 403, [
+            'error' => 'Permission denied',
+            'code' => 'forbidden',
+        ]);
         $this->admin->validateRequest('POST', '/api/v1/auth/login', 'application/json', [
             'username' => 'admin',
             'password' => 'secret',
@@ -43,7 +51,7 @@ final class OpenApiValidatorTest extends TestCase
             ]],
         ]);
 
-        $this->addToAssertionCount(4);
+        $this->addToAssertionCount(6);
     }
 
     public function testValidatesAccountRequestAndResponseFixtures(): void
