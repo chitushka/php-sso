@@ -36,6 +36,14 @@ final class OpenApiValidatorTest extends TestCase
             'error' => 'Permission denied',
             'code' => 'forbidden',
         ]);
+        $this->admin->validateResponse('POST', '/api/v1/auth/login', 429, [
+            'error' => 'rate limit exceeded',
+            'code' => 'rate_limit_exceeded',
+        ]);
+        $this->oauth->validateResponse('POST', '/oauth2/token', 429, [
+            'error' => 'rate limit exceeded',
+            'code' => 'rate_limit_exceeded',
+        ]);
         $this->admin->validateRequest('POST', '/api/v1/auth/login', 'application/json', [
             'username' => 'admin',
             'password' => 'secret',
@@ -51,7 +59,7 @@ final class OpenApiValidatorTest extends TestCase
             ]],
         ]);
 
-        $this->addToAssertionCount(6);
+        $this->addToAssertionCount(8);
     }
 
     public function testValidatesAccountRequestAndResponseFixtures(): void

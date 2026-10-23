@@ -8,6 +8,7 @@ $documents = [
 $methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
 $permissionProtectedTags = ['Users', 'RBAC', 'Audit', 'Operations', 'LDAP', 'Federation', 'OAuth clients'];
 $operations = [];
+$operationResponses = [];
 $operationIds = [];
 
 $normalizePath = static function (string $path): string {
@@ -157,21 +158,26 @@ foreach ($documents as $file) {
                 }
             }
             $operationIds[$operationId] = true;
-            $operations[strtoupper($method) . ' ' . $normalizePath($path)] = basename($file);
+            $operationKey = strtoupper($method) . ' ' . $normalizePath($path);
+            $operations[$operationKey] = basename($file);
+            $operationResponses[$operationKey] = array_fill_keys(array_keys($operation['responses']), true);
         }
     }
 }
 
 $router = (string)file_get_contents($root . '/config/web.php');
 preg_match_all(
-    "/'(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) ((?:api\/v1|oauth2|\\.well-known)[^']*)'\s*=>/",
+    "/'(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) ((?:api\/v1|oauth2|\\.well-known)[^']*)'\s*=>\s*'([^']+)'/",
     $router,
     $matches,
     PREG_SET_ORDER
 );
 $routes = [];
+$routesByTarget = [];
 foreach ($matches as $match) {
-    $routes[$match[1] . ' ' . $normalizePath($match[2])] = true;
+    $operationKey = $match[1] . ' ' . $normalizePath($match[2]);
+    $routes[$operationKey] = true;
+    $routesByTarget[$match[3]] = $operationKey;
 }
 
 $missing = array_diff_key($routes, $operations);
@@ -181,6 +187,28 @@ if ($missing !== [] || $stale !== []) {
         'OpenAPI/router drift. Missing: ' . implode(', ', array_keys($missing))
         . '; stale: ' . implode(', ', array_keys($stale))
     );
+}
+
+$params = (string)file_get_contents($root . '/config/params.php');
+if (preg_match("/'rateLimitedRoutes'\s*=>\s*\[(.*?)\],/s", $params, $rateLimitBlock) !== 1) {
+    throw new RuntimeException('Unable to read rateLimitedRoutes from config/params.php');
+}
+preg_match_all("/'([^']+)'/", $rateLimitBlock[1], $rateLimitRoutes);
+$rateLimitedOperationKeys = [];
+foreach ($rateLimitRoutes[1] as $route) {
+    $operationKey = $routesByTarget[$route] ?? null;
+    if ($operationKey === null) {
+        throw new RuntimeException('Rate-limited controller route has no HTTP route: ' . $route);
+    }
+    if (!isset($operationResponses[$operationKey][429])) {
+        throw new RuntimeException('Rate-limited operation must declare 429 at ' . $operationKey);
+    }
+    $rateLimitedOperationKeys[$operationKey] = true;
+}
+foreach ($operationResponses as $operationKey => $responses) {
+    if (isset($responses[429]) && !isset($rateLimitedOperationKeys[$operationKey])) {
+        throw new RuntimeException('Non-rate-limited operation declares 429 at ' . $operationKey);
+    }
 }
 
 echo 'OpenAPI 3.1 contracts match ' . count($routes) . " HTTP routes\n";
