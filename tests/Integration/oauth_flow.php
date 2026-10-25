@@ -375,6 +375,12 @@ try {
 
     $missingAdminBearer = jsonRequest('GET', $baseUrl . '/api/v1/users', []);
     assertTrue($missingAdminBearer['status'] === 401, 'admin endpoint without bearer token must return 401');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/users',
+        $missingAdminBearer['status'],
+        $missingAdminBearer['json']
+    );
     assertTrue(($missingAdminBearer['json']['error'] ?? '') === 'missing bearer token', 'admin bearer middleware must match API contract');
 
     $missingUserinfoBearer = jsonRequest('GET', $baseUrl . '/oauth2/userinfo', []);
@@ -1587,6 +1593,7 @@ try {
         'headers' => ['Authorization: Bearer ' . $plainLogin['json']['access_token'], 'Accept: application/json'],
     ]);
     assertTrue($rbac['status'] === 403, 'plain user must not list users');
+    $adminContract->validateResponse('GET', '/api/v1/users', $rbac['status'], $rbac['json']);
 
     $missingUserFields = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => '',
@@ -1594,6 +1601,12 @@ try {
         'password' => $password,
     ], $adminToken);
     assertTrue($missingUserFields['status'] === 400, 'create user without username/email must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/users',
+        $missingUserFields['status'],
+        $missingUserFields['json']
+    );
     assertTrue(($missingUserFields['json']['error'] ?? '') === 'username and email are required', 'create user without username/email must match API contract');
     assertTrue(($missingUserFields['json']['code'] ?? '') === 'invalid_user', 'validation error must expose a stable code');
 
@@ -1604,6 +1617,7 @@ try {
         'email_verified' => true,
     ], $adminToken);
     assertTrue($unknownUserField['status'] === 400, 'create user JSON with unknown field must return 400');
+    $adminContract->validateResponse('POST', '/api/v1/users', $unknownUserField['status'], $unknownUserField['json']);
     assertTrue(($unknownUserField['json']['error'] ?? '') === 'invalid json body', 'unknown user field must match API contract');
 
     $typedUserAttributes = jsonRequest('POST', $baseUrl . '/api/v1/users', [
@@ -1613,6 +1627,12 @@ try {
         'attributes' => [],
     ], $adminToken);
     assertTrue($typedUserAttributes['status'] === 400, 'user attributes JSON array must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/users',
+        $typedUserAttributes['status'],
+        $typedUserAttributes['json']
+    );
     assertTrue(($typedUserAttributes['json']['error'] ?? '') === 'invalid json body', 'typed attributes error must match JSON map contract');
 
     $duplicateUser = jsonRequest('POST', $baseUrl . '/api/v1/users', [
@@ -1621,20 +1641,46 @@ try {
         'password' => $password,
     ], $adminToken);
     assertTrue($duplicateUser['status'] === 409, 'duplicate username must return 409');
+    $adminContract->validateResponse('POST', '/api/v1/users', $duplicateUser['status'], $duplicateUser['json']);
     assertTrue(($duplicateUser['json']['error'] ?? '') === 'user already exists', 'duplicate username must match API contract');
     assertTrue(($duplicateUser['json']['code'] ?? '') === 'user_conflict', 'conflict must expose a stable code');
+
+    $contractUserPayload = [
+        'username' => 'contract-user-' . $suffix,
+        'email' => 'contract-user-' . $suffix . '@example.test',
+        'password' => $password,
+        'first_name' => 'Contract',
+        'attributes' => ['department' => 'quality'],
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/users', 'application/json', $contractUserPayload);
+    $contractUser = jsonRequest('POST', $baseUrl . '/api/v1/users', $contractUserPayload, $adminToken);
+    assertTrue($contractUser['status'] === 201, 'contract user creation must return 201');
+    $adminContract->validateResponse('POST', '/api/v1/users', $contractUser['status'], $contractUser['json']);
+    $createdUserIds[] = $contractUser['json']['id'];
+
+    $userList = jsonRequest('GET', $baseUrl . '/api/v1/users?q=contract-user-' . $suffix, [], $adminToken);
+    assertTrue($userList['status'] === 200, 'user list must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/users', $userList['status'], $userList['json']);
 
     $db->createCommand()->update('users', [
         'first_name' => 'Old',
         'last_name' => 'Name',
         'attributes' => json_encode(['department' => 'value']),
     ], ['id' => $plainUserId])->execute();
-    $replacedUser = jsonRequest('PUT', $baseUrl . '/api/v1/users/' . $plainUserId, [
+    $replaceUserPayload = [
         'username' => $userUsername,
         'email' => $userUsername . '@example.test',
         'status' => 'active',
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest('PUT', '/api/v1/users/{id}', 'application/json', $replaceUserPayload);
+    $replacedUser = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/users/' . $plainUserId,
+        $replaceUserPayload,
+        $adminToken
+    );
     assertTrue($replacedUser['status'] === 200, 'user update must return 200');
+    $adminContract->validateResponse('PUT', '/api/v1/users/{id}', $replacedUser['status'], $replacedUser['json']);
     assertTrue(($replacedUser['json']['first_name'] ?? null) === 'Old', 'user update must preserve omitted first_name');
     assertTrue(($replacedUser['json']['last_name'] ?? null) === 'Name', 'user update must preserve omitted last_name');
     assertTrue(($replacedUser['json']['attributes']['department'] ?? null) === 'value', 'user update must preserve omitted attributes');
@@ -1647,6 +1693,12 @@ try {
     foreach (['GET', 'PUT', 'DELETE'] as $method) {
         $invalidUserId = jsonRequest($method, $baseUrl . '/api/v1/users/not-a-uuid', [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            '/api/v1/users/{id}',
+            $invalidUserId['status'],
+            $invalidUserId['json']
+        );
         assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid id', $method . ' user with invalid id must match API contract');
     }
 
@@ -1657,6 +1709,7 @@ try {
         $adminToken
     );
     assertTrue($missingUser['status'] === 404, 'missing user must return 404');
+    $adminContract->validateResponse('GET', '/api/v1/users/{id}', $missingUser['status'], $missingUser['json']);
     assertTrue(($missingUser['json']['error'] ?? '') === 'user not found', 'missing user must match API contract');
     assertTrue(($missingUser['json']['code'] ?? '') === 'user_not_found', 'not-found must expose a stable code');
 
@@ -1667,6 +1720,7 @@ try {
         $adminToken
     );
     assertTrue($rawUuidUser['status'] === 200, 'compact UUID path must be accepted by the documented UUID parser');
+    $adminContract->validateResponse('GET', '/api/v1/users/{id}', $rawUuidUser['status'], $rawUuidUser['json']);
     assertTrue(($rawUuidUser['json']['id'] ?? '') === $adminId, 'raw-hex UUID path must be canonicalized');
 
     $unknownUserUpdateField = jsonRequest(
@@ -1676,6 +1730,12 @@ try {
         $adminToken
     );
     assertTrue($unknownUserUpdateField['status'] === 400, 'update user JSON with unsupported password field must return 400');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/users/{id}',
+        $unknownUserUpdateField['status'],
+        $unknownUserUpdateField['json']
+    );
     assertTrue(($unknownUserUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown user update field must match API contract');
 
     $missingUserUpdate = jsonRequest(
@@ -1685,6 +1745,12 @@ try {
         $adminToken
     );
     assertTrue($missingUserUpdate['status'] === 404, 'missing user update must return 404');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/users/{id}',
+        $missingUserUpdate['status'],
+        $missingUserUpdate['json']
+    );
     assertTrue(($missingUserUpdate['json']['error'] ?? '') === 'user not found', 'missing user update must identify the absent user');
 
     $missingRoleFields = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
@@ -1692,6 +1758,7 @@ try {
         'name' => '',
     ], $adminToken);
     assertTrue($missingRoleFields['status'] === 400, 'create role without code/name must return 400');
+    $adminContract->validateResponse('POST', '/api/v1/roles', $missingRoleFields['status'], $missingRoleFields['json']);
     assertTrue(($missingRoleFields['json']['error'] ?? '') === 'role code and name are required', 'create role without code/name must match API contract');
 
     $unknownRoleField = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
@@ -1700,6 +1767,7 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownRoleField['status'] === 400, 'create role JSON with unknown field must return 400');
+    $adminContract->validateResponse('POST', '/api/v1/roles', $unknownRoleField['status'], $unknownRoleField['json']);
     assertTrue(($unknownRoleField['json']['error'] ?? '') === 'invalid json body', 'unknown role field must match API contract');
 
     $duplicateRole = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
@@ -1707,14 +1775,18 @@ try {
         'name' => 'Duplicate admin',
     ], $adminToken);
     assertTrue($duplicateRole['status'] === 409, 'duplicate role code must return 409');
+    $adminContract->validateResponse('POST', '/api/v1/roles', $duplicateRole['status'], $duplicateRole['json']);
     assertTrue(($duplicateRole['json']['error'] ?? '') === 'role already exists', 'duplicate role code must match API contract');
 
-    $role = jsonRequest('POST', $baseUrl . '/api/v1/roles', [
+    $rolePayload = [
         'code' => 'itest-role-' . $suffix,
         'name' => 'Integration role ' . $suffix,
         'description' => 'Updated description',
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/roles', 'application/json', $rolePayload);
+    $role = jsonRequest('POST', $baseUrl . '/api/v1/roles', $rolePayload, $adminToken);
     assertTrue($role['status'] === 201, 'create role must return 201');
+    $adminContract->validateResponse('POST', '/api/v1/roles', $role['status'], $role['json']);
     $createdRoleIds[] = $role['json']['id'];
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($role['json']['created_at'] ?? '')) === 1,
@@ -1728,15 +1800,29 @@ try {
     $db->createCommand()->update('roles', [
         'updated_at' => '2000-01-01 00:00:00+00',
     ], ['id' => $role['json']['id']])->execute();
-    $updatedRole = jsonRequest('PUT', $baseUrl . '/api/v1/roles/' . $role['json']['id'], [
+    $roleUpdatePayload = [
         'name' => 'Updated integration role ' . $suffix,
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest('PUT', '/api/v1/roles/{roleID}', 'application/json', $roleUpdatePayload);
+    $updatedRole = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/roles/' . $role['json']['id'],
+        $roleUpdatePayload,
+        $adminToken
+    );
     assertTrue($updatedRole['status'] === 200, 'update role must return 200');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/roles/{roleID}',
+        $updatedRole['status'],
+        $updatedRole['json']
+    );
     assertTrue(!array_key_exists('description', $updatedRole['json']), 'role update must clear omitted description under the current API contract');
     assertTrue(strtotime((string)$updatedRole['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'role update must advance updated_at');
 
     $permissions = jsonRequest('GET', $baseUrl . '/api/v1/permissions', [], $adminToken);
     assertTrue($permissions['status'] === 200 && !empty($permissions['json']['items']), 'permissions list must return seeded permissions');
+    $adminContract->validateResponse('GET', '/api/v1/permissions', $permissions['status'], $permissions['json']);
     assertTrue(
         ($permissions['json']['pagination'] ?? null) === ['limit' => 50, 'offset' => 0, 'count' => count($permissions['json']['items'])],
         'permissions list must expose pagination metadata'
@@ -1746,16 +1832,26 @@ try {
         'permission created_at must use contract-compliant RFC3339'
     );
 
+    $roleList = jsonRequest('GET', $baseUrl . '/api/v1/roles?q=itest-role-' . $suffix, [], $adminToken);
+    assertTrue($roleList['status'] === 200, 'role list must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/roles', $roleList['status'], $roleList['json']);
+
     foreach ([
-        ['PUT', '/api/v1/roles/not-a-uuid'],
-        ['DELETE', '/api/v1/roles/not-a-uuid'],
-        ['GET', '/api/v1/roles/not-a-uuid/permissions'],
-        ['POST', '/api/v1/roles/not-a-uuid/permissions'],
-        ['DELETE', '/api/v1/roles/not-a-uuid/permissions/not-a-uuid'],
+        ['PUT', '/api/v1/roles/not-a-uuid', '/api/v1/roles/{roleID}'],
+        ['DELETE', '/api/v1/roles/not-a-uuid', '/api/v1/roles/{roleID}'],
+        ['GET', '/api/v1/roles/not-a-uuid/permissions', '/api/v1/roles/{roleID}/permissions'],
+        ['POST', '/api/v1/roles/not-a-uuid/permissions', '/api/v1/roles/{roleID}/permissions'],
+        ['DELETE', '/api/v1/roles/not-a-uuid/permissions/not-a-uuid', '/api/v1/roles/{roleID}/permissions/{permissionID}'],
     ] as $invalidRoleRequest) {
-        [$method, $path] = $invalidRoleRequest;
+        [$method, $path, $contractPath] = $invalidRoleRequest;
         $invalidRoleId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidRoleId['status'] === 400, $method . ' role path with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidRoleId['status'],
+            $invalidRoleId['json']
+        );
         assertTrue(($invalidRoleId['json']['error'] ?? '') === 'invalid role id', $method . ' role path must match API contract');
     }
 
@@ -1766,6 +1862,12 @@ try {
         $adminToken
     );
     assertTrue($invalidPermissionPath['status'] === 400, 'invalid permission path id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/roles/{roleID}/permissions/{permissionID}',
+        $invalidPermissionPath['status'],
+        $invalidPermissionPath['json']
+    );
     assertTrue(($invalidPermissionPath['json']['error'] ?? '') === 'invalid permission id', 'invalid permission path id must match API contract');
 
     $invalidPermissionBody = jsonRequest(
@@ -1775,31 +1877,49 @@ try {
         $adminToken
     );
     assertTrue($invalidPermissionBody['status'] === 400, 'invalid permission body id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/roles/{roleID}/permissions',
+        $invalidPermissionBody['status'],
+        $invalidPermissionBody['json']
+    );
     assertTrue(($invalidPermissionBody['json']['error'] ?? '') === 'invalid json body', 'invalid permission body id must match API contract');
 
     foreach ([
-        ['/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions', 'permission_id'],
-        ['/api/v1/users/00000000-0000-0000-0000-000000000000/roles', 'role_id'],
-        ['/api/v1/groups/00000000-0000-0000-0000-000000000000/roles', 'role_id'],
-        ['/api/v1/users/00000000-0000-0000-0000-000000000000/groups', 'group_id'],
+        ['/api/v1/roles/00000000-0000-0000-0000-000000000000/permissions', '/api/v1/roles/{roleID}/permissions', 'permission_id'],
+        ['/api/v1/users/00000000-0000-0000-0000-000000000000/roles', '/api/v1/users/{userID}/roles', 'role_id'],
+        ['/api/v1/groups/00000000-0000-0000-0000-000000000000/roles', '/api/v1/groups/{groupID}/roles', 'role_id'],
+        ['/api/v1/users/00000000-0000-0000-0000-000000000000/groups', '/api/v1/users/{userID}/groups', 'group_id'],
     ] as $unknownAssignmentRequest) {
-        [$path, $idField] = $unknownAssignmentRequest;
+        [$path, $contractPath, $idField] = $unknownAssignmentRequest;
         $unknownAssignmentField = jsonRequest('POST', $baseUrl . $path, [
             $idField => '00000000-0000-0000-0000-000000000000',
             'unexpected' => true,
         ], $adminToken);
         assertTrue($unknownAssignmentField['status'] === 400, $path . ' with unknown field must return 400');
+        $adminContract->validateResponse(
+            'POST',
+            $contractPath,
+            $unknownAssignmentField['status'],
+            $unknownAssignmentField['json']
+        );
         assertTrue(($unknownAssignmentField['json']['error'] ?? '') === 'invalid json body', $path . ' unknown field must match API contract');
     }
 
     foreach ([
-        ['GET', '/api/v1/users/not-a-uuid/roles'],
-        ['POST', '/api/v1/users/not-a-uuid/roles'],
-        ['DELETE', '/api/v1/users/not-a-uuid/roles/not-a-uuid'],
+        ['GET', '/api/v1/users/not-a-uuid/roles', '/api/v1/users/{userID}/roles'],
+        ['POST', '/api/v1/users/not-a-uuid/roles', '/api/v1/users/{userID}/roles'],
+        ['DELETE', '/api/v1/users/not-a-uuid/roles/not-a-uuid', '/api/v1/users/{userID}/roles/{roleID}'],
     ] as $invalidUserRoleRequest) {
-        [$method, $path] = $invalidUserRoleRequest;
+        [$method, $path, $contractPath] = $invalidUserRoleRequest;
         $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user-role path with invalid user id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidUserId['status'],
+            $invalidUserId['json']
+        );
         assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-role path must match API contract');
     }
 
@@ -1810,6 +1930,12 @@ try {
         $adminToken
     );
     assertTrue($invalidUserRolePath['status'] === 400, 'invalid user-role role id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{userID}/roles/{roleID}',
+        $invalidUserRolePath['status'],
+        $invalidUserRolePath['json']
+    );
     assertTrue(($invalidUserRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid user-role role id must match API contract');
 
     $invalidUserRoleBody = jsonRequest(
@@ -1819,13 +1945,22 @@ try {
         $adminToken
     );
     assertTrue($invalidUserRoleBody['status'] === 400, 'invalid user-role body id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/users/{userID}/roles',
+        $invalidUserRoleBody['status'],
+        $invalidUserRoleBody['json']
+    );
     assertTrue(($invalidUserRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-role body id must match API contract');
 
-    $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
+    $groupPayload = [
         'code' => 'itest-group-' . $suffix,
         'name' => 'Integration group ' . $suffix,
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest('POST', '/api/v1/groups', 'application/json', $groupPayload);
+    $group = jsonRequest('POST', $baseUrl . '/api/v1/groups', $groupPayload, $adminToken);
     assertTrue($group['status'] === 201, 'create group must return 201');
+    $adminContract->validateResponse('POST', '/api/v1/groups', $group['status'], $group['json']);
     $createdGroupIds[] = $group['json']['id'];
     assertTrue(($group['json']['description'] ?? null) === '', 'group must preserve documented empty string for empty description');
     assertTrue(
@@ -1841,10 +1976,23 @@ try {
         'description' => 'Updated description',
         'updated_at' => '2000-01-01 00:00:00+00',
     ], ['id' => $group['json']['id']])->execute();
-    $updatedGroup = jsonRequest('PUT', $baseUrl . '/api/v1/groups/' . $group['json']['id'], [
+    $groupUpdatePayload = [
         'name' => 'Updated integration group ' . $suffix,
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest('PUT', '/api/v1/groups/{groupID}', 'application/json', $groupUpdatePayload);
+    $updatedGroup = jsonRequest(
+        'PUT',
+        $baseUrl . '/api/v1/groups/' . $group['json']['id'],
+        $groupUpdatePayload,
+        $adminToken
+    );
     assertTrue($updatedGroup['status'] === 200, 'update group must return 200');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/groups/{groupID}',
+        $updatedGroup['status'],
+        $updatedGroup['json']
+    );
     assertTrue(($updatedGroup['json']['description'] ?? null) === '', 'group update must clear omitted description under the current API contract');
     assertTrue(strtotime((string)$updatedGroup['json']['updated_at']) > strtotime('2020-01-01T00:00:00Z'), 'group update must advance updated_at');
 
@@ -1854,6 +2002,7 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownGroupField['status'] === 400, 'create group JSON with unknown field must return 400');
+    $adminContract->validateResponse('POST', '/api/v1/groups', $unknownGroupField['status'], $unknownGroupField['json']);
     assertTrue(($unknownGroupField['json']['error'] ?? '') === 'invalid json body', 'unknown group field must match API contract');
 
     $duplicateGroup = jsonRequest('POST', $baseUrl . '/api/v1/groups', [
@@ -1861,18 +2010,29 @@ try {
         'name' => 'Duplicate group',
     ], $adminToken);
     assertTrue($duplicateGroup['status'] === 409, 'duplicate group code must return 409');
+    $adminContract->validateResponse('POST', '/api/v1/groups', $duplicateGroup['status'], $duplicateGroup['json']);
     assertTrue(($duplicateGroup['json']['error'] ?? '') === 'group already exists', 'duplicate group code must match API contract');
 
+    $groupList = jsonRequest('GET', $baseUrl . '/api/v1/groups?q=itest-group-' . $suffix, [], $adminToken);
+    assertTrue($groupList['status'] === 200, 'group list must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/groups', $groupList['status'], $groupList['json']);
+
     foreach ([
-        ['PUT', '/api/v1/groups/not-a-uuid'],
-        ['DELETE', '/api/v1/groups/not-a-uuid'],
-        ['GET', '/api/v1/groups/not-a-uuid/roles'],
-        ['POST', '/api/v1/groups/not-a-uuid/roles'],
-        ['DELETE', '/api/v1/groups/not-a-uuid/roles/not-a-uuid'],
+        ['PUT', '/api/v1/groups/not-a-uuid', '/api/v1/groups/{groupID}'],
+        ['DELETE', '/api/v1/groups/not-a-uuid', '/api/v1/groups/{groupID}'],
+        ['GET', '/api/v1/groups/not-a-uuid/roles', '/api/v1/groups/{groupID}/roles'],
+        ['POST', '/api/v1/groups/not-a-uuid/roles', '/api/v1/groups/{groupID}/roles'],
+        ['DELETE', '/api/v1/groups/not-a-uuid/roles/not-a-uuid', '/api/v1/groups/{groupID}/roles/{roleID}'],
     ] as $invalidGroupRequest) {
-        [$method, $path] = $invalidGroupRequest;
+        [$method, $path, $contractPath] = $invalidGroupRequest;
         $invalidGroupId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidGroupId['status'] === 400, $method . ' group path with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidGroupId['status'],
+            $invalidGroupId['json']
+        );
         assertTrue(($invalidGroupId['json']['error'] ?? '') === 'invalid group id', $method . ' group path must match API contract');
     }
 
@@ -1883,6 +2043,12 @@ try {
         $adminToken
     );
     assertTrue($invalidGroupRolePath['status'] === 400, 'invalid group role path id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/groups/{groupID}/roles/{roleID}',
+        $invalidGroupRolePath['status'],
+        $invalidGroupRolePath['json']
+    );
     assertTrue(($invalidGroupRolePath['json']['error'] ?? '') === 'invalid role id', 'invalid group role path id must match API contract');
 
     $invalidGroupRoleBody = jsonRequest(
@@ -1892,16 +2058,28 @@ try {
         $adminToken
     );
     assertTrue($invalidGroupRoleBody['status'] === 400, 'invalid group role body id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/groups/{groupID}/roles',
+        $invalidGroupRoleBody['status'],
+        $invalidGroupRoleBody['json']
+    );
     assertTrue(($invalidGroupRoleBody['json']['error'] ?? '') === 'invalid json body', 'invalid group role body id must match API contract');
 
     foreach ([
-        ['GET', '/api/v1/users/not-a-uuid/groups'],
-        ['POST', '/api/v1/users/not-a-uuid/groups'],
-        ['DELETE', '/api/v1/users/not-a-uuid/groups/not-a-uuid'],
+        ['GET', '/api/v1/users/not-a-uuid/groups', '/api/v1/users/{userID}/groups'],
+        ['POST', '/api/v1/users/not-a-uuid/groups', '/api/v1/users/{userID}/groups'],
+        ['DELETE', '/api/v1/users/not-a-uuid/groups/not-a-uuid', '/api/v1/users/{userID}/groups/{groupID}'],
     ] as $invalidUserGroupRequest) {
-        [$method, $path] = $invalidUserGroupRequest;
+        [$method, $path, $contractPath] = $invalidUserGroupRequest;
         $invalidUserId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidUserId['status'] === 400, $method . ' user-group path with invalid user id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidUserId['status'],
+            $invalidUserId['json']
+        );
         assertTrue(($invalidUserId['json']['error'] ?? '') === 'invalid user id', $method . ' user-group path must match API contract');
     }
 
@@ -1912,6 +2090,12 @@ try {
         $adminToken
     );
     assertTrue($invalidUserGroupPath['status'] === 400, 'invalid user-group group id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{userID}/groups/{groupID}',
+        $invalidUserGroupPath['status'],
+        $invalidUserGroupPath['json']
+    );
     assertTrue(($invalidUserGroupPath['json']['error'] ?? '') === 'invalid group id', 'invalid user-group group id must match API contract');
 
     $invalidUserGroupBody = jsonRequest(
@@ -1921,6 +2105,114 @@ try {
         $adminToken
     );
     assertTrue($invalidUserGroupBody['status'] === 400, 'invalid user-group body id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/users/{userID}/groups',
+        $invalidUserGroupBody['status'],
+        $invalidUserGroupBody['json']
+    );
+
+    $permissionId = (string)$permissions['json']['items'][0]['id'];
+    $rbacAssignments = [
+        [
+            'post_path' => '/api/v1/roles/' . $role['json']['id'] . '/permissions',
+            'post_contract' => '/api/v1/roles/{roleID}/permissions',
+            'payload' => ['permission_id' => $permissionId],
+            'get_path' => '/api/v1/roles/' . $role['json']['id'] . '/permissions',
+            'get_contract' => '/api/v1/roles/{roleID}/permissions',
+            'delete_path' => '/api/v1/roles/' . $role['json']['id'] . '/permissions/' . $permissionId,
+            'delete_contract' => '/api/v1/roles/{roleID}/permissions/{permissionID}',
+        ],
+        [
+            'post_path' => '/api/v1/users/' . $plainUserId . '/roles',
+            'post_contract' => '/api/v1/users/{userID}/roles',
+            'payload' => ['role_id' => $role['json']['id']],
+            'get_path' => '/api/v1/users/' . $plainUserId . '/roles',
+            'get_contract' => '/api/v1/users/{userID}/roles',
+            'delete_path' => '/api/v1/users/' . $plainUserId . '/roles/' . $role['json']['id'],
+            'delete_contract' => '/api/v1/users/{userID}/roles/{roleID}',
+        ],
+        [
+            'post_path' => '/api/v1/groups/' . $group['json']['id'] . '/roles',
+            'post_contract' => '/api/v1/groups/{groupID}/roles',
+            'payload' => ['role_id' => $role['json']['id']],
+            'get_path' => '/api/v1/groups/' . $group['json']['id'] . '/roles',
+            'get_contract' => '/api/v1/groups/{groupID}/roles',
+            'delete_path' => '/api/v1/groups/' . $group['json']['id'] . '/roles/' . $role['json']['id'],
+            'delete_contract' => '/api/v1/groups/{groupID}/roles/{roleID}',
+        ],
+        [
+            'post_path' => '/api/v1/users/' . $plainUserId . '/groups',
+            'post_contract' => '/api/v1/users/{userID}/groups',
+            'payload' => ['group_id' => $group['json']['id']],
+            'get_path' => '/api/v1/users/' . $plainUserId . '/groups',
+            'get_contract' => '/api/v1/users/{userID}/groups',
+            'delete_path' => '/api/v1/users/' . $plainUserId . '/groups/' . $group['json']['id'],
+            'delete_contract' => '/api/v1/users/{userID}/groups/{groupID}',
+        ],
+    ];
+    foreach ($rbacAssignments as $assignment) {
+        $adminContract->validateRequest(
+            'POST',
+            $assignment['post_contract'],
+            'application/json',
+            $assignment['payload']
+        );
+        $assigned = jsonRequest(
+            'POST',
+            $baseUrl . $assignment['post_path'],
+            $assignment['payload'],
+            $adminToken
+        );
+        assertTrue($assigned['status'] === 200, $assignment['post_path'] . ' must assign the relation');
+        $adminContract->validateResponse(
+            'POST',
+            $assignment['post_contract'],
+            $assigned['status'],
+            $assigned['json']
+        );
+
+        $assignedList = jsonRequest('GET', $baseUrl . $assignment['get_path'], [], $adminToken);
+        assertTrue($assignedList['status'] === 200, $assignment['get_path'] . ' must list the relation');
+        $adminContract->validateResponse(
+            'GET',
+            $assignment['get_contract'],
+            $assignedList['status'],
+            $assignedList['json']
+        );
+
+        $removed = jsonRequest('DELETE', $baseUrl . $assignment['delete_path'], [], $adminToken);
+        assertTrue($removed['status'] === 200, $assignment['delete_path'] . ' must remove the relation');
+        $adminContract->validateResponse(
+            'DELETE',
+            $assignment['delete_contract'],
+            $removed['status'],
+            $removed['json']
+        );
+    }
+
+    $deletedContractUser = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/' . $contractUser['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($deletedContractUser['status'] === 200, 'contract user deletion must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{id}',
+        $deletedContractUser['status'],
+        $deletedContractUser['json']
+    );
+
+    $deletedRole = jsonRequest('DELETE', $baseUrl . '/api/v1/roles/' . $role['json']['id'], [], $adminToken);
+    assertTrue($deletedRole['status'] === 200, 'role deletion must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/roles/{roleID}',
+        $deletedRole['status'],
+        $deletedRole['json']
+    );
     assertTrue(($invalidUserGroupBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-group body id must match API contract');
 
     $badAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=not-a-uuid', [
@@ -2480,6 +2772,15 @@ try {
         [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
     )->queryScalar();
     assertTrue($ldapDeleteAuditCount === 1, 'only successful LDAP provider delete must write an audit event');
+
+    $deletedGroup = jsonRequest('DELETE', $baseUrl . '/api/v1/groups/' . $group['json']['id'], [], $adminToken);
+    assertTrue($deletedGroup['status'] === 200, 'group deletion must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/groups/{groupID}',
+        $deletedGroup['status'],
+        $deletedGroup['json']
+    );
 
     $staleMfaToken = (new \app\services\AuthService())->issueAccessToken(
         \app\models\User::findOne(['id' => $adminId]),
