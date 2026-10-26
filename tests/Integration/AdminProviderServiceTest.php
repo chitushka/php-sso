@@ -59,6 +59,20 @@ class AdminProviderServiceTest extends TestCase
         $this->assertSame(400, $missing['status']);
         $this->assertSame('authorize_url, token_url and userinfo_url are required for type oidc', $missing['data']['error']);
 
+        foreach (['google', 'github'] as $unsupportedType) {
+            $unsupported = $service->createProvider([
+                'code' => $unsupportedType . '-' . $code,
+                'name' => 'Unsupported provider',
+                'type' => $unsupportedType,
+                'client_id' => 'client-' . $unsupportedType,
+                'authorize_url' => 'https://idp.example.test/authorize',
+                'token_url' => 'https://idp.example.test/token',
+                'userinfo_url' => 'https://idp.example.test/userinfo',
+            ]);
+            $this->assertSame(400, $unsupported['status']);
+            $this->assertSame('unsupported identity provider type', $unsupported['data']['error']);
+        }
+
         $created = $service->createProvider([
             'code' => strtoupper($code),
             'name' => 'PHPUnit IdP',
@@ -86,6 +100,15 @@ class AdminProviderServiceTest extends TestCase
 
         $provider = IdentityProvider::findOne(['id' => $created['data']['id']]);
         $this->assertSame('super-secret', (new CryptoService())->decrypt((string)$provider->client_secret));
+
+        $emptyEndpoints = $service->updateProvider($created['data']['id'], [
+            'enabled' => false,
+            'authorize_url' => '',
+            'token_url' => '',
+            'userinfo_url' => '',
+        ]);
+        $this->assertSame(400, $emptyEndpoints['status']);
+        $this->assertSame('invalid_provider_endpoint', $emptyEndpoints->error?->code);
 
         $public = $service->publicProviders();
         $this->assertContains(strtolower($code), array_column($public, 'code'));
@@ -170,6 +193,19 @@ class AdminProviderServiceTest extends TestCase
         $provider->refresh();
         $this->assertSame('super-secret', (new CryptoService())->decrypt((string)$provider->client_secret));
 
+        Yii::$app->db->createCommand()->update(
+            'identity_providers',
+            ['token_url' => ''],
+            ['id' => $created['data']['id']]
+        )->execute();
+        $unsafeRuntimeProvider = $service->start(strtolower($code), '/', $browserContext);
+        $this->assertSame(404, $unsafeRuntimeProvider['status']);
+        Yii::$app->db->createCommand()->update(
+            'identity_providers',
+            ['token_url' => 'https://idp.example.test/token'],
+            ['id' => $created['data']['id']]
+        )->execute();
+
         $deleted = $service->deleteProvider($created['data']['id']);
         $this->assertSame(200, $deleted['status']);
         $this->identityProviderIds = [];
@@ -190,7 +226,7 @@ class AdminProviderServiceTest extends TestCase
             $verifyState = new \ReflectionMethod($service, 'verifyState');
 
             $state = [
-                'p' => 'google',
+                'p' => 'provider-code',
                 'n' => 'nonce',
                 'c' => '/users',
                 'e' => gmdate('Y-m-d\TH:i:s\Z', time() + 600),

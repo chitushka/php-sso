@@ -49,6 +49,8 @@ Auth, OAuth/OIDC, broker, LDAP test и новые изменяющие use cases
 
 Исходящие HTTP-запросы проходят allowlist, DNS/IP validation, запрет private/link-local targets, redirect revalidation, connect/read timeouts и ограничение размера ответа. LDAP требует разрешённый host и TLS с проверяемым CA; небезопасный режим допустим только вне production. SMTP использует проверяемый TLS, если не выбран явно локальный development transport.
 
+Federation broker поддерживает единственный тип внешнего provider — `oidc`; административный контракт требует явные `authorize_url`, `token_url` и `userinfo_url` и не подставляет provider-specific presets. `IdentityProviderPolicy` централизованно проверяет все три endpoint перед сохранением и непосредственно перед broker flow, используя общую outbound HTTP/SSRF-защиту. Проверка зарегистрированных OAuth redirect URI и разрешённой для public clients вариации loopback-порта сосредоточена в `OAuthRedirectPolicy` и одинаково применяется при администрировании клиента и authorization flow.
+
 ## Данные, секреты и транзакции
 
 PostgreSQL хранит пользователей, сессии, auth artifacts, OAuth clients, signing keys, RBAC, LDAP/provider configuration, audit, rate-limit buckets и metric counters.

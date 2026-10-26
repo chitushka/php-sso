@@ -23,6 +23,7 @@ class BrokerService
     private ClockInterface $clock;
     private RandomGeneratorInterface $random;
     private IdentityProviderAdminService $providers;
+    private IdentityProviderPolicy $providerPolicy;
 
     public function __construct(
         ?AuthService $auth = null,
@@ -30,14 +31,16 @@ class BrokerService
         ?OutboundHttpService $outboundHttp = null,
         ?ClockInterface $clock = null,
         ?RandomGeneratorInterface $random = null,
-        ?IdentityProviderAdminService $providers = null
+        ?IdentityProviderAdminService $providers = null,
+        ?IdentityProviderPolicy $providerPolicy = null
     ) {
         $this->auth = $auth ?? new AuthService();
         $this->crypto = $crypto ?? new CryptoService();
         $this->outboundHttp = $outboundHttp ?? new OutboundHttpService();
         $this->clock = $clock ?? new SystemClock();
         $this->random = $random ?? new SecureRandomGenerator();
-        $this->providers = $providers ?? new IdentityProviderAdminService($this->crypto);
+        $this->providerPolicy = $providerPolicy ?? new IdentityProviderPolicy($this->outboundHttp);
+        $this->providers = $providers ?? new IdentityProviderAdminService($this->crypto, $this->providerPolicy);
     }
 
     public function publicProviders(): array
@@ -72,8 +75,7 @@ class BrokerService
             return $this->failure('unknown_identity_provider', 'unknown identity provider', 404);
         }
 
-        $provider = $this->applyPreset($provider);
-        if (!$this->providerEndpointsAreSafe($provider)) {
+        if (!$this->providerPolicy->endpointsAreSafe($provider)) {
             return $this->failure('unknown_identity_provider', 'unknown identity provider', 404);
         }
         if (!$this->isValidBrowserContext($browserContext)) {
@@ -144,7 +146,11 @@ class BrokerService
             return $this->failure('broker_authentication_failed', 'external authentication failed');
         }
 
-        $provider = $this->applyPreset($provider);
+        if (!$this->providerPolicy->endpointsAreSafe($provider)) {
+            Yii::warning('broker provider endpoint policy failed', 'broker');
+            AuditService::record(null, 'broker_login_failed', 'identity_provider', $providerCode, true);
+            return $this->failure('broker_authentication_failed', 'external authentication failed');
+        }
         $identity = $this->fetchIdentity($provider, $code);
         if (!$identity) {
             Yii::warning('broker identity fetch failed', 'broker');
@@ -218,25 +224,6 @@ class BrokerService
     private function isValidBrowserContext(string $browserContext): bool
     {
         return preg_match('/^[A-Za-z0-9_-]{32,128}$/D', $browserContext) === 1;
-    }
-
-    private function applyPreset(IdentityProvider $provider): IdentityProvider
-    {
-        if ($provider->type === 'google') {
-            $provider->authorize_url = $provider->authorize_url ?: 'https://accounts.google.com/o/oauth2/v2/auth';
-            $provider->token_url = $provider->token_url ?: 'https://oauth2.googleapis.com/token';
-            $provider->userinfo_url = $provider->userinfo_url ?: 'https://openidconnect.googleapis.com/v1/userinfo';
-        }
-        if ($provider->type === 'github') {
-            $provider->authorize_url = $provider->authorize_url ?: 'https://github.com/login/oauth/authorize';
-            $provider->token_url = $provider->token_url ?: 'https://github.com/login/oauth/access_token';
-            $provider->userinfo_url = $provider->userinfo_url ?: 'https://api.github.com/user';
-            if (!$provider->scopes || $provider->scopes === 'openid profile email') {
-                $provider->scopes = 'read:user user:email';
-            }
-        }
-
-        return $provider;
     }
 
     private function callbackUrl(string $code): string
@@ -434,23 +421,6 @@ class BrokerService
         }
 
         return $url;
-    }
-
-    private function providerEndpointsAreSafe(IdentityProvider $provider): bool
-    {
-        if (
-            !(bool)$provider->enabled
-            && (string)$provider->authorize_url === ''
-            && (string)$provider->token_url === ''
-            && (string)$provider->userinfo_url === ''
-        ) {
-            return true;
-        }
-
-        $http = $this->outboundHttp;
-        return $http->isValidEndpoint((string)$provider->authorize_url, true)
-            && $http->isValidEndpoint((string)$provider->token_url)
-            && $http->isValidEndpoint((string)$provider->userinfo_url);
     }
 
     private function signState(array $state): string

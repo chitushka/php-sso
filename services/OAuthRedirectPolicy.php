@@ -38,6 +38,38 @@ final class OAuthRedirectPolicy
         return $uri === '' || $this->outboundHttp->isValidEndpoint($uri);
     }
 
+    public function redirectUriAllowed(OAuthClient $client, string $requested): bool
+    {
+        foreach (OAuthClient::parsePgArray($client->redirect_uris) as $registered) {
+            if (hash_equals($registered, $requested)) {
+                return true;
+            }
+            if (
+                !$client->allow_loopback_redirects
+                || !$this->uriIsSafe($registered, true)
+                || !$this->uriIsSafe($requested, true)
+            ) {
+                continue;
+            }
+            $registeredParts = parse_url($registered);
+            $requestedParts = parse_url($requested);
+            if (
+                strtolower((string)($registeredParts['scheme'] ?? '')) !== 'http'
+                || strtolower((string)($requestedParts['scheme'] ?? '')) !== 'http'
+                || !$this->isLoopbackHost((string)($registeredParts['host'] ?? ''))
+                || !$this->isLoopbackHost((string)($requestedParts['host'] ?? ''))
+            ) {
+                continue;
+            }
+            unset($registeredParts['port'], $requestedParts['port']);
+            if ($registeredParts === $requestedParts) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function uriIsSafe(string $uri, bool $allowLoopback): bool
     {
         if ($uri === '' || preg_match('/[\x00-\x20]/', $uri) || strpos($uri, '\\') !== false) {

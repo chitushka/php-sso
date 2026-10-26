@@ -609,7 +609,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$authorize_url\.$#'
 			identifier: property.notFound
-			count: 7
+			count: 1
 			path: /app/services/BrokerService.php
 
 		-
@@ -631,12 +631,6 @@ parameters:
 			path: /app/services/BrokerService.php
 
 		-
-			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$enabled\.$#'
-			identifier: property.notFound
-			count: 1
-			path: /app/services/BrokerService.php
-
-		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 3
@@ -645,17 +639,11 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$scopes\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: /app/services/BrokerService.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$token_url\.$#'
-			identifier: property.notFound
-			count: 7
-			path: /app/services/BrokerService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
 			identifier: property.notFound
 			count: 1
 			path: /app/services/BrokerService.php
@@ -663,7 +651,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$userinfo_url\.$#'
 			identifier: property.notFound
-			count: 7
+			count: 1
 			path: /app/services/BrokerService.php
 
 		-
@@ -759,7 +747,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 5
 			path: /app/services/IdentityProviderAdminService.php
 
 		-
@@ -777,7 +765,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$authorize_url\.$#'
 			identifier: property.notFound
-			count: 7
+			count: 2
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
@@ -801,7 +789,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$enabled\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
@@ -819,19 +807,19 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$scopes\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$token_url\.$#'
 			identifier: property.notFound
-			count: 7
+			count: 2
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
@@ -843,7 +831,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\IdentityProvider\:\:\$userinfo_url\.$#'
 			identifier: property.notFound
-			count: 7
+			count: 2
 			path: /app/services/IdentityProviderPolicy.php
 
 		-
@@ -1251,7 +1239,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: /app/services/OAuthRedirectPolicy.php
 
 		-
@@ -1263,7 +1251,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: /app/services/OAuthRedirectPolicy.php
 
 		-
@@ -1327,12 +1315,6 @@ parameters:
 			path: /app/services/OAuthService.php
 
 		-
-			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allow_loopback_redirects\.$#'
-			identifier: property.notFound
-			count: 3
-			path: /app/services/OAuthService.php
-
-		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$allowed_scopes\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1371,13 +1353,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$post_logout_redirect_uris\.$#'
 			identifier: property.notFound
-			count: 2
-			path: /app/services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$redirect_uris\.$#'
-			identifier: property.notFound
-			count: 2
+			count: 1
 			path: /app/services/OAuthService.php
 
 		-
@@ -1389,7 +1365,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property app\\models\\OAuthClient\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: /app/services/OAuthService.php
 
 		-

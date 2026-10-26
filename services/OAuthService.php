@@ -18,20 +18,20 @@ class OAuthService
     private AuthService $auth;
     private JwtService $jwt;
     private OidcService $oidc;
-    private OutboundHttpService $outboundHttp;
+    private OAuthRedirectPolicy $redirectPolicy;
 
     public function __construct(
         ?OAuthClientService $clients = null,
         ?AuthService $auth = null,
         ?JwtService $jwt = null,
         ?OidcService $oidc = null,
-        ?OutboundHttpService $outboundHttp = null
+        ?OAuthRedirectPolicy $redirectPolicy = null
     ) {
-        $this->clients = $clients ?? new OAuthClientService();
+        $this->redirectPolicy = $redirectPolicy ?? new OAuthRedirectPolicy();
+        $this->clients = $clients ?? new OAuthClientService($this->redirectPolicy);
         $this->auth = $auth ?? new AuthService();
         $this->jwt = $jwt ?? new JwtService();
         $this->oidc = $oidc ?? new OidcService();
-        $this->outboundHttp = $outboundHttp ?? new OutboundHttpService();
     }
 
     public function listClients(): array
@@ -72,7 +72,7 @@ class OAuthService
         }
 
         $redirectUri = (string)$request->get('redirect_uri');
-        if (!$this->redirectUriAllowed($client, $redirectUri)) {
+        if (!$this->redirectPolicy->redirectUriAllowed($client, $redirectUri)) {
             return $this->oauthFail(400, 'invalid_request', 'redirect_uri is not registered');
         }
 
@@ -530,38 +530,6 @@ class OAuthService
         return ServiceResult::success([], 302, ['redirect' => $redirect]);
     }
 
-    private function redirectUriAllowed(OAuthClient $client, string $requested): bool
-    {
-        foreach (OAuthClient::parsePgArray($client->redirect_uris) as $registered) {
-            if (hash_equals($registered, $requested)) {
-                return true;
-            }
-            if (
-                !$client->allow_loopback_redirects
-                || !$this->redirectUriIsSafe($registered, true)
-                || !$this->redirectUriIsSafe($requested, true)
-            ) {
-                continue;
-            }
-            $registeredParts = parse_url($registered);
-            $requestedParts = parse_url($requested);
-            if (
-                strtolower((string)($registeredParts['scheme'] ?? '')) !== 'http'
-                || strtolower((string)($requestedParts['scheme'] ?? '')) !== 'http'
-                || !$this->isLoopbackHost((string)($registeredParts['host'] ?? ''))
-                || !$this->isLoopbackHost((string)($requestedParts['host'] ?? ''))
-            ) {
-                continue;
-            }
-            unset($registeredParts['port'], $requestedParts['port']);
-            if ($registeredParts === $requestedParts) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function logoutParameter(Request $request, string $name): string
     {
         $bodyValue = (string)$request->post($name, '');
@@ -886,58 +854,6 @@ class OAuthService
         }
 
         return array_values(array_filter(preg_split('/\s+/', trim($scope))));
-    }
-
-    private function backchannelLogoutUriIsSafe(string $uri): bool
-    {
-        return $uri === '' || $this->outboundHttp->isValidEndpoint($uri);
-    }
-
-    private function redirectUrisAreSafe(OAuthClient $client): bool
-    {
-        if ($client->allow_loopback_redirects && $client->type !== OAuthClient::TYPE_PUBLIC) {
-            return false;
-        }
-
-        foreach (
-            array_merge(
-                OAuthClient::parsePgArray($client->redirect_uris),
-                OAuthClient::parsePgArray($client->post_logout_redirect_uris)
-            ) as $uri
-        ) {
-            if (!$this->redirectUriIsSafe($uri, (bool)$client->allow_loopback_redirects)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function redirectUriIsSafe(string $uri, bool $allowLoopback): bool
-    {
-        if ($uri === '' || preg_match('/[\x00-\x20]/', $uri) || strpos($uri, '\\') !== false) {
-            return false;
-        }
-        $parts = parse_url($uri);
-        if (
-            !is_array($parts) || empty($parts['scheme']) || empty($parts['host'])
-            || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])
-        ) {
-            return false;
-        }
-
-        $scheme = strtolower((string)$parts['scheme']);
-        if ($scheme === 'https') {
-            return true;
-        }
-
-        return $scheme === 'http' && $allowLoopback && $this->isLoopbackHost((string)$parts['host']);
-    }
-
-    private function isLoopbackHost(string $host): bool
-    {
-        $host = strtolower(trim($host, '[]'));
-        return $host === 'localhost' || $host === '127.0.0.1' || $host === '::1';
     }
 
     private function hasConsent(string $userId, string $clientId, string $scope): bool

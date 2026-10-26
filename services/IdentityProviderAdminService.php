@@ -102,10 +102,12 @@ final class IdentityProviderAdminService
         if (array_key_exists('enabled', $body)) {
             $provider->enabled = (bool)$body['enabled'];
         }
-        if ($isNewRecord && $provider->type === '') {
-            $provider->type = 'oidc';
+        if ($isNewRecord && trim((string)$provider->type) === '') {
+            $provider->type = IdentityProvider::TYPE_OIDC;
         }
-        $provider = $this->policy->applyPreset($provider);
+        if (!in_array($provider->type, IdentityProvider::SUPPORTED_TYPES, true)) {
+            return $this->failure('invalid_provider', 'unsupported identity provider type', 400);
+        }
 
         if ($isNewRecord && $provider->client_id === '') {
             return $this->failure('invalid_provider', 'code and client_id are required', 400);

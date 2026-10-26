@@ -23,15 +23,7 @@
 
 Критерий готовности: UI доступен с клавиатуры и screen reader, стабилен на поддерживаемых ширинах и не дублирует бизнес-правила API.
 
-### 3. Удалить недостижимые provider presets и дублирование policy
-
-- `IdentityProviderPolicy` и `BrokerService::applyPreset()` содержат ветки `google`/`github`, но модель и DB CHECK разрешают только type `oidc`; этот код недостижим.
-- Выбрать один контракт: удалить presets и принимать явные OIDC endpoints либо формально добавить поддерживаемые provider types с миграцией и тестами.
-- Удалить дублирование redirect/provider endpoint policy между `OAuthService`, `OAuthRedirectPolicy`, `BrokerService` и `IdentityProviderPolicy`.
-
-Критерий готовности: каждый разрешённый type достижим и протестирован, а URI/SSRF policy имеет одну реализацию.
-
-### 4. Обновить устаревший test/tooling stack
+### 3. Обновить устаревший test/tooling stack
 
 - Проект на PHP 8.4 остаётся на PHPUnit `^9.6`, поддержка bugfix этой ветки закончилась в 2024 году; перейти на поддерживаемую для PHP 8.4 major-ветку и обновить `phpunit.xml`/tests.
 - Проверить переход PHPCS `^3.13` на актуальную major-ветку, устранив deprecations и сохранив PSR-12 gate.
@@ -39,7 +31,7 @@
 
 Критерий готовности: тесты и линтер работают на поддерживаемых версиях без deprecation output, lock-файл и CI обновлены.
 
-### 5. Усилить test coverage и supply-chain reproducibility
+### 4. Усилить test coverage и supply-chain reproducibility
 
 - Порог line coverage 35% слишком низок для auth/token/session/provider кода; ввести поэтапные пороги для security-critical services и controller HTTP branches.
 - Включить protocol scripts в отчёт/матрицу покрытия или перенести сценарии в управляемый test harness с гарантированным cleanup.
