@@ -1594,6 +1594,14 @@ try {
     ]);
     assertTrue($rbac['status'] === 403, 'plain user must not list users');
     $adminContract->validateResponse('GET', '/api/v1/users', $rbac['status'], $rbac['json']);
+    $forbiddenAudit = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/audit',
+        [],
+        $plainLogin['json']['access_token']
+    );
+    assertTrue($forbiddenAudit['status'] === 403, 'plain user must not list audit events');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $forbiddenAudit['status'], $forbiddenAudit['json']);
 
     $missingUserFields = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => '',
@@ -2215,28 +2223,41 @@ try {
     );
     assertTrue(($invalidUserGroupBody['json']['error'] ?? '') === 'invalid json body', 'invalid user-group body id must match API contract');
 
+    $anonymousAudit = jsonRequest('GET', $baseUrl . '/api/v1/audit', []);
+    assertTrue($anonymousAudit['status'] === 401, 'audit endpoint without bearer token must return 401');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $anonymousAudit['status'], $anonymousAudit['json']);
+
     $badAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=not-a-uuid', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditActor['status'] === 400, 'audit with invalid actor must return 400');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $badAuditActor['status'], $badAuditActor['json']);
     assertTrue(($badAuditActor['json']['error'] ?? '') === 'invalid actor id', 'audit invalid actor must match API contract');
 
     $malformedAuditActor = httpRequest('GET', $baseUrl . '/api/v1/audit?actor=------------------------------------', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($malformedAuditActor['status'] === 400, 'audit with malformed 36-character actor must return 400');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/audit',
+        $malformedAuditActor['status'],
+        $malformedAuditActor['json']
+    );
     assertTrue(($malformedAuditActor['json']['error'] ?? '') === 'invalid actor id', 'malformed audit actor must match API contract');
 
     $badAuditFrom = httpRequest('GET', $baseUrl . '/api/v1/audit?from=not-a-date', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditFrom['status'] === 400, 'audit with invalid from must return 400');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $badAuditFrom['status'], $badAuditFrom['json']);
     assertTrue(($badAuditFrom['json']['error'] ?? '') === 'invalid from, expected RFC3339', 'audit invalid from must match API contract');
 
     $badAuditTo = httpRequest('GET', $baseUrl . '/api/v1/audit?to=not-a-date', [
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($badAuditTo['status'] === 400, 'audit with invalid to must return 400');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $badAuditTo['status'], $badAuditTo['json']);
     assertTrue(($badAuditTo['json']['error'] ?? '') === 'invalid to, expected RFC3339', 'audit invalid to must match API contract');
 
     $fractionalAuditRange = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
@@ -2246,6 +2267,12 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($fractionalAuditRange['status'] === 200, 'audit must accept contract-compliant fractional RFC3339 timestamps');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/audit',
+        $fractionalAuditRange['status'],
+        $fractionalAuditRange['json']
+    );
 
     $auditLimitAction = 'integration_audit_limit_' . $suffix;
     $createdAuditActions[] = $auditLimitAction;
@@ -2266,6 +2293,7 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditWire['status'] === 200, 'audit wire-format request must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $auditWire['status'], $auditWire['json']);
     assertTrue(count($auditWire['json']['items'] ?? []) === 1, 'audit wire-format request must return one event');
     assertTrue(($auditWire['json']['pagination'] ?? null) === ['limit' => 1, 'offset' => 0, 'count' => 1], 'audit response must expose pagination metadata');
     assertTrue(!array_key_exists('actor_user_id', $auditWire['json']['items'][0]), 'audit event must omit empty actor_user_id');
@@ -2284,6 +2312,12 @@ try {
             'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
         ]);
         assertTrue($auditDefaultLimit['status'] === 200, 'audit with invalid limit must return 200');
+        $adminContract->validateResponse(
+            'GET',
+            '/api/v1/audit',
+            $auditDefaultLimit['status'],
+            $auditDefaultLimit['json']
+        );
         assertTrue(count($auditDefaultLimit['json']['items'] ?? []) === 50, 'invalid audit limit must use the default of 50');
     }
 
@@ -2294,6 +2328,7 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditMaxLimit['status'] === 200, 'audit with maximum limit must return 200');
+    $adminContract->validateResponse('GET', '/api/v1/audit', $auditMaxLimit['status'], $auditMaxLimit['json']);
     assertTrue(count($auditMaxLimit['json']['items'] ?? []) === 50, 'audit limit above 100 must use the default');
 
     $auditLeadingZeroLimit = httpRequest('GET', $baseUrl . '/api/v1/audit?' . http_build_query([
@@ -2304,6 +2339,12 @@ try {
         'headers' => ['Authorization: Bearer ' . $adminToken, 'Accept: application/json'],
     ]);
     assertTrue($auditLeadingZeroLimit['status'] === 200, 'audit must accept a numeric limit with leading zeroes');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/audit',
+        $auditLeadingZeroLimit['status'],
+        $auditLeadingZeroLimit['json']
+    );
     assertTrue(count($auditLeadingZeroLimit['json']['items'] ?? []) === 50, 'invalid audit offset must use the default of zero');
 
     $missingIdentityFields = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
