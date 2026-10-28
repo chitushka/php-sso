@@ -1602,6 +1602,19 @@ try {
     );
     assertTrue($forbiddenAudit['status'] === 403, 'plain user must not list audit events');
     $adminContract->validateResponse('GET', '/api/v1/audit', $forbiddenAudit['status'], $forbiddenAudit['json']);
+    $forbiddenLdap = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/ldap/providers',
+        [],
+        $plainLogin['json']['access_token']
+    );
+    assertTrue($forbiddenLdap['status'] === 403, 'plain user must not list LDAP providers');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/ldap/providers',
+        $forbiddenLdap['status'],
+        $forbiddenLdap['json']
+    );
 
     $missingUserFields = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => '',
@@ -2495,6 +2508,12 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownLdapProviderField['status'] === 400, 'LDAP provider JSON with unknown field must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers',
+        $unknownLdapProviderField['status'],
+        $unknownLdapProviderField['json']
+    );
     assertTrue(($unknownLdapProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP provider field must match API contract');
 
     $typedLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
@@ -2504,6 +2523,12 @@ try {
         'created_at' => 'not-rfc3339',
     ], $adminToken);
     assertTrue($typedLdapProvider['status'] === 400, 'LDAP provider with invalid int/time types must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers',
+        $typedLdapProvider['status'],
+        $typedLdapProvider['json']
+    );
     assertTrue(($typedLdapProvider['json']['error'] ?? '') === 'invalid json body', 'typed LDAP provider error must match JSON contract');
 
     $unknownLdapTestField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers/test', [
@@ -2511,7 +2536,40 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownLdapTestField['status'] === 400, 'LDAP test JSON with unknown field must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/test',
+        $unknownLdapTestField['status'],
+        $unknownLdapTestField['json']
+    );
     assertTrue(($unknownLdapTestField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP test field must match API contract');
+
+    $ldapTestPayload = [
+        'host' => 'ldap.example.test',
+        'port' => 636,
+        'use_tls' => true,
+        'bind_dn' => 'cn=service,dc=example,dc=test',
+        'bind_password' => 'integration-ldap-secret',
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/ldap/providers/test',
+        'application/json',
+        $ldapTestPayload
+    );
+    $failedLdapTest = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers/test',
+        $ldapTestPayload,
+        $adminToken
+    );
+    assertTrue($failedLdapTest['status'] === 400, 'disallowed LDAP test endpoint must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/test',
+        $failedLdapTest['status'],
+        $failedLdapTest['json']
+    );
 
     $unknownLdapMappingField = jsonRequest(
         'POST',
@@ -2524,6 +2582,12 @@ try {
         $adminToken
     );
     assertTrue($unknownLdapMappingField['status'] === 400, 'LDAP mapping JSON with unknown field must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $unknownLdapMappingField['status'],
+        $unknownLdapMappingField['json']
+    );
     assertTrue(($unknownLdapMappingField['json']['error'] ?? '') === 'invalid json body', 'unknown LDAP mapping field must match API contract');
 
     $invalidLdapMappingGroup = jsonRequest(
@@ -2536,17 +2600,29 @@ try {
         $adminToken
     );
     assertTrue($invalidLdapMappingGroup['status'] === 400, 'LDAP mapping with invalid group id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $invalidLdapMappingGroup['status'],
+        $invalidLdapMappingGroup['json']
+    );
     assertTrue(($invalidLdapMappingGroup['json']['error'] ?? '') === 'invalid json body', 'LDAP mapping invalid group id must match JSON contract');
 
     foreach ([
-        ['PUT', '/api/v1/ldap/providers/not-a-uuid'],
-        ['DELETE', '/api/v1/ldap/providers/not-a-uuid'],
-        ['GET', '/api/v1/ldap/providers/not-a-uuid/group-mappings'],
-        ['POST', '/api/v1/ldap/providers/not-a-uuid/group-mappings'],
+        ['PUT', '/api/v1/ldap/providers/not-a-uuid', '/api/v1/ldap/providers/{id}'],
+        ['DELETE', '/api/v1/ldap/providers/not-a-uuid', '/api/v1/ldap/providers/{id}'],
+        ['GET', '/api/v1/ldap/providers/not-a-uuid/group-mappings', '/api/v1/ldap/providers/{id}/group-mappings'],
+        ['POST', '/api/v1/ldap/providers/not-a-uuid/group-mappings', '/api/v1/ldap/providers/{id}/group-mappings'],
     ] as $invalidLdapProviderRequest) {
-        [$method, $path] = $invalidLdapProviderRequest;
+        [$method, $path, $contractPath] = $invalidLdapProviderRequest;
         $invalidLdapProviderId = jsonRequest($method, $baseUrl . $path, [], $adminToken);
         assertTrue($invalidLdapProviderId['status'] === 400, $method . ' LDAP provider path with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            $contractPath,
+            $invalidLdapProviderId['status'],
+            $invalidLdapProviderId['json']
+        );
         assertTrue(($invalidLdapProviderId['json']['error'] ?? '') === 'invalid id', $method . ' LDAP provider path must match API contract');
     }
 
@@ -2555,6 +2631,12 @@ try {
         'body' => '{}',
     ]);
     assertTrue($missingLdapProviderUpdate['status'] === 404, 'PUT missing LDAP provider must return 404');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/ldap/providers/{id}',
+        $missingLdapProviderUpdate['status'],
+        $missingLdapProviderUpdate['json']
+    );
     assertTrue(($missingLdapProviderUpdate['json']['error'] ?? '') === 'provider not found', 'PUT missing LDAP provider must match API contract');
 
     $missingLdapProviderDelete = jsonRequest(
@@ -2564,6 +2646,12 @@ try {
         $adminToken
     );
     assertTrue($missingLdapProviderDelete['status'] === 404, 'DELETE missing LDAP provider must return 404');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}',
+        $missingLdapProviderDelete['status'],
+        $missingLdapProviderDelete['json']
+    );
     assertTrue(($missingLdapProviderDelete['json']['error'] ?? '') === 'provider not found', 'DELETE missing LDAP provider must match API contract');
 
     $invalidLdapMappingId = jsonRequest(
@@ -2573,6 +2661,12 @@ try {
         $adminToken
     );
     assertTrue($invalidLdapMappingId['status'] === 400, 'LDAP mapping delete with invalid mapping id must return 400');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}/group-mappings/{mappingID}',
+        $invalidLdapMappingId['status'],
+        $invalidLdapMappingId['json']
+    );
     assertTrue(($invalidLdapMappingId['json']['error'] ?? '') === 'invalid id', 'LDAP mapping delete must validate parent id first');
 
     $missingLdapMapping = jsonRequest(
@@ -2582,6 +2676,12 @@ try {
         $adminToken
     );
     assertTrue($missingLdapMapping['status'] === 400, 'LDAP mapping delete must reject an invalid parent id');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}/group-mappings/{mappingID}',
+        $missingLdapMapping['status'],
+        $missingLdapMapping['json']
+    );
     assertTrue(($missingLdapMapping['json']['error'] ?? '') === 'invalid id', 'LDAP mapping delete must enforce the parent-id contract');
 
     $missingLdapMappings = jsonRequest(
@@ -2591,6 +2691,12 @@ try {
         $adminToken
     );
     assertTrue($missingLdapMappings['status'] === 404, 'list mappings for a missing LDAP provider must return 404');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $missingLdapMappings['status'],
+        $missingLdapMappings['json']
+    );
     assertTrue(($missingLdapMappings['json']['error'] ?? '') === 'provider not found', 'missing LDAP mapping parent must match API contract');
 
     $missingLdapMappingCreate = jsonRequest(
@@ -2603,9 +2709,15 @@ try {
         $adminToken
     );
     assertTrue($missingLdapMappingCreate['status'] === 404, 'create mapping for a missing LDAP provider must return 404');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $missingLdapMappingCreate['status'],
+        $missingLdapMappingCreate['json']
+    );
     assertTrue(($missingLdapMappingCreate['json']['error'] ?? '') === 'provider not found', 'missing LDAP mapping create parent must match API contract');
 
-    $ldapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
+    $ldapProviderPayload = [
         'name' => 'Integration LDAP ' . $suffix,
         'host' => 'ldap.example.test',
         'port' => 389,
@@ -2618,8 +2730,26 @@ try {
         'username_attribute' => 'sAMAccountName',
         'email_attribute' => 'mail',
         'display_name_attribute' => 'displayName',
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/ldap/providers',
+        'application/json',
+        $ldapProviderPayload
+    );
+    $ldapProvider = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/ldap/providers',
+        $ldapProviderPayload,
+        $adminToken
+    );
     assertTrue($ldapProvider['status'] === 201, 'create LDAP provider must return 201');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers',
+        $ldapProvider['status'],
+        $ldapProvider['json']
+    );
     $createdLdapProviderIds[] = $ldapProvider['json']['id'];
     $createdAuditTargets[] = ['action' => 'ldap_provider_created', 'target_id' => $ldapProvider['json']['id']];
     $createdAuditTargets[] = ['action' => 'ldap_provider_updated', 'target_id' => $ldapProvider['json']['id']];
@@ -2638,6 +2768,20 @@ try {
     )->queryScalar();
     assertTrue($ldapCreateAuditCount === 1, 'LDAP provider create must write exactly one audit event');
 
+    $ldapProviders = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/ldap/providers?q=' . rawurlencode('Integration LDAP ' . $suffix),
+        [],
+        $adminToken
+    );
+    assertTrue($ldapProviders['status'] === 200, 'LDAP provider list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/ldap/providers',
+        $ldapProviders['status'],
+        $ldapProviders['json']
+    );
+
     $otherLdapProvider = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Other integration LDAP ' . $suffix,
         'host' => 'ldap-other.example.test',
@@ -2646,6 +2790,12 @@ try {
         'base_dn' => 'dc=example,dc=test',
     ], $adminToken);
     assertTrue($otherLdapProvider['status'] === 201, 'second LDAP provider must be created');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers',
+        $otherLdapProvider['status'],
+        $otherLdapProvider['json']
+    );
     $createdLdapProviderIds[] = $otherLdapProvider['json']['id'];
     $createdAuditTargets[] = [
         'action' => 'ldap_provider_created',
@@ -2658,6 +2808,12 @@ try {
         'port' => -1,
     ], $adminToken);
     assertTrue($failedLdapProvider['status'] === 500, 'invalid LDAP provider persistence must return 500');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers',
+        $failedLdapProvider['status'],
+        $failedLdapProvider['json']
+    );
     assertTrue(($failedLdapProvider['json']['error'] ?? '') === 'failed to create provider', 'LDAP provider create failure must hide database details');
 
     $db->createCommand()->update(
@@ -2665,29 +2821,49 @@ try {
         ['updated_at' => '2000-01-01 00:00:00+00'],
         ['id' => $ldapProvider['json']['id']]
     )->execute();
+    $failedLdapUpdatePayload = [
+        'name' => 'Invalid LDAP update ' . $suffix,
+        'port' => 0,
+    ];
     $failedLdapUpdate = jsonRequest(
         'PUT',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
-        [
-            'name' => 'Invalid LDAP update ' . $suffix,
-            'port' => 0,
-        ],
+        $failedLdapUpdatePayload,
         $adminToken
     );
     assertTrue($failedLdapUpdate['status'] === 500, 'invalid LDAP provider update persistence must return 500');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/ldap/providers/{id}',
+        $failedLdapUpdate['status'],
+        $failedLdapUpdate['json']
+    );
     assertTrue(($failedLdapUpdate['json']['error'] ?? '') === 'failed to update provider', 'LDAP provider update failure must hide database details');
 
+    $ldapProviderUpdatePayload = [
+        'name' => 'Updated LDAP ' . $suffix,
+        'port' => 389,
+        'bind_password' => '',
+    ];
+    $adminContract->validateRequest(
+        'PUT',
+        '/api/v1/ldap/providers/{id}',
+        'application/json',
+        $ldapProviderUpdatePayload
+    );
     $updatedLdapProvider = jsonRequest(
         'PUT',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
-        [
-            'name' => 'Updated LDAP ' . $suffix,
-            'port' => 389,
-            'bind_password' => '',
-        ],
+        $ldapProviderUpdatePayload,
         $adminToken
     );
     assertTrue($updatedLdapProvider['status'] === 200, 'LDAP provider update must return 200');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/ldap/providers/{id}',
+        $updatedLdapProvider['status'],
+        $updatedLdapProvider['json']
+    );
     assertTrue(($updatedLdapProvider['json']['host'] ?? '') === 'ldap.example.test', 'LDAP provider update must preserve omitted host');
     assertTrue(($updatedLdapProvider['json']['bind_dn'] ?? '') === 'cn=service,dc=example,dc=test', 'LDAP provider update must preserve omitted bind_dn');
     assertTrue(($updatedLdapProvider['json']['base_dn'] ?? '') === 'dc=example,dc=test', 'LDAP provider update must preserve omitted base_dn');
@@ -2709,16 +2885,29 @@ try {
     )->queryScalar();
     assertTrue($ldapUpdateAuditCount === 1, 'LDAP provider update audit must preserve authenticated actor');
 
+    $ldapMappingPayload = [
+        'ldap_group' => 'cn=integration,dc=example,dc=test',
+        'group_id' => $group['json']['id'],
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        'application/json',
+        $ldapMappingPayload
+    );
     $ldapMapping = jsonRequest(
         'POST',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'] . '/group-mappings',
-        [
-            'ldap_group' => 'cn=integration,dc=example,dc=test',
-            'group_id' => $group['json']['id'],
-        ],
+        $ldapMappingPayload,
         $adminToken
     );
     assertTrue($ldapMapping['status'] === 201, 'create LDAP group mapping must return 201');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $ldapMapping['status'],
+        $ldapMapping['json']
+    );
     assertTrue(
         preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/', (string)($ldapMapping['json']['created_at'] ?? '')) === 1,
         'LDAP group mapping created_at must use contract-compliant RFC3339'
@@ -2731,6 +2920,12 @@ try {
         $adminToken
     );
     assertTrue($crossProviderDelete['status'] === 404, 'LDAP mapping cannot be deleted through another provider');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}/group-mappings/{mappingID}',
+        $crossProviderDelete['status'],
+        $crossProviderDelete['json']
+    );
     assertTrue(($crossProviderDelete['json']['error'] ?? '') === 'mapping not found', 'cross-provider mapping delete must use the not-found contract');
 
     $duplicateLdapMapping = jsonRequest(
@@ -2743,6 +2938,12 @@ try {
         $adminToken
     );
     assertTrue($duplicateLdapMapping['status'] === 409, 'duplicate LDAP mapping must return 409');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $duplicateLdapMapping['status'],
+        $duplicateLdapMapping['json']
+    );
     assertTrue(($duplicateLdapMapping['json']['error'] ?? '') === 'mapping already exists', 'duplicate LDAP mapping must match API contract');
 
     $secondLdapMapping = jsonRequest(
@@ -2755,6 +2956,12 @@ try {
         $adminToken
     );
     assertTrue($secondLdapMapping['status'] === 201, 'create second LDAP mapping must return 201');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $secondLdapMapping['status'],
+        $secondLdapMapping['json']
+    );
 
     $listedLdapMappings = jsonRequest(
         'GET',
@@ -2763,6 +2970,12 @@ try {
         $adminToken
     );
     assertTrue($listedLdapMappings['status'] === 200, 'list LDAP mappings must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/ldap/providers/{id}/group-mappings',
+        $listedLdapMappings['status'],
+        $listedLdapMappings['json']
+    );
     assertTrue(
         array_column($listedLdapMappings['json']['items'] ?? [], 'ldap_group') === [
             'cn=aardvarks,dc=example,dc=test',
@@ -2787,6 +3000,12 @@ try {
             $adminToken
         );
         assertTrue($deletedLdapMapping['status'] === 200, 'delete LDAP mapping must return 200');
+        $adminContract->validateResponse(
+            'DELETE',
+            '/api/v1/ldap/providers/{id}/group-mappings/{mappingID}',
+            $deletedLdapMapping['status'],
+            $deletedLdapMapping['json']
+        );
         $mappingDeleteAuditCount = (int)$db->createCommand(
             "SELECT count(*) FROM audit_logs WHERE action = 'ldap_group_mapping_deleted' AND target_type = 'ldap_group_mapping' AND target_id = :id AND actor_user_id = :actor_id",
             [':id' => $mappingToDelete['json']['id'], ':actor_id' => $adminId]
@@ -2801,6 +3020,12 @@ try {
         $adminToken
     );
     assertTrue($deletedLdapProvider['status'] === 200, 'existing LDAP provider delete must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}',
+        $deletedLdapProvider['status'],
+        $deletedLdapProvider['json']
+    );
     $repeatedLdapProviderDelete = jsonRequest(
         'DELETE',
         $baseUrl . '/api/v1/ldap/providers/' . $ldapProvider['json']['id'],
@@ -2808,6 +3033,12 @@ try {
         $adminToken
     );
     assertTrue($repeatedLdapProviderDelete['status'] === 404, 'repeated LDAP provider delete must return 404');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/ldap/providers/{id}',
+        $repeatedLdapProviderDelete['status'],
+        $repeatedLdapProviderDelete['json']
+    );
     $ldapDeleteAuditCount = (int)$db->createCommand(
         "SELECT count(*) FROM audit_logs WHERE action = 'ldap_provider_deleted' AND target_id = :id AND actor_user_id = :actor_id",
         [':id' => $ldapProvider['json']['id'], ':actor_id' => $adminId]
