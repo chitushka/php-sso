@@ -11,8 +11,7 @@
 
 ### 1. Завершить review admin UI
 
-- Провести accessibility, keyboard navigation и responsive review Vue admin; разделить монолитный `views/admin/index.php` на модули.
-- Добавить browser smoke для login/session restore, навигации, destructive confirmations, loading/error states и основных mobile breakpoints.
+- Завершить разделение монолитного `views/admin/index.php` на доменные Vue-модули и провести ручную проверку с основными screen reader.
 
 Критерий готовности: UI доступен с клавиатуры и screen reader, стабилен на поддерживаемых ширинах и не дублирует бизнес-правила API.
 

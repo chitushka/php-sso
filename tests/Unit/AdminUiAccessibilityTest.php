@@ -21,8 +21,9 @@ class AdminUiAccessibilityTest extends TestCase
     {
         $navigation = (string)file_get_contents(dirname(__DIR__, 2) . '/web/js/admin-navigation.js');
 
-        self::assertStringContainsString('aria-label="Primary navigation"', $navigation);
-        self::assertStringContainsString(':aria-current=', $navigation);
+        self::assertStringContainsString("'aria-label': 'Primary navigation'", $navigation);
+        self::assertStringContainsString("'aria-current':", $navigation);
+        self::assertStringContainsString("global.Vue.h('nav'", $navigation);
         self::assertStringContainsString("'ArrowDown'", $navigation);
         self::assertStringContainsString("'ArrowUp'", $navigation);
         self::assertStringContainsString("'Home'", $navigation);

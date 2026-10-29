@@ -11,6 +11,7 @@
     emits: ['navigate', 'logout'],
     data() {
       return {
+        navigationItems: [],
         items: [
           { id: 'dashboard', label: 'Dashboard' },
           { id: 'bootstrap', label: 'Bootstrap' },
@@ -45,23 +46,34 @@
           target = (index - 1 + this.items.length) % this.items.length;
         }
 
-        this.$refs.navigationItems[target].focus();
+        this.navigationItems[target].focus();
       }
     },
-    template: `
-      <nav class="sidebar" aria-label="Primary navigation">
-        <button
-          v-for="(item, index) in items"
-          :key="item.id"
-          ref="navigationItems"
-          type="button"
-          :class="{active: view === item.id}"
-          :aria-current="view === item.id ? 'page' : null"
-          @click="$emit('navigate', item.id)"
-          @keydown="moveFocus($event, index)"
-        >{{ item.label }}</button>
-        <button type="button" class="primary" @click="$emit('logout')">Logout</button>
-      </nav>
-    `
+    render() {
+      const buttons = this.items.map((item, index) => global.Vue.h('button', {
+        key: item.id,
+        ref: element => {
+          if (element) {
+            this.navigationItems[index] = element;
+          }
+        },
+        type: 'button',
+        class: { active: this.view === item.id },
+        'aria-current': this.view === item.id ? 'page' : null,
+        onClick: () => this.$emit('navigate', item.id),
+        onKeydown: event => this.moveFocus(event, index)
+      }, item.label));
+
+      buttons.push(global.Vue.h('button', {
+        type: 'button',
+        class: 'primary',
+        onClick: () => this.$emit('logout')
+      }, 'Logout'));
+
+      return global.Vue.h('nav', {
+        class: 'sidebar',
+        'aria-label': 'Primary navigation'
+      }, buttons);
+    }
   };
 }(window));

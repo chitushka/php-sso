@@ -1,4 +1,4 @@
-.PHONY: build build-test runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external ci deployment-check db-invariant-check db-invariant-repair encryption-key-rotate-dry-run encryption-key-rotate local-encryption-key-generate local-secure-runtime-configure backup-restore-test maintenance-on maintenance-off smoke smoke-authenticated smoke-authenticated-local smoke-local
+.PHONY: build build-test build-browser runtime-check up up-development down migrate lint cs analyse unit phpunit-integration coverage audit verify-assets verify-docs secret-scan migration-check quality cleanup integration integration-client integration-broker integration-ldap integration-ldap-external browser-smoke ci deployment-check db-invariant-check db-invariant-repair encryption-key-rotate-dry-run encryption-key-rotate local-encryption-key-generate local-secure-runtime-configure backup-restore-test maintenance-on maintenance-off smoke smoke-authenticated smoke-authenticated-local smoke-local
 
 TEST_RUN = docker compose --profile test run --rm test
 TEST_RUN_NODEPS = docker compose --profile test run --rm --no-deps test
@@ -8,6 +8,9 @@ build:
 
 build-test:
 	docker compose --profile test build test
+
+build-browser:
+	docker compose --profile browser build browser-test
 
 runtime-check:
 	docker run --rm --entrypoint sh sso-php-app:latest -c 'test "$$(id -u)" = 33 && test ! -e /app/tests && test ! -e /app/composer.json && test ! -e /app/vendor/bin/phpunit'
@@ -79,7 +82,10 @@ integration-ldap:
 integration-ldap-external:
 	$(TEST_RUN) sh -lc "php yii migrate --interactive=0 && php tests/Integration/ldap_bind_flow.php"
 
-ci: build build-test runtime-check quality migration-check unit phpunit-integration coverage integration integration-client integration-broker integration-ldap audit
+browser-smoke: build-test build-browser
+	docker compose --profile browser up --force-recreate --abort-on-container-exit --exit-code-from browser-test browser-app browser-test
+
+ci: build build-test build-browser runtime-check quality migration-check unit phpunit-integration coverage integration integration-client integration-broker integration-ldap browser-smoke audit
 
 deployment-check:
 	docker compose run --rm app php yii deployment/check

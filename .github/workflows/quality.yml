@@ -25,6 +25,8 @@ jobs:
         run: make unit phpunit-integration coverage
       - name: Protocol smoke tests
         run: make integration integration-client integration-broker integration-ldap
+      - name: Admin browser smoke
+        run: make browser-smoke
       - name: Composer security audit
         run: make audit
       - name: Generate image SBOM

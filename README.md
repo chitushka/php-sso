@@ -138,3 +138,5 @@ Signing/JWT keys и credentials БД, SMTP и LDAP следует ротиров
 ## Цепочка поставки
 
 CI собирает production/test images, проверяет миграции fresh/upgrade/rollback, PSR-12, PHPStan, unit/integration/coverage и protocol smoke flows. Также обязательны Composer audit, secret/document/asset checks, SPDX SBOM и vulnerability scan. Production image собирается без dev dependencies и тестовых файлов; для обновления базовых образов используйте pull build и фиксируйте проверяемую версию.
+
+`make browser-smoke` запускает изолированный Chromium/Playwright-сценарий административного UI: bootstrap и login, восстановление browser session после reload, клавиатурную навигацию, destructive confirmation, loading/error states и мобильный viewport. Browser runner входит только в профиль `browser` и не включается в production image.

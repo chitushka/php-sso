@@ -121,6 +121,8 @@ Cleanup запускается scheduler-контейнером, работае�
 
 Admin UI показывает агрегированный operational status: каждый из компонентов `database`, `signing_keys` и `cleanup` имеет безопасный `ready/degraded`, а cleanup дополнительно сообщает возраст последнего успеха, настроенный интервал и предельный возраст. Общий статус равен `ready` только при готовности всех трёх компонентов. Любой сбой DB-запроса, включая запросы после первоначального probe, перехватывается и возвращает структурированный `degraded` без текста исключения. Детали соединения, конфигурационные secrets и key material в ответ не включаются.
 
+Vue-шаблон admin UI компилируется в `web/js/admin-render.js` на этапе сборки browser-test image и подключается как render-функция. Runtime compiler не используется, поэтому строгая CSP не требует `unsafe-eval`; проверка сборки отклоняет устаревший render artifact. Playwright smoke в изолированной тестовой БД проверяет bootstrap/login, восстановление session, клавиатурную навигацию, destructive confirmation, loading/error states и mobile layout.
+
 Maintenance mode блокирует весь HTTP кроме liveness на время backup/schema operations. Restore rehearsal разворачивает dump во временную БД и проверяет критическую структуру и данные. Пошаговые deployment, backup, restore, monitoring и rotation процедуры находятся в `README.md`.
 
 ## Цепочка поставки и web assets

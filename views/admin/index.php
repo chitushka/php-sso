@@ -579,11 +579,13 @@ $this->title = 'SSO Admin';
 </div>
 
 <script src="/js/vue.global.prod.js"></script>
+<script src="/js/admin-render.js"></script>
 <script src="/js/admin-api.js"></script>
 <script src="/js/admin-navigation.js"></script>
 <script src="/js/admin-ui.js"></script>
 <script nonce="<?= htmlspecialchars((string)(Yii::$app->params['_cspNonce'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 const app = Vue.createApp({
+  render: window.AdminRender,
   data() {
     return {
       view: 'dashboard',
