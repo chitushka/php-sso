@@ -336,6 +336,22 @@ body {
     background: #f4f6f8;
 }
 
+.skip-link {
+    position: fixed;
+    z-index: 1000;
+    top: 8px;
+    left: 8px;
+    padding: 10px 14px;
+    color: #ffffff;
+    background: #102a43;
+    border-radius: 6px;
+    transform: translateY(-150%);
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
 .topbar {
     display: flex;
     align-items: center;
@@ -439,6 +455,15 @@ button {
     cursor: pointer;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.skip-link:focus-visible {
+    outline: 3px solid #f18a2a;
+    outline-offset: 2px;
+}
+
 .table-wrap {
     overflow: auto;
     margin-top: 18px;
@@ -512,7 +537,22 @@ pre {
     }
 
     .sidebar {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 12px;
         border-right: 0;
         border-bottom: 1px solid #d9e2ec;
+    }
+
+    .sidebar button {
+        flex: 0 0 auto;
+        width: auto;
+        margin-bottom: 0;
+        white-space: nowrap;
+    }
+
+    .content {
+        padding: 16px;
     }
 }

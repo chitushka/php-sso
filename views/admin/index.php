@@ -3,28 +3,16 @@
 $this->title = 'SSO Admin';
 ?>
 <div id="app">
+  <a class="skip-link" href="#admin-content">Skip to main content</a>
   <header class="topbar">
     <div class="brand">SSO Admin</div>
-    <div>{{ user ? user.username : 'not signed in' }}</div>
+    <div aria-live="polite">{{ user ? user.username : 'not signed in' }}</div>
   </header>
 
   <main class="shell">
-    <nav class="sidebar">
-      <button :class="{active: view === 'dashboard'}" @click="view = 'dashboard'">Dashboard</button>
-      <button :class="{active: view === 'bootstrap'}" @click="view = 'bootstrap'">Bootstrap</button>
-      <button :class="{active: view === 'login'}" @click="view = 'login'">Login</button>
-      <button :class="{active: view === 'clients'}" @click="view = 'clients'">OAuth Clients</button>
-      <button :class="{active: view === 'users'}" @click="view = 'users'">Users</button>
-      <button :class="{active: view === 'roles'}" @click="view = 'roles'">Roles</button>
-      <button :class="{active: view === 'groups'}" @click="view = 'groups'">Groups</button>
-      <button :class="{active: view === 'ldap'}" @click="view = 'ldap'">LDAP</button>
-      <button :class="{active: view === 'identity'}" @click="view = 'identity'">Federation</button>
-      <button :class="{active: view === 'operations'}" @click="view = 'operations'">Operations</button>
-      <button :class="{active: view === 'audit'}" @click="view = 'audit'">Audit</button>
-      <button class="primary" @click="logout">Logout</button>
-    </nav>
+    <admin-navigation :view="view" @navigate="navigate" @logout="logout"></admin-navigation>
 
-    <section class="content">
+    <section id="admin-content" ref="adminContent" class="content" tabindex="-1">
       <div class="panel" v-if="view === 'dashboard'">
         <h1>Dashboard</h1>
         <div class="grid">
@@ -566,13 +554,14 @@ $this->title = 'SSO Admin';
         </div>
       </div>
 
-      <p class="muted">{{ message }}</p>
+      <p class="muted" role="status" aria-live="polite" aria-atomic="true">{{ message }}</p>
     </section>
   </main>
 </div>
 
 <script src="/js/vue.global.prod.js"></script>
 <script src="/js/admin-api.js"></script>
+<script src="/js/admin-navigation.js"></script>
 <script nonce="<?= htmlspecialchars((string)(Yii::$app->params['_cspNonce'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 const app = Vue.createApp({
   data() {
@@ -692,6 +681,10 @@ const app = Vue.createApp({
     }
   },
   methods: {
+    navigate(view) {
+      this.view = view;
+      this.$nextTick(() => this.$refs.adminContent.focus());
+    },
     async restoreSession() {
       try {
         const data = await AdminApi.restoreSession();
@@ -1145,5 +1138,6 @@ const app = Vue.createApp({
   }
 });
 
+app.component('admin-navigation', window.AdminNavigation);
 app.mount('#app');
 </script>
