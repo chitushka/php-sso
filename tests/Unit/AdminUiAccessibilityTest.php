@@ -28,4 +28,28 @@ class AdminUiAccessibilityTest extends TestCase
         self::assertStringContainsString("'Home'", $navigation);
         self::assertStringContainsString("'End'", $navigation);
     }
+
+    public function testFormLabelsReferenceControlsOrWrapCheckboxes(): void
+    {
+        $view = (string)file_get_contents(dirname(__DIR__, 2) . '/views/admin/index.php');
+        preg_match_all('/<label\b([^>]*)>(.*?)<\/label>/s', $view, $labels, PREG_SET_ORDER);
+
+        self::assertNotEmpty($labels);
+        foreach ($labels as $label) {
+            if (preg_match('/\bfor="([^"]+)"/', $label[1], $target) === 1) {
+                self::assertStringContainsString('id="' . $target[1] . '"', $view);
+                continue;
+            }
+
+            self::assertMatchesRegularExpression('/<(?:input|select|textarea)\b/', $label[2]);
+        }
+    }
+
+    public function testTablesHaveAccessibleNamesAndColumnHeaders(): void
+    {
+        $view = (string)file_get_contents(dirname(__DIR__, 2) . '/views/admin/index.php');
+
+        self::assertSame(substr_count($view, '<table>'), substr_count($view, '<caption'));
+        self::assertDoesNotMatchRegularExpression('/<th\b(?![^>]*\bscope="col")/', $view);
+    }
 }
