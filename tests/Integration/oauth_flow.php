@@ -1615,6 +1615,32 @@ try {
         $forbiddenLdap['status'],
         $forbiddenLdap['json']
     );
+    $forbiddenIdentityProviders = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/identity-providers',
+        [],
+        $plainLogin['json']['access_token']
+    );
+    assertTrue($forbiddenIdentityProviders['status'] === 403, 'plain user must not list identity providers');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/identity-providers',
+        $forbiddenIdentityProviders['status'],
+        $forbiddenIdentityProviders['json']
+    );
+    $forbiddenFederatedIdentities = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/users/' . $plainUserId . '/federated-identities',
+        [],
+        $plainLogin['json']['access_token']
+    );
+    assertTrue($forbiddenFederatedIdentities['status'] === 403, 'plain user must not list federated identity links');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/users/{userID}/federated-identities',
+        $forbiddenFederatedIdentities['status'],
+        $forbiddenFederatedIdentities['json']
+    );
 
     $missingUserFields = jsonRequest('POST', $baseUrl . '/api/v1/users', [
         'username' => '',
@@ -2360,11 +2386,26 @@ try {
     );
     assertTrue(count($auditLeadingZeroLimit['json']['items'] ?? []) === 50, 'invalid audit offset must use the default of zero');
 
+    $anonymousIdentityProviders = jsonRequest('GET', $baseUrl . '/api/v1/identity-providers', []);
+    assertTrue($anonymousIdentityProviders['status'] === 401, 'identity provider list must require authentication');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/identity-providers',
+        $anonymousIdentityProviders['status'],
+        $anonymousIdentityProviders['json']
+    );
+
     $missingIdentityFields = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
         'code' => '',
         'client_id' => '',
     ], $adminToken);
     assertTrue($missingIdentityFields['status'] === 400, 'identity provider without code/client_id must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $missingIdentityFields['status'],
+        $missingIdentityFields['json']
+    );
     assertTrue(($missingIdentityFields['json']['error'] ?? '') === 'code and client_id are required', 'identity provider missing fields must match API contract');
 
     $missingIdentityUrls = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
@@ -2375,6 +2416,12 @@ try {
         'client_secret' => 'secret',
     ], $adminToken);
     assertTrue($missingIdentityUrls['status'] === 400, 'OIDC provider without URLs must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $missingIdentityUrls['status'],
+        $missingIdentityUrls['json']
+    );
     assertTrue(($missingIdentityUrls['json']['error'] ?? '') === 'authorize_url, token_url and userinfo_url are required for type oidc', 'OIDC provider missing URLs must match API contract');
 
     $unknownIdentityProviderField = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
@@ -2383,6 +2430,12 @@ try {
         'unexpected' => true,
     ], $adminToken);
     assertTrue($unknownIdentityProviderField['status'] === 400, 'identity provider JSON with unknown field must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $unknownIdentityProviderField['status'],
+        $unknownIdentityProviderField['json']
+    );
     assertTrue(($unknownIdentityProviderField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider field must match API contract');
 
     $typedIdentityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
@@ -2391,6 +2444,12 @@ try {
         'enabled' => 1,
     ], $adminToken);
     assertTrue($typedIdentityProvider['status'] === 400, 'identity provider with numeric bool must return 400');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $typedIdentityProvider['status'],
+        $typedIdentityProvider['json']
+    );
     assertTrue(($typedIdentityProvider['json']['error'] ?? '') === 'invalid json body', 'typed identity provider error must match JSON contract');
 
     foreach (['PUT', 'DELETE'] as $method) {
@@ -2401,6 +2460,12 @@ try {
             $adminToken
         );
         assertTrue($invalidIdentityProviderId['status'] === 400, $method . ' identity provider with invalid id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            '/api/v1/identity-providers/{id}',
+            $invalidIdentityProviderId['status'],
+            $invalidIdentityProviderId['json']
+        );
         assertTrue(($invalidIdentityProviderId['json']['error'] ?? '') === 'invalid id', $method . ' identity provider must match API contract');
     }
 
@@ -2417,10 +2482,16 @@ try {
                 $adminToken
             );
         assertTrue($missingIdentityProvider['status'] === 404, $method . ' missing identity provider must return 404');
+        $adminContract->validateResponse(
+            $method,
+            '/api/v1/identity-providers/{id}',
+            $missingIdentityProvider['status'],
+            $missingIdentityProvider['json']
+        );
         assertTrue(($missingIdentityProvider['json']['error'] ?? '') === 'provider not found', $method . ' missing identity provider must match API contract');
     }
 
-    $identityProvider = jsonRequest('POST', $baseUrl . '/api/v1/identity-providers', [
+    $identityProviderPayload = [
         'code' => 'itest-idp-' . $suffix,
         'name' => 'Integration identity provider ' . $suffix,
         'type' => 'oidc',
@@ -2429,9 +2500,39 @@ try {
         'authorize_url' => 'https://idp.example.test/authorize',
         'token_url' => 'https://idp.example.test/token',
         'userinfo_url' => 'https://idp.example.test/userinfo',
-    ], $adminToken);
+    ];
+    $adminContract->validateRequest(
+        'POST',
+        '/api/v1/identity-providers',
+        'application/json',
+        $identityProviderPayload
+    );
+    $identityProvider = jsonRequest(
+        'POST',
+        $baseUrl . '/api/v1/identity-providers',
+        $identityProviderPayload,
+        $adminToken
+    );
     assertTrue($identityProvider['status'] === 201, 'create identity provider must return 201');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $identityProvider['status'],
+        $identityProvider['json']
+    );
     $createdProviderIds[] = $identityProvider['json']['id'];
+    $createdAuditTargets[] = [
+        'action' => 'identity_provider_created',
+        'target_id' => $identityProvider['json']['id'],
+    ];
+    $createdAuditTargets[] = [
+        'action' => 'identity_provider_updated',
+        'target_id' => $identityProvider['json']['id'],
+    ];
+    $createdAuditTargets[] = [
+        'action' => 'identity_provider_deleted',
+        'target_id' => $identityProvider['json']['id'],
+    ];
     assertTrue(!array_key_exists('client_secret', $identityProvider['json']), 'identity provider response must not expose client_secret');
     assertTrue(
         ($identityProvider['json']['scopes'] ?? null) === 'openid profile email',
@@ -2450,21 +2551,48 @@ try {
         'identity provider updated_at must use contract-compliant RFC3339'
     );
 
+    $identityProviders = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/identity-providers?q=' . rawurlencode('itest-idp-' . $suffix),
+        [],
+        $adminToken
+    );
+    assertTrue($identityProviders['status'] === 200, 'identity provider list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/identity-providers',
+        $identityProviders['status'],
+        $identityProviders['json']
+    );
+
     $db->createCommand()->update(
         'identity_providers',
         ['updated_at' => '2000-01-01 00:00:00+00'],
         ['id' => $identityProvider['json']['id']]
     )->execute();
+    $identityProviderUpdatePayload = [
+        'name' => 'Updated identity provider ' . $suffix,
+        'client_secret' => '',
+    ];
+    $adminContract->validateRequest(
+        'PUT',
+        '/api/v1/identity-providers/{id}',
+        'application/json',
+        $identityProviderUpdatePayload
+    );
     $updatedIdentityProvider = jsonRequest(
         'PUT',
         $baseUrl . '/api/v1/identity-providers/' . $identityProvider['json']['id'],
-        [
-            'name' => 'Updated identity provider ' . $suffix,
-            'client_secret' => '',
-        ],
+        $identityProviderUpdatePayload,
         $adminToken
     );
     assertTrue($updatedIdentityProvider['status'] === 200, 'identity provider update must return 200');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/identity-providers/{id}',
+        $updatedIdentityProvider['status'],
+        $updatedIdentityProvider['json']
+    );
     foreach (['type', 'client_id', 'authorize_url', 'token_url', 'userinfo_url', 'scopes'] as $preservedField) {
         assertTrue(
             ($updatedIdentityProvider['json'][$preservedField] ?? null) === ($identityProvider['json'][$preservedField] ?? null),
@@ -2491,6 +2619,12 @@ try {
         'userinfo_url' => 'https://idp.example.test/userinfo',
     ], $adminToken);
     assertTrue($duplicateIdentityProvider['status'] === 409, 'duplicate identity provider code must return 409');
+    $adminContract->validateResponse(
+        'POST',
+        '/api/v1/identity-providers',
+        $duplicateIdentityProvider['status'],
+        $duplicateIdentityProvider['json']
+    );
     assertTrue(($duplicateIdentityProvider['json']['error'] ?? '') === 'provider already exists', 'duplicate identity provider code must match API contract');
 
     $unknownIdentityUpdateField = jsonRequest(
@@ -2500,7 +2634,184 @@ try {
         $adminToken
     );
     assertTrue($unknownIdentityUpdateField['status'] === 400, 'identity provider update with unknown field must return 400');
+    $adminContract->validateResponse(
+        'PUT',
+        '/api/v1/identity-providers/{id}',
+        $unknownIdentityUpdateField['status'],
+        $unknownIdentityUpdateField['json']
+    );
     assertTrue(($unknownIdentityUpdateField['json']['error'] ?? '') === 'invalid json body', 'unknown identity provider update field must match API contract');
+
+    foreach (['GET', 'DELETE'] as $method) {
+        $invalidFederatedUser = jsonRequest(
+            $method,
+            $baseUrl . '/api/v1/users/not-a-uuid/federated-identities',
+            [],
+            $adminToken
+        );
+        assertTrue($invalidFederatedUser['status'] === 400, $method . ' federated identities with invalid user id must return 400');
+        $adminContract->validateResponse(
+            $method,
+            '/api/v1/users/{userID}/federated-identities',
+            $invalidFederatedUser['status'],
+            $invalidFederatedUser['json']
+        );
+    }
+
+    $missingFederatedUser = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/users/00000000-0000-0000-0000-000000000000/federated-identities',
+        [],
+        $adminToken
+    );
+    assertTrue($missingFederatedUser['status'] === 404, 'federated identities for missing user must return 404');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/users/{userID}/federated-identities',
+        $missingFederatedUser['status'],
+        $missingFederatedUser['json']
+    );
+
+    $db->createCommand()->insert('federated_identities', [
+        'provider_id' => $identityProvider['json']['id'],
+        'external_subject' => 'local-link-' . $suffix,
+        'user_id' => $plainUserId,
+        'email' => 'linked-' . $suffix . '@example.test',
+    ])->execute();
+
+    $federatedIdentities = jsonRequest(
+        'GET',
+        $baseUrl . '/api/v1/users/' . $plainUserId . '/federated-identities',
+        [],
+        $adminToken
+    );
+    assertTrue($federatedIdentities['status'] === 200, 'federated identity list must return 200');
+    $adminContract->validateResponse(
+        'GET',
+        '/api/v1/users/{userID}/federated-identities',
+        $federatedIdentities['status'],
+        $federatedIdentities['json']
+    );
+    assertTrue(count($federatedIdentities['json']) === 1, 'federated identity list must contain the linked identity');
+
+    $federatedIdentityPayload = [
+        'provider_id' => $identityProvider['json']['id'],
+        'external_subject' => 'local-link-' . $suffix,
+    ];
+    $adminContract->validateRequest(
+        'DELETE',
+        '/api/v1/users/{userID}/federated-identities',
+        'application/json',
+        $federatedIdentityPayload
+    );
+    $unlinkedFederatedIdentity = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/' . $plainUserId . '/federated-identities',
+        $federatedIdentityPayload,
+        $adminToken
+    );
+    assertTrue($unlinkedFederatedIdentity['status'] === 200, 'federated identity unlink must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{userID}/federated-identities',
+        $unlinkedFederatedIdentity['status'],
+        $unlinkedFederatedIdentity['json']
+    );
+    $createdAuditTargets[] = [
+        'action' => 'federated_identity_unlinked',
+        'target_id' => $plainUserId,
+    ];
+
+    $missingFederatedIdentity = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/' . $plainUserId . '/federated-identities',
+        $federatedIdentityPayload,
+        $adminToken
+    );
+    assertTrue($missingFederatedIdentity['status'] === 404, 'repeated federated identity unlink must return 404');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{userID}/federated-identities',
+        $missingFederatedIdentity['status'],
+        $missingFederatedIdentity['json']
+    );
+
+    $federatedUserTransaction = $db->beginTransaction();
+    try {
+        $federatedUserId = (string)$db->createCommand(
+            "INSERT INTO users(username,email,status,source,email_verified)
+             VALUES(:username,:email,'active','federated',true) RETURNING id",
+            [
+                ':username' => 'federated-only-' . $suffix,
+                ':email' => 'federated-only-' . $suffix . '@example.test',
+            ]
+        )->queryScalar();
+        $db->createCommand()->insert('federated_identities', [
+            'provider_id' => $identityProvider['json']['id'],
+            'external_subject' => 'federated-only-' . $suffix,
+            'user_id' => $federatedUserId,
+            'email' => 'federated-only-' . $suffix . '@example.test',
+        ])->execute();
+        $federatedUserTransaction->commit();
+    } catch (Throwable $exception) {
+        if ($federatedUserTransaction->isActive) {
+            $federatedUserTransaction->rollBack();
+        }
+        throw $exception;
+    }
+    $createdUserIds[] = $federatedUserId;
+
+    $lastFederatedIdentityPayload = [
+        'provider_id' => $identityProvider['json']['id'],
+        'external_subject' => 'federated-only-' . $suffix,
+    ];
+    $adminContract->validateRequest(
+        'DELETE',
+        '/api/v1/users/{userID}/federated-identities',
+        'application/json',
+        $lastFederatedIdentityPayload
+    );
+    $lastFederatedIdentity = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/users/' . $federatedUserId . '/federated-identities',
+        $lastFederatedIdentityPayload,
+        $adminToken
+    );
+    assertTrue($lastFederatedIdentity['status'] === 409, 'last federated login method unlink must return 409');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/users/{userID}/federated-identities',
+        $lastFederatedIdentity['status'],
+        $lastFederatedIdentity['json']
+    );
+    $db->createCommand()->delete('users', ['id' => $federatedUserId])->execute();
+
+    $deletedIdentityProvider = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/identity-providers/' . $identityProvider['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($deletedIdentityProvider['status'] === 200, 'identity provider delete must return 200');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/identity-providers/{id}',
+        $deletedIdentityProvider['status'],
+        $deletedIdentityProvider['json']
+    );
+    $repeatedIdentityProviderDelete = jsonRequest(
+        'DELETE',
+        $baseUrl . '/api/v1/identity-providers/' . $identityProvider['json']['id'],
+        [],
+        $adminToken
+    );
+    assertTrue($repeatedIdentityProviderDelete['status'] === 404, 'repeated identity provider delete must return 404');
+    $adminContract->validateResponse(
+        'DELETE',
+        '/api/v1/identity-providers/{id}',
+        $repeatedIdentityProviderDelete['status'],
+        $repeatedIdentityProviderDelete['json']
+    );
 
     $unknownLdapProviderField = jsonRequest('POST', $baseUrl . '/api/v1/ldap/providers', [
         'name' => 'Unknown LDAP field',
