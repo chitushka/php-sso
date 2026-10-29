@@ -52,4 +52,37 @@ class AdminUiAccessibilityTest extends TestCase
         self::assertSame(substr_count($view, '<table>'), substr_count($view, '<caption'));
         self::assertDoesNotMatchRegularExpression('/<th\b(?![^>]*\bscope="col")/', $view);
     }
+
+    public function testRequestProgressAndErrorsAreAnnounced(): void
+    {
+        $view = (string)file_get_contents(dirname(__DIR__, 2) . '/views/admin/index.php');
+
+        self::assertStringContainsString(':aria-busy="isBusy', $view);
+        self::assertStringContainsString('class="muted loading-status" role="status"', $view);
+        self::assertStringContainsString('class="error-message" role="alert"', $view);
+        self::assertStringContainsString('pendingRequests += 1', $view);
+        self::assertStringContainsString('pendingRequests - 1', $view);
+        self::assertStringContainsString('app.config.errorHandler', $view);
+        self::assertStringContainsString(':disabled="isBusy"', $view);
+    }
+
+    public function testSensitiveMutationsRequireConfirmation(): void
+    {
+        $view = (string)file_get_contents(dirname(__DIR__, 2) . '/views/admin/index.php');
+        $helper = (string)file_get_contents(dirname(__DIR__, 2) . '/web/js/admin-ui.js');
+
+        self::assertStringContainsString('global.confirm(message)', $helper);
+        foreach ([
+            'Disable MFA for this account?',
+            'Regenerate recovery codes?',
+            'Remove role ',
+            'Remove permission ',
+            'Unlink the ',
+            'Revoke consent for ',
+            'Rotate the active signing key?',
+            'Delete identity provider ',
+        ] as $confirmation) {
+            self::assertStringContainsString("confirmAction('" . $confirmation, $view);
+        }
+    }
 }

@@ -12,7 +12,13 @@ $this->title = 'SSO Admin';
   <main class="shell">
     <admin-navigation :view="view" @navigate="navigate" @logout="logout"></admin-navigation>
 
-    <section id="admin-content" ref="adminContent" class="content" tabindex="-1">
+    <section
+      id="admin-content"
+      ref="adminContent"
+      class="content"
+      tabindex="-1"
+      :aria-busy="isBusy ? 'true' : 'false'"
+    >
       <div class="panel" v-if="view === 'dashboard'">
         <h1>Dashboard</h1>
         <div class="grid">
@@ -150,8 +156,8 @@ $this->title = 'SSO Admin';
         <template v-else>
           <label for="mfa-manage-code">TOTP or recovery code</label>
           <input id="mfa-manage-code" v-model="mfaManageForm.code" autocomplete="one-time-code">
-          <button @click="regenerateRecoveryCodes">Regenerate recovery codes</button>
-          <button @click="disableMfa">Disable MFA</button>
+          <button :disabled="isBusy" @click="regenerateRecoveryCodes">Regenerate recovery codes</button>
+          <button :disabled="isBusy" @click="disableMfa">Disable MFA</button>
         </template>
         <pre v-if="mfaRecoveryCodes.length">{{ mfaRecoveryCodes }}</pre>
 
@@ -166,7 +172,7 @@ $this->title = 'SSO Admin';
                 <td>{{ consent.client_name }} ({{ consent.client_id }})</td>
                 <td>{{ consent.scopes.join(' ') }}</td>
                 <td>{{ consent.updated_at }}</td>
-                <td><button :aria-label="'Revoke consent for ' + consent.client_name" @click="revokeConsent(consent.client_id)">Revoke</button></td>
+                <td><button :disabled="isBusy" :aria-label="'Revoke consent for ' + consent.client_name" @click="revokeConsent(consent.client_id)">Revoke</button></td>
               </tr>
             </tbody>
           </table>
@@ -253,7 +259,7 @@ $this->title = 'SSO Admin';
               <ul class="chips">
                 <li v-for="role in selectedUserRoles" :key="role.id">
                   {{ role.code }}
-                  <button :aria-label="'Remove role ' + role.code" @click="removeUserRole(role.id)">remove</button>
+                  <button :disabled="isBusy" :aria-label="'Remove role ' + role.code" @click="removeUserRole(role.id)">remove</button>
                 </li>
               </ul>
             </div>
@@ -270,7 +276,7 @@ $this->title = 'SSO Admin';
               <ul class="chips">
                 <li v-for="group in selectedUserGroups" :key="group.id">
                   {{ group.code }}
-                  <button :aria-label="'Remove group ' + group.code" @click="removeUserGroup(group.id)">remove</button>
+                  <button :disabled="isBusy" :aria-label="'Remove group ' + group.code" @click="removeUserGroup(group.id)">remove</button>
                 </li>
               </ul>
             </div>
@@ -287,7 +293,7 @@ $this->title = 'SSO Admin';
                   <td>{{ identity.provider_name }} ({{ identity.provider_code }})</td>
                   <td>{{ identity.external_subject }}</td>
                   <td>{{ identity.email }}</td>
-                  <td><button :aria-label="'Unlink identity from ' + identity.provider_name" @click="unlinkFederatedIdentity(identity)">Unlink</button></td>
+                  <td><button :disabled="isBusy" :aria-label="'Unlink identity from ' + identity.provider_name" @click="unlinkFederatedIdentity(identity)">Unlink</button></td>
                 </tr>
               </tbody>
             </table>
@@ -347,7 +353,7 @@ $this->title = 'SSO Admin';
           <ul class="chips">
             <li v-for="permission in selectedRolePermissions" :key="permission.id">
               {{ permission.resource }}:{{ permission.action }}
-              <button :aria-label="'Remove permission ' + permission.resource + ':' + permission.action" @click="removeRolePermission(permission.id)">remove</button>
+              <button :disabled="isBusy" :aria-label="'Remove permission ' + permission.resource + ':' + permission.action" @click="removeRolePermission(permission.id)">remove</button>
             </li>
           </ul>
         </section>
@@ -403,7 +409,7 @@ $this->title = 'SSO Admin';
           <ul class="chips">
             <li v-for="role in selectedGroupRoles" :key="role.id">
               {{ role.code }}
-              <button :aria-label="'Remove role ' + role.code" @click="removeGroupRole(role.id)">remove</button>
+              <button :disabled="isBusy" :aria-label="'Remove role ' + role.code" @click="removeGroupRole(role.id)">remove</button>
             </li>
           </ul>
         </section>
@@ -527,7 +533,7 @@ $this->title = 'SSO Admin';
                 <td>{{ provider.enabled ? 'yes' : 'no' }}</td>
                 <td>
                   <button :aria-label="'Edit identity provider ' + provider.name" @click="editIdentityProvider(provider)">Edit</button>
-                  <button :aria-label="'Delete identity provider ' + provider.name" @click="deleteIdentityProvider(provider)">Delete</button>
+                  <button :disabled="isBusy" :aria-label="'Delete identity provider ' + provider.name" @click="deleteIdentityProvider(provider)">Delete</button>
                 </td>
               </tr>
             </tbody>
@@ -547,7 +553,7 @@ $this->title = 'SSO Admin';
         </div>
 
         <h2>OIDC signing keys</h2>
-        <button class="primary" @click="rotateSigningKey">Rotate signing key</button>
+        <button class="primary" :disabled="isBusy" @click="rotateSigningKey">Rotate signing key</button>
         <div class="table-wrap">
           <table>
             <caption class="sr-only">OIDC signing keys</caption>
@@ -565,6 +571,8 @@ $this->title = 'SSO Admin';
         </div>
       </div>
 
+      <p v-if="isBusy" class="muted loading-status" role="status">Loading…</p>
+      <p v-if="errorMessage" class="error-message" role="alert">{{ errorMessage }}</p>
       <p class="muted" role="status" aria-live="polite" aria-atomic="true">{{ message }}</p>
     </section>
   </main>
@@ -573,12 +581,15 @@ $this->title = 'SSO Admin';
 <script src="/js/vue.global.prod.js"></script>
 <script src="/js/admin-api.js"></script>
 <script src="/js/admin-navigation.js"></script>
+<script src="/js/admin-ui.js"></script>
 <script nonce="<?= htmlspecialchars((string)(Yii::$app->params['_cspNonce'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 const app = Vue.createApp({
   data() {
     return {
       view: 'dashboard',
       message: '',
+      errorMessage: '',
+      pendingRequests: 0,
       accessToken: '',
       user: null,
       mfaChallenge: '',
@@ -674,6 +685,9 @@ const app = Vue.createApp({
     await this.refresh();
   },
   computed: {
+    isBusy() {
+      return this.pendingRequests > 0;
+    },
     availableUserRoles() {
       const assigned = new Set(this.selectedUserRoles.map(item => item.id));
       return this.roles.filter(item => !assigned.has(item.id));
@@ -694,7 +708,11 @@ const app = Vue.createApp({
   methods: {
     navigate(view) {
       this.view = view;
+      this.errorMessage = '';
       this.$nextTick(() => this.$refs.adminContent.focus());
+    },
+    confirmAction(message) {
+      return window.AdminUi.confirmAction(message);
     },
     async restoreSession() {
       try {
@@ -710,7 +728,13 @@ const app = Vue.createApp({
       return AdminApi.headers(this.accessToken);
     },
     async api(url, options = {}) {
-      return AdminApi.request(this.accessToken, url, options);
+      this.pendingRequests += 1;
+      this.errorMessage = '';
+      try {
+        return await AdminApi.request(this.accessToken, url, options);
+      } finally {
+        this.pendingRequests = Math.max(0, this.pendingRequests - 1);
+      }
     },
     async apiItems(url) {
       const page = await this.api(url);
@@ -872,6 +896,10 @@ const app = Vue.createApp({
       this.user = null;
     },
     async disableMfa() {
+      if (!this.confirmAction('Disable MFA for this account? Existing recovery codes will stop working.')) {
+        return;
+      }
+
       await this.api('/api/v1/auth/mfa/disable', {
         method: 'POST',
         body: JSON.stringify({ code: this.mfaManageForm.code })
@@ -883,6 +911,10 @@ const app = Vue.createApp({
       this.user = null;
     },
     async regenerateRecoveryCodes() {
+      if (!this.confirmAction('Regenerate recovery codes? All existing recovery codes will stop working.')) {
+        return;
+      }
+
       const data = await this.api('/api/v1/auth/mfa/recovery-codes', {
         method: 'POST',
         body: JSON.stringify({ code: this.mfaManageForm.code })
@@ -952,6 +984,10 @@ const app = Vue.createApp({
       if (!this.selectedUser) {
         return;
       }
+      const role = this.selectedUserRoles.find(item => item.id === roleId);
+      if (!this.confirmAction('Remove role ' + (role ? role.code : roleId) + ' from ' + this.selectedUser.username + '?')) {
+        return;
+      }
 
       await this.api('/api/v1/users/' + this.selectedUser.id + '/roles/' + roleId, { method: 'DELETE' });
       this.message = 'User role removed';
@@ -974,6 +1010,10 @@ const app = Vue.createApp({
       if (!this.selectedUser) {
         return;
       }
+      const group = this.selectedUserGroups.find(item => item.id === groupId);
+      if (!this.confirmAction('Remove ' + this.selectedUser.username + ' from group ' + (group ? group.code : groupId) + '?')) {
+        return;
+      }
 
       await this.api('/api/v1/users/' + this.selectedUser.id + '/groups/' + groupId, { method: 'DELETE' });
       this.message = 'User group removed';
@@ -981,6 +1021,9 @@ const app = Vue.createApp({
     },
     async unlinkFederatedIdentity(identity) {
       if (!this.selectedUser) return;
+      if (!this.confirmAction('Unlink the ' + identity.provider_name + ' identity from ' + this.selectedUser.username + '?')) {
+        return;
+      }
       await this.api('/api/v1/users/' + this.selectedUser.id + '/federated-identities', {
         method: 'DELETE',
         body: JSON.stringify({
@@ -1019,6 +1062,11 @@ const app = Vue.createApp({
       if (!this.selectedRole) {
         return;
       }
+      const permission = this.selectedRolePermissions.find(item => item.id === permissionId);
+      const permissionName = permission ? permission.resource + ':' + permission.action : permissionId;
+      if (!this.confirmAction('Remove permission ' + permissionName + ' from role ' + this.selectedRole.code + '?')) {
+        return;
+      }
 
       await this.api('/api/v1/roles/' + this.selectedRole.id + '/permissions/' + permissionId, { method: 'DELETE' });
       this.message = 'Role permission removed';
@@ -1050,6 +1098,10 @@ const app = Vue.createApp({
     },
     async removeGroupRole(roleId) {
       if (!this.selectedGroup) {
+        return;
+      }
+      const role = this.selectedGroupRoles.find(item => item.id === roleId);
+      if (!this.confirmAction('Remove role ' + (role ? role.code : roleId) + ' from group ' + this.selectedGroup.code + '?')) {
         return;
       }
 
@@ -1086,6 +1138,10 @@ const app = Vue.createApp({
       this.audit = await this.apiItems('/api/v1/audit');
     },
     async revokeConsent(clientId) {
+      const consent = this.consents.find(item => item.client_id === clientId);
+      if (!this.confirmAction('Revoke consent for ' + (consent ? consent.client_name : clientId) + '?')) {
+        return;
+      }
       await this.api('/api/v1/auth/consents/' + encodeURIComponent(clientId), { method: 'DELETE' });
       this.consents = await this.api('/api/v1/auth/consents');
       this.message = 'Consent revoked';
@@ -1095,6 +1151,9 @@ const app = Vue.createApp({
       this.signingKeys = await this.api('/api/v1/operations/signing-keys');
     },
     async rotateSigningKey() {
+      if (!this.confirmAction('Rotate the active signing key? The current key will enter its retirement period.')) {
+        return;
+      }
       const key = await this.api('/api/v1/operations/signing-keys/rotate', {
         method: 'POST',
         body: '{}'
@@ -1142,6 +1201,9 @@ const app = Vue.createApp({
       await this.refresh();
     },
     async deleteIdentityProvider(provider) {
+      if (!this.confirmAction('Delete identity provider ' + provider.name + '? External sign-in through it will stop working.')) {
+        return;
+      }
       await this.api('/api/v1/identity-providers/' + provider.id, { method: 'DELETE' });
       this.message = 'Identity provider deleted';
       await this.refresh();
@@ -1150,5 +1212,10 @@ const app = Vue.createApp({
 });
 
 app.component('admin-navigation', window.AdminNavigation);
+app.config.errorHandler = (error, instance) => {
+  if (instance) {
+    instance.errorMessage = window.AdminUi.errorMessage(error);
+  }
+};
 app.mount('#app');
 </script>

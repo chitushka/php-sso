@@ -436,6 +436,18 @@ body {
     color: #52606d;
 }
 
+.loading-status {
+    font-weight: 700;
+}
+
+.error-message {
+    padding: 10px 12px;
+    color: #8a1c1c;
+    background: #fff1f1;
+    border: 1px solid #d64545;
+    border-radius: 6px;
+}
+
 .login {
     max-width: 380px;
 }
@@ -465,6 +477,11 @@ button {
     border-radius: 6px;
     background: #ffffff;
     cursor: pointer;
+}
+
+button:disabled {
+    cursor: wait;
+    opacity: .6;
 }
 
 button:focus-visible,
