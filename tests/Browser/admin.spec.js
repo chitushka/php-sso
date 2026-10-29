@@ -1,4 +1,15 @@
 const { test, expect } = require('@playwright/test');
+const AxeBuilder = require('@axe-core/playwright').default;
+
+async function expectAccessiblePage(page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+
+  expect(results.violations, results.violations.map(violation => (
+    violation.id + ': ' + violation.nodes.map(node => node.target.join(' ')).join(', ')
+  )).join('\n')).toEqual([]);
+}
 
 test('admin lifecycle, safety states and mobile navigation', async ({ page }) => {
   const username = 'browser-admin';
@@ -22,6 +33,7 @@ test('admin lifecycle, safety states and mobile navigation', async ({ page }) =>
 
   await page.reload();
   await expect(page.locator('.topbar')).toContainText(username);
+  await expectAccessiblePage(page);
 
   const dashboardNavigation = page.getByRole('button', { name: 'Dashboard', exact: true });
   await dashboardNavigation.focus();
@@ -60,4 +72,5 @@ test('admin lifecycle, safety states and mobile navigation', async ({ page }) =>
   }));
   expect(mobileLayout.sidebarDisplay).toBe('flex');
   expect(mobileLayout.bodyOverflow).toBeLessThanOrEqual(1);
+  await expectAccessiblePage(page);
 });

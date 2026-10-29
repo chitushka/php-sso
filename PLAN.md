@@ -9,13 +9,7 @@
 
 ## P2 — архитектура и поддерживаемость
 
-### 1. Завершить review admin UI
-
-- Завершить разделение монолитного `views/admin/index.php` на доменные Vue-модули и провести ручную проверку с основными screen reader.
-
-Критерий готовности: UI доступен с клавиатуры и screen reader, стабилен на поддерживаемых ширинах и не дублирует бизнес-правила API.
-
-### 2. Обновить устаревший test/tooling stack
+### 1. Обновить устаревший test/tooling stack
 
 - Проект на PHP 8.4 остаётся на PHPUnit `^9.6`, поддержка bugfix этой ветки закончилась в 2024 году; перейти на поддерживаемую для PHP 8.4 major-ветку и обновить `phpunit.xml`/tests.
 - Проверить переход PHPCS `^3.13` на актуальную major-ветку, устранив deprecations и сохранив PSR-12 gate.
@@ -23,7 +17,7 @@
 
 Критерий готовности: тесты и линтер работают на поддерживаемых версиях без deprecation output, lock-файл и CI обновлены.
 
-### 3. Усилить test coverage и supply-chain reproducibility
+### 2. Усилить test coverage и supply-chain reproducibility
 
 - Порог line coverage 35% слишком низок для auth/token/session/provider кода; ввести поэтапные пороги для security-critical services и controller HTTP branches.
 - Включить protocol scripts в отчёт/матрицу покрытия или перенести сценарии в управляемый test harness с гарантированным cleanup.
