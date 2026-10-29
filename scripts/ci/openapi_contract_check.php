@@ -10,6 +10,10 @@ $permissionProtectedTags = ['Users', 'RBAC', 'Audit', 'Operations', 'LDAP', 'Fed
 $operations = [];
 $operationResponses = [];
 $operationIds = [];
+$operationKeysById = [];
+$jsonRequestOperations = [];
+$uuidPathOperations = [];
+$serverFailureOperations = [];
 
 $normalizePath = static function (string $path): string {
     $path = '/' . ltrim($path, '/');
@@ -123,6 +127,23 @@ foreach ($documents as $file) {
                     }
                 }
             }
+            if (isset($operation['requestBody'])) {
+                $requestBody = $operation['requestBody'];
+                if (isset($requestBody['$ref'])) {
+                    $requestBody = $resolvePointer($document, $requestBody['$ref']);
+                }
+                if (isset($requestBody['content']['application/json'])) {
+                    $jsonRequestOperations[$operationId] = true;
+                }
+            }
+            if (
+                basename($file) === 'openapi-admin.json'
+                && $method !== 'get'
+                && array_intersect($tags, $permissionProtectedTags) !== []
+                && $operationId !== 'testLdapProvider'
+            ) {
+                $serverFailureOperations[$operationId] = true;
+            }
             if (array_key_exists('security', $operation)) {
                 $validateSecurity($operation['security'], $location);
             }
@@ -151,6 +172,9 @@ foreach ($documents as $file) {
                     }
                     if (($parameter['in'] ?? '') === 'path' && ($parameter['name'] ?? '') === $name && ($parameter['required'] ?? false)) {
                         $found = true;
+                        if (($parameter['schema']['$ref'] ?? '') === '#/components/schemas/Uuid') {
+                            $uuidPathOperations[$operationId] = true;
+                        }
                     }
                 }
                 if (!$found) {
@@ -161,6 +185,7 @@ foreach ($documents as $file) {
             $operationKey = strtoupper($method) . ' ' . $normalizePath($path);
             $operations[$operationKey] = basename($file);
             $operationResponses[$operationKey] = array_fill_keys(array_keys($operation['responses']), true);
+            $operationKeysById[$operationId] = $operationKey;
         }
     }
 }
@@ -186,6 +211,94 @@ if ($missing !== [] || $stale !== []) {
     throw new RuntimeException(
         'OpenAPI/router drift. Missing: ' . implode(', ', array_keys($missing))
         . '; stale: ' . implode(', ', array_keys($stale))
+    );
+}
+
+$notFoundOperations = array_fill_keys([
+    'revokeAccountSession',
+    'revokeAccountConsent',
+    'getUser',
+    'updateUser',
+    'deleteUser',
+    'listUserFederatedIdentities',
+    'unlinkUserFederatedIdentity',
+    'updateRole',
+    'deleteRole',
+    'updateGroup',
+    'deleteGroup',
+    'updateLdapProvider',
+    'deleteLdapProvider',
+    'listLdapGroupMappings',
+    'createLdapGroupMapping',
+    'deleteLdapGroupMapping',
+    'updateIdentityProvider',
+    'deleteIdentityProvider',
+    'getOAuthClient',
+    'updateOAuthClient',
+    'deleteOAuthClient',
+    'rotateOAuthClientSecret',
+    'startBrokerLogin',
+], true);
+$conflictOperations = array_fill_keys([
+    'bootstrapSystem',
+    'activateMfa',
+    'enableMfaAlias',
+    'createUser',
+    'updateUser',
+    'deleteUser',
+    'unlinkUserFederatedIdentity',
+    'createRole',
+    'deleteRole',
+    'removeRolePermission',
+    'removeUserRole',
+    'removeUserGroup',
+    'createGroup',
+    'deleteGroup',
+    'removeGroupRole',
+    'createLdapGroupMapping',
+    'createIdentityProvider',
+    'createOAuthClient',
+], true);
+$serverFailureOperations += array_fill_keys([
+    'login',
+    'resetPassword',
+    'changePassword',
+    'updateProfile',
+    'verifyEmail',
+    'verifyMfaChallenge',
+    'enrollMfa',
+    'activateMfa',
+    'setupMfaAlias',
+    'enableMfaAlias',
+    'disableMfa',
+    'regenerateMfaRecoveryCodes',
+    'revokeAllAccountSessions',
+    'revokeAccountSession',
+    'revokeAccountConsent',
+    'grantConsent',
+], true);
+
+$requiredErrorResponses = [
+    '400' => $jsonRequestOperations + $uuidPathOperations,
+    '404' => $notFoundOperations,
+    '409' => $conflictOperations,
+    '500' => $serverFailureOperations,
+];
+$missingErrorResponses = [];
+foreach ($requiredErrorResponses as $status => $requiredOperations) {
+    foreach (array_keys($requiredOperations) as $operationId) {
+        $operationKey = $operationKeysById[$operationId] ?? null;
+        if ($operationKey === null) {
+            throw new RuntimeException('Error response policy references unknown operationId ' . $operationId);
+        }
+        if (!isset($operationResponses[$operationKey][$status])) {
+            $missingErrorResponses[] = $status . ' ' . $operationId;
+        }
+    }
+}
+if ($missingErrorResponses !== []) {
+    throw new RuntimeException(
+        'Operations are missing applicable error responses: ' . implode(', ', $missingErrorResponses)
     );
 }
 
