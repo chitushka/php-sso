@@ -40,8 +40,12 @@ function smokeRequest(string $url, bool $tlsInsecure): array
         ],
     ]);
 
-    $body = @file_get_contents($url, false, $context);
-    $headers = $http_response_header ?? [];
+    $stream = @fopen($url, 'rb', false, $context);
+    $headers = $stream === false ? [] : (stream_get_meta_data($stream)['wrapper_data'] ?? []);
+    $body = $stream === false ? false : stream_get_contents($stream);
+    if ($stream !== false) {
+        fclose($stream);
+    }
     $status = 0;
     foreach ($headers as $header) {
         if (preg_match('/^HTTP\/\S+\s+(\d+)/', $header, $matches) === 1) {

@@ -9,11 +9,16 @@ build:
 build-test:
 	docker compose --profile test build test
 
+.PHONY: php-compatibility
+php-compatibility:
+	$(TEST_RUN) sh scripts/ci/php_compatibility.sh
+
 build-browser:
 	docker compose --profile browser build browser-test
 
 runtime-check:
 	docker run --rm --entrypoint sh sso-php-app:latest -c 'test "$$(id -u)" = 33 && test ! -e /app/tests && test ! -e /app/composer.json && test ! -e /app/vendor/bin/phpunit'
+	docker run --rm -v "$(CURDIR)/scripts/ci/runtime_check.php:/tmp/runtime_check.php:ro" --entrypoint php sso-php-app:latest /tmp/runtime_check.php
 
 up:
 	docker compose --profile operations up -d

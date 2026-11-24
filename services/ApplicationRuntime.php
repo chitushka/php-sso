@@ -21,17 +21,17 @@ final class ApplicationRuntime
         return self::instance()->db();
     }
 
-    public static function param(string $name, mixed $default = null): mixed
+    public static function param(string $name, $default = null)
     {
         return self::instance()->param($name, $default);
     }
 
-    public static function setState(string $name, mixed $value): void
+    public static function setState(string $name, $value): void
     {
         self::instance()->setState($name, $value);
     }
 
-    public static function state(string $name, mixed $default = null): mixed
+    public static function state(string $name, $default = null)
     {
         return self::instance()->state($name, $default);
     }

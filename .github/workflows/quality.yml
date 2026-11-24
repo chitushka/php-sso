@@ -10,6 +10,37 @@ permissions:
   contents: read
 
 jobs:
+  php-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '7.4'
+            debian: bullseye
+          - php: '8.0'
+            debian: bullseye
+          - php: '8.1'
+            debian: bookworm
+          - php: '8.2'
+            debian: bookworm
+          - php: '8.3'
+            debian: bookworm
+          - php: '8.4'
+            debian: bookworm
+          - php: '8.5'
+            debian: bookworm
+    env:
+      PHP_VERSION: ${{ matrix.php }}
+      PHP_DEBIAN_SUITE: ${{ matrix.debian }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate runtime
+        run: make build build-test runtime-check
+      - name: Verify dependencies, syntax, database and HTTP flows
+        run: make php-compatibility integration-ldap
+
   quality:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

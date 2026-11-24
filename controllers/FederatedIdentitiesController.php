@@ -7,12 +7,15 @@ use yii\base\Module;
 
 final class FederatedIdentitiesController extends ApiController
 {
+    private FederatedIdentityService $identities;
+
     public function __construct(
         string $id,
         Module $module,
-        private FederatedIdentityService $identities,
+        FederatedIdentityService $identities,
         array $config = []
     ) {
+        $this->identities = $identities;
         parent::__construct($id, $module, $config);
     }
 

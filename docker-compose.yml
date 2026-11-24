@@ -29,6 +29,9 @@ services:
     build:
       context: .
       target: production
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        PHP_DEBIAN_SUITE: ${PHP_DEBIAN_SUITE:-bookworm}
     image: sso-php-app:latest
     restart: unless-stopped
     env_file:
@@ -60,6 +63,9 @@ services:
     build:
       context: .
       target: test
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        PHP_DEBIAN_SUITE: ${PHP_DEBIAN_SUITE:-bookworm}
     image: sso-php-test:latest
     profiles: ["test"]
     env_file:

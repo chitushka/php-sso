@@ -108,7 +108,8 @@ class AdminProviderServiceTest extends TestCase
             'userinfo_url' => '',
         ]);
         $this->assertSame(400, $emptyEndpoints['status']);
-        $this->assertSame('invalid_provider_endpoint', $emptyEndpoints->error?->code);
+        $this->assertNotNull($emptyEndpoints->error);
+        $this->assertSame('invalid_provider_endpoint', $emptyEndpoints->error->code);
 
         $public = $service->publicProviders();
         $this->assertContains(strtolower($code), array_column($public, 'code'));
@@ -125,6 +126,9 @@ class AdminProviderServiceTest extends TestCase
         $loginParts = parse_url($loginUrl);
         parse_str($loginParts['query'] ?? '', $loginQuery);
         $verifyState = new \ReflectionMethod($service, 'verifyState');
+        if (PHP_VERSION_ID < 80100) {
+            $verifyState->setAccessible(true);
+        }
         $this->assertSame('/', $verifyState->invoke($service, $loginQuery['state'])['c']);
         $this->assertFalse($service->consumeRejectedCallback(
             strtolower($code),
@@ -137,6 +141,9 @@ class AdminProviderServiceTest extends TestCase
         );
 
         $localContinue = new \ReflectionMethod($service, 'localContinueUrl');
+        if (PHP_VERSION_ID < 80100) {
+            $localContinue->setAccessible(true);
+        }
         $this->assertSame('/', $localContinue->invoke($service, '//evil.example.test/path'));
         $this->assertSame('/', $localContinue->invoke($service, '/\\evil.example.test/path'));
         $this->assertSame('/', $localContinue->invoke($service, '/%2f%2fevil.example.test/path'));
@@ -224,6 +231,10 @@ class AdminProviderServiceTest extends TestCase
             $service = new BrokerService();
             $signState = new \ReflectionMethod($service, 'signState');
             $verifyState = new \ReflectionMethod($service, 'verifyState');
+            if (PHP_VERSION_ID < 80100) {
+                $signState->setAccessible(true);
+                $verifyState->setAccessible(true);
+            }
 
             $state = [
                 'p' => 'provider-code',

@@ -206,7 +206,7 @@
 
 Основание: `composer.json` использует PHPUnit `^9.6`, PHPCS `^3.13`; PHPStan работает на level 2 с baseline.
 
-- [ ] Перейти на PHPUnit 13 для PHP 8.4 либо обосновать другую ветку с действующей bugfix-поддержкой; обновить XML/test doubles без подавления новых deprecations.
+- [ ] Выделить современный PHPUnit для quality job с действующей bugfix-поддержкой, сохранив запускаемый на PHP 7.4 PHPUnit 9.6 в матрице PHP 7.4–8.5; обновить XML/test doubles без подавления новых deprecations.
 - [ ] Проверить обновление PHPCS, сохранить PSR-12; добавить регулярный отчёт direct outdated dependencies без автоматических непроверенных major upgrades.
 - [ ] Сокращать PHPStan baseline, описывать Yii AR properties/array shapes и повышать уровень анализа, начиная с auth/token/provider; запретить необоснованные новые ignores.
 - [ ] Приводить затрагиваемые сервисы к `ServiceResult` и явным clock/random/runtime там, где это помогает проверять гонки и временные границы; не начинать полный рефакторинг до закрытия P0.

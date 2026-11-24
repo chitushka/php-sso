@@ -35,6 +35,9 @@ class MailServiceTest extends TestCase
     {
         $mailer = new MailService();
         $method = new \ReflectionMethod($mailer, 'subjectHeader');
+        if (PHP_VERSION_ID < 80100) {
+            $method->setAccessible(true);
+        }
         $header = $method->invoke($mailer, 'Подтверждение входа');
 
         $this->assertStringStartsWith('Subject: =?UTF-8?B?', (string)$header);
@@ -49,6 +52,9 @@ class MailServiceTest extends TestCase
 
         try {
             $method = new \ReflectionMethod(new MailService(), 'ehlo');
+            if (PHP_VERSION_ID < 80100) {
+                $method->setAccessible(true);
+            }
             $capabilities = $method->invoke(new MailService(), $pair[0]);
 
             $this->assertArrayHasKey('STARTTLS', $capabilities);

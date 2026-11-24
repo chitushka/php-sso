@@ -61,8 +61,8 @@ class AuditService
         $log->target_type = $targetType;
         $log->target_id = $targetId;
         $request = $includeRequestContext ? ApplicationRuntime::webRequest() : null;
-        $log->ip = $request?->userIP;
-        $log->user_agent = $request?->userAgent;
+        $log->ip = $request === null ? null : $request->userIP;
+        $log->user_agent = $request === null ? null : $request->userAgent;
         if (!$log->save(false)) {
             throw new \RuntimeException('failed to persist audit event');
         }

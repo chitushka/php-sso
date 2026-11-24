@@ -1,11 +1,16 @@
 {
   "name": "local/sso-php",
-  "description": "Single-tenant SSO service implemented on PHP 8.4 and Yii2.",
+  "description": "Single-tenant SSO service implemented on PHP 7.4-8.5 and Yii2.",
   "license": "BSD-3-Clause",
   "type": "project",
   "minimum-stability": "stable",
   "require": {
-    "php": "^8.4",
+    "php": "~7.4.0 || ~8.0.0 || ~8.1.0 || ~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0",
+    "ext-json": "*",
+    "ext-ldap": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-pdo_pgsql": "*",
     "yiisoft/yii2": "^2.0"
   },
   "repositories": [
@@ -43,7 +48,7 @@
       "yii\\composer\\Installer::postCreateProject",
       "yii\\composer\\Installer::postInstall"
     ],
-    "lint": "find . -path ./vendor -prune -o -name '*.php' -print -exec php -l {} \\;",
+    "lint": "php scripts/ci/lint.php",
     "cs": "phpcs -n --standard=phpcs.xml.dist",
     "analyse": "phpstan analyse --configuration=phpstan.neon --no-progress",
     "test:unit": "phpunit --testsuite Unit",
@@ -62,6 +67,9 @@
     "serve": "php -S 0.0.0.0:8080 -t web web/router.php"
   },
   "config": {
+    "platform": {
+      "php": "7.4.33"
+    },
     "allow-plugins": {
       "yiisoft/yii2-composer": true
     },

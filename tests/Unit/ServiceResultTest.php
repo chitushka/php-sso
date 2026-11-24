@@ -33,7 +33,7 @@ final class ServiceResultTest extends TestCase
             409,
             ['details' => ['email' => ['duplicate']]]
         ));
-        $response = new Response();
+        $response = new Response(['charset' => 'UTF-8']);
 
         $payload = (new HttpResultMapper())->map($result, $response);
 
@@ -43,5 +43,70 @@ final class ServiceResultTest extends TestCase
         $this->assertSame('user already exists', $payload['error']);
         $this->assertSame('user_conflict', $payload['code']);
         $this->assertSame(['email' => ['duplicate']], $payload['details']);
+    }
+
+    public function testReadOnlyPropertiesKeepTheirSerializationAndIssetBehavior(): void
+    {
+        $error = new ServiceError('forbidden', 'access denied', 403, ['reason' => 'permission']);
+        $result = ServiceResult::failure($error);
+
+        $this->assertTrue(isset($result->status));
+        $this->assertTrue(isset($result->error));
+        $this->assertFalse(isset(ServiceResult::success([])->error));
+        $this->assertFalse(isset($result->unknown));
+        $this->assertFalse(isset($error->unknown));
+        $this->assertTrue(isset($error->details));
+        $this->assertNull($result['unknown']);
+        $this->assertNull($result[0]);
+        $this->assertSame([
+            'status' => 403,
+            'data' => ['error' => 'access denied', 'reason' => 'permission'],
+            'error' => ['code' => 'forbidden', 'message' => 'access denied', 'status' => 403, 'details' => ['reason' => 'permission']],
+            'metadata' => [],
+        ], json_decode(json_encode($result, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR));
+    }
+
+    /** @dataProvider immutableOperations */
+    public function testResultsAndErrorsRejectMutation(string $operation): void
+    {
+        $result = ServiceResult::failure(new ServiceError('forbidden', 'access denied', 403));
+
+        $this->expectException(\LogicException::class);
+        switch ($operation) {
+            case 'result write':
+                $result->status = 200;
+                break;
+            case 'result unset':
+                unset($result->status);
+                break;
+            case 'result offset write':
+                $result['status'] = 200;
+                break;
+            case 'result offset unset':
+                unset($result['status']);
+                break;
+            case 'error write':
+                $result->error->code = 'success';
+                break;
+            case 'error unset':
+                unset($result->error->code);
+                break;
+            case 'result unknown read':
+                $result->unknown;
+                break;
+            case 'error unknown read':
+                $result->error->unknown;
+                break;
+        }
+    }
+
+    public static function immutableOperations(): array
+    {
+        return array_map(static function (string $operation): array {
+            return [$operation];
+        }, [
+            'result write', 'result unset', 'result offset write', 'result offset unset',
+            'error write', 'error unset', 'result unknown read', 'error unknown read',
+        ]);
     }
 }

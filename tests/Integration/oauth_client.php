@@ -62,8 +62,12 @@ function httpRequest(string $method, string $url, array $options = []): array
         ],
     ]);
 
-    $raw = @file_get_contents($url, false, $context);
-    $responseHeaders = $http_response_header ?? [];
+    $stream = @fopen($url, 'rb', false, $context);
+    $responseHeaders = $stream === false ? [] : (stream_get_meta_data($stream)['wrapper_data'] ?? []);
+    $raw = $stream === false ? false : stream_get_contents($stream);
+    if ($stream !== false) {
+        fclose($stream);
+    }
     $status = 0;
     $location = '';
     $setCookies = [];

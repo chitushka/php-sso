@@ -26,17 +26,17 @@ final class ApplicationRuntimeTest extends TestCase
                 return new Connection();
             }
 
-            public function param(string $name, mixed $default = null): mixed
+            public function param(string $name, $default = null)
             {
                 return ['issuer' => 'https://issuer.example.test'][$name] ?? $default;
             }
 
-            public function setState(string $name, mixed $value): void
+            public function setState(string $name, $value): void
             {
                 $this->state[$name] = $value;
             }
 
-            public function state(string $name, mixed $default = null): mixed
+            public function state(string $name, $default = null)
             {
                 return $this->state[$name] ?? $default;
             }

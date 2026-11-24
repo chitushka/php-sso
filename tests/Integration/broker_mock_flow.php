@@ -63,8 +63,12 @@ function httpRequest(
         ],
     ]);
 
-    $raw = @file_get_contents($url, false, $context);
-    $headers = $http_response_header ?? [];
+    $stream = @fopen($url, 'rb', false, $context);
+    $headers = $stream === false ? [] : (stream_get_meta_data($stream)['wrapper_data'] ?? []);
+    $raw = $stream === false ? false : stream_get_contents($stream);
+    if ($stream !== false) {
+        fclose($stream);
+    }
     $status = 0;
     $location = '';
     $cookies = [];
@@ -145,7 +149,7 @@ try {
         $providerErrorLogin['cookies']
     );
     assertTrue(
-        str_ends_with($providerErrorReplay['location'], '/login?broker_error=failed'),
+        substr($providerErrorReplay['location'], -strlen('/login?broker_error=failed')) === '/login?broker_error=failed',
         'provider error callback state must be consumed exactly once'
     );
 
@@ -181,7 +185,7 @@ try {
         ])
     );
     assertTrue(
-        str_ends_with($transferredCallback['location'], '/login?broker_error=failed'),
+        substr($transferredCallback['location'], -strlen('/login?broker_error=failed')) === '/login?broker_error=failed',
         'broker state transferred to another browser must be rejected'
     );
 
@@ -247,7 +251,7 @@ try {
         $retryLogin['cookies']
     );
     assertTrue(
-        str_ends_with($replayedCallback['location'], '/login?broker_error=failed'),
+        substr($replayedCallback['location'], -strlen('/login?broker_error=failed')) === '/login?broker_error=failed',
         'successful broker callback must reject replay'
     );
 

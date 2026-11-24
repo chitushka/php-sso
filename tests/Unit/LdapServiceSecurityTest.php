@@ -27,6 +27,9 @@ class LdapServiceSecurityTest extends TestCase
     public function testEndpointPolicyRequiresAllowlistedTlsHost(): void
     {
         $method = new \ReflectionMethod(new LdapService(), 'ldapEndpointAllowed');
+        if (PHP_VERSION_ID < 80100) {
+            $method->setAccessible(true);
+        }
 
         $this->assertTrue($method->invoke(new LdapService(), 'ldap.example.test', true, false));
         $this->assertTrue($method->invoke(new LdapService(), 'LDAP.EXAMPLE.TEST.', false, true));
@@ -41,6 +44,9 @@ class LdapServiceSecurityTest extends TestCase
         $connection = ldap_connect('ldap://127.0.0.1:389');
         $this->assertNotFalse($connection);
         $method = new \ReflectionMethod(new LdapService(), 'configureTls');
+        if (PHP_VERSION_ID < 80100) {
+            $method->setAccessible(true);
+        }
 
         $this->assertTrue($method->invoke(new LdapService(), $connection, 'ldap.example.test'));
         $this->assertSame(3, Yii::$app->params['ldapNetworkTimeout']);

@@ -9,13 +9,18 @@ use yii\base\Module;
 
 final class OperationsController extends ApiController
 {
+    private OidcService $oidc;
+    private OperationalStatusService $operations;
+
     public function __construct(
         string $id,
         Module $module,
-        private OidcService $oidc,
-        private OperationalStatusService $operations,
+        OidcService $oidc,
+        OperationalStatusService $operations,
         array $config = []
     ) {
+        $this->oidc = $oidc;
+        $this->operations = $operations;
         parent::__construct($id, $module, $config);
     }
 

@@ -1465,12 +1465,6 @@ parameters:
 			path: /app/services/OidcService.php
 
 		-
-			message: '#^Variable \$http_response_header on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.variable
-			count: 1
-			path: /app/services/OutboundHttpService.php
-
-		-
 			message: '#^Access to an undefined property app\\models\\Group\:\:\$code\.$#'
 			identifier: property.notFound
 			count: 1

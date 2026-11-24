@@ -92,7 +92,7 @@ final class OpenApiValidator
         }
 
         if ($this->hasType($schema, 'object') && is_array($value)) {
-            if ($value !== [] && array_is_list($value)) {
+            if ($value !== [] && $this->isList($value)) {
                 throw new RuntimeException($pointer . ' must be an object');
             }
             foreach ($schema['required'] ?? [] as $property) {
@@ -117,7 +117,7 @@ final class OpenApiValidator
         }
 
         if ($this->hasType($schema, 'array') && is_array($value)) {
-            if (!array_is_list($value)) {
+            if (!$this->isList($value)) {
                 throw new RuntimeException($pointer . ' must be an array');
             }
             if (isset($schema['items'])) {
@@ -151,8 +151,8 @@ final class OpenApiValidator
     {
         foreach ((array)$types as $type) {
             if (($type === 'null' && $value === null)
-                || ($type === 'object' && is_array($value) && ($value === [] || !array_is_list($value)))
-                || ($type === 'array' && is_array($value) && array_is_list($value))
+                || ($type === 'object' && is_array($value) && ($value === [] || !$this->isList($value)))
+                || ($type === 'array' && is_array($value) && $this->isList($value))
                 || ($type === 'string' && is_string($value))
                 || ($type === 'integer' && is_int($value))
                 || ($type === 'number' && (is_int($value) || is_float($value)))
@@ -166,6 +166,17 @@ final class OpenApiValidator
     private function hasType(array $schema, string $expected): bool
     {
         return in_array($expected, (array)($schema['type'] ?? []), true);
+    }
+
+    private function isList(array $value): bool
+    {
+        $index = 0;
+        foreach ($value as $key => $item) {
+            if ($key !== $index++) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function resolve(array $value): array

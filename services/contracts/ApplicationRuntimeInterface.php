@@ -9,11 +9,11 @@ interface ApplicationRuntimeInterface
 {
     public function db(): Connection;
 
-    public function param(string $name, mixed $default = null): mixed;
+    public function param(string $name, $default = null);
 
-    public function setState(string $name, mixed $value): void;
+    public function setState(string $name, $value): void;
 
-    public function state(string $name, mixed $default = null): mixed;
+    public function state(string $name, $default = null);
 
     public function request(): Request;
 

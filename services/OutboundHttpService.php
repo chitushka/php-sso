@@ -121,7 +121,7 @@ class OutboundHttpService
                 if ($raw === false || strlen($raw) > $limit || !empty($metadata['timed_out'])) {
                     return null;
                 }
-                $status = $this->responseStatus($http_response_header ?? []);
+                $status = $this->responseStatus($metadata['wrapper_data'] ?? []);
                 return $status >= 200 && $status < 300 ? $raw : null;
             } finally {
                 fclose($stream);

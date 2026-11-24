@@ -4,17 +4,53 @@ namespace app\services\results;
 
 /**
  * @implements \ArrayAccess<string, mixed>
+ * @property-read int $status
+ * @property-read array $data
+ * @property-read ServiceError|null $error
+ * @property-read array $metadata
  *
  * ArrayAccess временно сохраняет совместимость вызовов во время поэтапного перевода use cases.
  */
-final class ServiceResult implements \ArrayAccess
+final class ServiceResult implements \ArrayAccess, \JsonSerializable
 {
+    private int $status;
+    private array $data;
+    private ?ServiceError $error;
+    private array $metadata;
+
     private function __construct(
-        public readonly int $status,
-        public readonly array $data,
-        public readonly ?ServiceError $error,
-        public readonly array $metadata
+        int $status,
+        array $data,
+        ?ServiceError $error,
+        array $metadata
     ) {
+        $this->status = $status;
+        $this->data = $data;
+        $this->error = $error;
+        $this->metadata = $metadata;
+    }
+
+    public function __get(string $name)
+    {
+        if (!$this->offsetExists($name)) {
+            throw new \LogicException('Unknown ServiceResult property: ' . $name);
+        }
+        return $this->$name;
+    }
+
+    public function __isset(string $name): bool
+    {
+        return $this->offsetExists($name) && $this->$name !== null;
+    }
+
+    public function __set(string $name, $value): void
+    {
+        throw new \LogicException('ServiceResult is immutable');
+    }
+
+    public function __unset(string $name): void
+    {
+        throw new \LogicException('ServiceResult is immutable');
     }
 
     public static function success(array $data, int $status = 200, array $metadata = []): self
@@ -32,28 +68,28 @@ final class ServiceResult implements \ArrayAccess
         return $this->error === null;
     }
 
-    public function offsetExists(mixed $offset): bool
+    public function jsonSerialize(): array
+    {
+        return get_object_vars($this);
+    }
+
+    public function offsetExists($offset): bool
     {
         return in_array($offset, ['status', 'data', 'error', 'metadata'], true);
     }
 
-    public function offsetGet(mixed $offset): mixed
+    #[\ReturnTypeWillChange]
+    public function offsetGet($offset)
     {
-        return match ($offset) {
-            'status' => $this->status,
-            'data' => $this->data,
-            'error' => $this->error,
-            'metadata' => $this->metadata,
-            default => null,
-        };
+        return $this->offsetExists($offset) ? $this->$offset : null;
     }
 
-    public function offsetSet(mixed $offset, mixed $value): void
+    public function offsetSet($offset, $value): void
     {
         throw new \LogicException('ServiceResult is immutable');
     }
 
-    public function offsetUnset(mixed $offset): void
+    public function offsetUnset($offset): void
     {
         throw new \LogicException('ServiceResult is immutable');
     }

@@ -8,7 +8,7 @@ Multi-tenancy/realms, SCIM, SAML и high-assurance hardware authentication не 
 
 ## Технологический стек и размещение кода
 
-- PHP 8.4, PHP-FPM и Yii2.
+- PHP 7.4–8.5, PHP-FPM и Yii2; код и зависимости сохраняют минимальную совместимость с PHP 7.4.33.
 - PostgreSQL 17 с `pgcrypto`.
 - nginx и Docker Compose.
 - Self-hosted Vue 3 в Yii layout.
@@ -27,6 +27,8 @@ HTTP Controller -> Application Service -> ActiveRecord/PostgreSQL
 - `commands/` — cleanup, readiness и обслуживание секретов.
 
 Production image собирается отдельным multi-stage target без dev dependencies, Composer и тестовых файлов. Runtime работает без root, с read-only root filesystem и выделенными tmpfs. Миграции запускаются отдельной operations-задачей; приложение не применяет их при старте. Production-конфигурация проверяется fail-closed.
+
+Один Composer lock-файл используется на всех поддерживаемых PHP: разрешение зависимостей выполняется с platform PHP 7.4.33, фактическая платформа проверяется в test image. Build-параметры выбирают PHP и Debian suite, сохраняя одинаковые runtime-расширения и production-проверки. Неизменяемые `ServiceResult` и `ServiceError` используют закрытые типизированные поля с доступом только для чтения и сохраняют JSON-представление на всех версиях.
 
 ## Доменные модули
 

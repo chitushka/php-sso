@@ -17,17 +17,17 @@ final class YiiApplicationRuntime implements ApplicationRuntimeInterface
         return Yii::$app->db;
     }
 
-    public function param(string $name, mixed $default = null): mixed
+    public function param(string $name, $default = null)
     {
         return Yii::$app->params[$name] ?? $default;
     }
 
-    public function setState(string $name, mixed $value): void
+    public function setState(string $name, $value): void
     {
         $this->state[$name] = $value;
     }
 
-    public function state(string $name, mixed $default = null): mixed
+    public function state(string $name, $default = null)
     {
         return $this->state[$name] ?? $default;
     }

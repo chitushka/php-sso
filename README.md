@@ -1,6 +1,6 @@
 # SSO PHP
 
-Самостоятельный single-tenant SSO/Identity Provider на PHP 8.4, Yii2, PostgreSQL 17, nginx и Vue 3. Сервис поддерживает локальную, LDAP- и федеративную аутентификацию, OAuth 2.0/OpenID Connect, MFA, управление сессиями, RBAC, аудит и административный интерфейс.
+Самостоятельный single-tenant SSO/Identity Provider на PHP 7.4–8.5, Yii2, PostgreSQL 17, nginx и Vue 3. Сервис поддерживает локальную, LDAP- и федеративную аутентификацию, OAuth 2.0/OpenID Connect, MFA, управление сессиями, RBAC, аудит и административный интерфейс.
 
 ## Возможности
 
@@ -18,6 +18,15 @@
 ## Быстрый старт
 
 Все команды выполняются в Docker; локальные PHP и Composer не требуются.
+
+По умолчанию образы используют PHP 8.4. Версия задаётся build-параметрами `PHP_VERSION` и `PHP_DEBIAN_SUITE`; для PHP 7.4/8.0 нужен `bullseye`, для PHP 8.1–8.5 — `bookworm`. Например:
+
+```bash
+PHP_VERSION=7.4 PHP_DEBIAN_SUITE=bullseye docker compose build app test
+PHP_VERSION=8.5 PHP_DEBIAN_SUITE=bookworm docker compose build app test
+```
+
+В PowerShell перед сборкой задайте `$env:PHP_VERSION='7.4'` и `$env:PHP_DEBIAN_SUITE='bullseye'`. Эти параметры выбирают интерпретатор при сборке, поэтому после изменения требуется пересобрать app и test. Для запуска используйте одинаковую версию app, migrate и остальных operations-задач. Для архивного Bullseye Dockerfile использует `archive.debian.org` с проверкой подписей, без проверки срока актуальности архивного индекса. Образы включают LDAP, PDO PostgreSQL, mbstring и OpenSSL; хеширование паролей требует Argon2id. Composer разрешает зависимости относительно PHP 7.4.33, а `composer check-platform-reqs` проверяет фактический интерпретатор и расширения без подмены platform.
 
 ```bash
 cp .env.development.example .env.development
@@ -57,6 +66,10 @@ docker compose --profile test run --rm test sh -lc "php yii migrate --interactiv
 ```
 
 Test service всегда задаёт отдельный `SSO_ENV=test` и не зависит от локального `.env`. Production-проверки намеренно запрещают невалидные TTL, лимиты и URL, слабые secrets, стандартные credentials и PostgreSQL без `sslmode=verify-full` и доверенного CA.
+
+CI проверяет PHP 7.4, 8.0, 8.1, 8.2, 8.3, 8.4 и 8.5 отдельно: production/test build, platform requirements, PHP-FPM config, синтаксис, unit/integration, миграции и HTTP OAuth/OIDC/broker/LDAP flows. Для локальной проверки выбранной версии после сборки выполните `make runtime-check php-compatibility integration-ldap` (без make: `docker compose --profile test run --rm test sh scripts/ci/php_compatibility.sh`). Старые ветки интерпретатора требуют отдельно сопровождаемого окружения с исправлениями безопасности; совместимость приложения не продлевает поддержку PHP.
+
+В Docker-окружении с PHP CLI и теми же расширениями можно вызвать `sh scripts/ci/php_compatibility.sh --cli`: все проверки приложения сохраняются, проверка конфигурации PHP-FPM заменяется выводом версии CLI. Матрица CI использует стандартный режим с обязательной проверкой PHP-FPM.
 
 ## Конфигурация
 
