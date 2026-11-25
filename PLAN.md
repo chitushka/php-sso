@@ -229,7 +229,7 @@
 
 Основание: Playwright/axe smoke уже проверяет основной admin lifecycle, Chromium, desktop/mobile и часть ошибок; полной browser-матрицы MFA/recovery/consent/providers/permissions нет.
 
-- [ ] Добавить browser flows enrollment/MFA/recovery, forgot/reset/verify email, OIDC login/consent/logout и повторной аутентификации с безопасным continue-контекстом.
+- [ ] Добавить browser flows enrollment/MFA/recovery, forgot/reset/verify email и OIDC consent; расширить проверку безопасного continue для MFA/federation. Межрепозиторный browser smoke входа/повторного SSO/выхода с sso-client включить в CI после подключения репозитория пакета.
 - [ ] Проверить ограниченные permissions, устаревшую сессию, 401/403/409/429/5xx и конкурентные изменения; скрытие кнопки не считать авторизацией.
 - [ ] Для provider endpoints, административных прав, ротации secrets/keys и удаления identity определить recent/step-up authentication, включая правила разрешённых machine principals.
 - [ ] Проверить клавиатуру/скринридер, ошибки форм, однократный показ recovery codes/secrets и отсутствие credentials в persistent browser storage.

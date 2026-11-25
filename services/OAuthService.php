@@ -648,6 +648,12 @@ class OAuthService
             return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
         }
 
+        if ($old->auth_time === null && in_array('openid', $this->splitScopes((string)$old->scope), true)) {
+            $this->revokeRefreshFamily((string)$old->family_id, $client);
+            $transaction->commit();
+            return $this->oauthFail(400, 'invalid_grant', 'grant is invalid, expired or revoked');
+        }
+
         $user = User::findOne(['id' => $old->user_id, 'status' => User::STATUS_ACTIVE]);
         if (!$user) {
             $this->revokeRefreshFamily((string)$old->family_id, $client);
@@ -677,7 +683,7 @@ class OAuthService
                 $old->scope,
                 '',
                 (string)$old->family_id,
-                strtotime((string)$old->created_at)
+                $old->auth_time === null ? strtotime((string)$old->created_at) : (int)$old->auth_time
             );
             $transaction->commit();
             return $result;
@@ -756,6 +762,7 @@ class OAuthService
         $rt->user_id = $userId;
         $rt->client_id = $client->client_id;
         $rt->scope = $scope;
+        $rt->auth_time = $authTime;
         $rt->expires_at = gmdate('Y-m-d H:i:sP', time() + (int)ApplicationRuntime::param('refreshTokenTtl'));
         if (!$rt->save(false)) {
             throw new \RuntimeException('failed to persist refresh token');

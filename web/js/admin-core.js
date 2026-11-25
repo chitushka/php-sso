@@ -15,6 +15,9 @@
       };
     },
     async mounted() {
+      if (window.location.pathname === '/login') {
+        this.view = 'login';
+      }
       await this.restoreSession();
       const params = new URLSearchParams(window.location.search);
       if (params.get('broker_error')) {
@@ -38,6 +41,28 @@
       },
     },
     methods: {
+      authorizationContinuation() {
+        const target = new URLSearchParams(window.location.search).get('continue');
+        if (!target || target.length > 8192 || !target.startsWith('/oauth2/authorize?') || /[\x00-\x20\x7f\\]/.test(target)) {
+          return null;
+        }
+        try {
+          const url = new URL(target, window.location.origin);
+          return url.origin === window.location.origin && url.pathname === '/oauth2/authorize' && !url.hash
+            ? url.pathname + url.search
+            : null;
+        } catch (error) {
+          return null;
+        }
+      },
+      resumeAuthorization() {
+        const target = this.authorizationContinuation();
+        if (this.user && target) {
+          window.location.replace(target);
+          return true;
+        }
+        return false;
+      },
       navigate(view) {
         this.view = view;
         this.errorMessage = '';
@@ -78,6 +103,9 @@
         this.brokerProviders = await this.api('/api/v1/broker/providers').catch(() => []);
         if (this.accessToken) {
           this.user = await this.api('/api/v1/auth/me').catch(() => null);
+          if (this.resumeAuthorization()) {
+            return;
+          }
           this.syncProfileForm();
           this.clients = await this.apiItems('/api/v1/oauth/clients').catch(() => []);
           this.users = await this.apiItems('/api/v1/users').catch(() => []);

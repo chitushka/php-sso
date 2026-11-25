@@ -58,6 +58,31 @@ try {
     $db->exec("INSERT INTO mfa_recovery_codes(user_id,code_hash)
         SELECT id, encode(digest('legacy-recovery-code', 'sha256'), 'hex')
         FROM users WHERE username = 'drift-local'");
+    $legacyUser = $db->prepare(
+        "INSERT INTO users(username,email,password_hash,status,source)
+         VALUES ('legacy-grant-user','legacy-grant-user@example.test',:hash,'active','local')"
+    );
+    $legacyHash = password_hash('migration-fixture-password-2026!', PASSWORD_ARGON2ID);
+    $legacyUser->execute([':hash' => $legacyHash]);
+    $legacyClient = $db->prepare(
+        "INSERT INTO oauth_clients(client_id,name,type,client_secret_hash,redirect_uris,allowed_scopes,enabled)
+         VALUES ('legacy-oidc-client','Legacy OIDC grant','confidential',:hash,
+                 ARRAY['https://rp.example.test/callback'],ARRAY['openid','profile'],true)"
+    );
+    $legacyClient->execute([':hash' => $legacyHash]);
+    $db->exec("INSERT INTO refresh_tokens(token_hash,family_id,user_id,client_id,scope,expires_at)
+        SELECT encode(digest('legacy-oidc-refresh-token', 'sha256'), 'hex'),
+               gen_random_uuid(), id, 'legacy-oidc-client', 'openid profile',
+               now() + interval '1 hour'
+        FROM users WHERE username = 'legacy-grant-user'");
+    $run(['migrate/to', 'm261016_000013_harden_mfa_recovery_codes', '--interactive=0']);
+    if ((int)$db->query(
+        "SELECT COUNT(*) FROM refresh_tokens
+         WHERE token_hash = encode(digest('legacy-oidc-refresh-token', 'sha256'), 'hex')
+           AND revoked_at IS NULL"
+    )->fetchColumn() !== 1) {
+        throw new RuntimeException('legacy OIDC grant fixture must be active before the auth_time migration');
+    }
     $run(['migrate', '--interactive=0']);
     $activeKeys = (int)$db->query("SELECT COUNT(*) FROM oidc_signing_keys WHERE status = 'active'")->fetchColumn();
     $disabledUsers = (int)$db->query(
@@ -74,9 +99,16 @@ try {
     if ($activeKeys !== 1 || $disabledUsers !== 2 || $normalizedClients !== 2 || $legacyRecoveryCodes !== 0) {
         throw new RuntimeException('up migration did not repair security-model drift');
     }
+    if ((int)$db->query(
+        "SELECT COUNT(*) FROM refresh_tokens
+         WHERE token_hash = encode(digest('legacy-oidc-refresh-token', 'sha256'), 'hex')
+         AND revoked_at IS NOT NULL AND auth_time IS NULL"
+    )->fetchColumn() !== 1) {
+        throw new RuntimeException('up migration did not invalidate OIDC grants without original auth_time');
+    }
 
     // Rollback удаляет ограничения, после чего повторный upgrade снова чинит drift.
-    $run(['migrate/down', '2', '--interactive=0']);
+    $run(['migrate/down', '3', '--interactive=0']);
     $db->exec("UPDATE oidc_signing_keys SET status = 'active', expires_at = NULL");
     $db->exec("INSERT INTO mfa_recovery_codes(user_id,code_hash)
         SELECT id, encode(digest('second-legacy-recovery-code', 'sha256'), 'hex')

@@ -181,7 +181,17 @@ class OAuthTokenServiceTest extends TestCase
 
         $this->assertTrue($refresh->isSuccess());
         $this->assertArrayNotHasKey('nonce', $refreshClaims);
-        $this->assertSame($refreshAuthTime, $refreshClaims['auth_time']);
+        $this->assertSame($codeCreatedAt, $refreshClaims['auth_time']);
+        for ($rotation = 0; $rotation < 2; $rotation++) {
+            $refresh = (new OAuthService())->token($this->postRequest([
+                'grant_type' => 'refresh_token',
+                'client_id' => $flow['client_id'],
+                'client_secret' => $flow['client_secret'],
+                'refresh_token' => $refresh['data']['refresh_token'],
+            ]));
+            $this->assertTrue($refresh->isSuccess());
+            $this->assertSame($codeCreatedAt, $this->jwtPayload($refresh['data']['id_token'])['auth_time']);
+        }
     }
 
     public function testClientRegistrationRejectsRedirectFragments(): void
@@ -197,6 +207,24 @@ class OAuthTokenServiceTest extends TestCase
 
         $this->assertSame(400, $created['status']);
         $this->assertSame('redirect URIs violate the client redirect policy', $created['data']['error']);
+    }
+
+    public function testOidcRefreshWithoutOriginalAuthenticationTimeFailsClosed(): void
+    {
+        $flow = $this->issueAuthorizationCodeToken(true, 'openid', 'nonce-for-legacy-check');
+        Yii::$app->db->createCommand()->update('refresh_tokens', ['auth_time' => null], [
+            'token_hash' => hash('sha256', $flow['token']['data']['refresh_token']),
+        ])->execute();
+        $result = (new OAuthService())->token($this->postRequest([
+            'grant_type' => 'refresh_token',
+            'client_id' => $flow['client_id'],
+            'client_secret' => $flow['client_secret'],
+            'refresh_token' => $flow['token']['data']['refresh_token'],
+        ]));
+        $this->assertFalse($result->isSuccess());
+        $this->assertSame('invalid_grant', $result->error->code);
+        $this->assertSame(1, $this->refreshTokenCount($flow['client_id']));
+        $this->assertSame(1, $this->revokedRefreshTokenCount($flow['client_id']));
     }
 
     public function testBasicClientCredentialsUseFormUrlEncoding(): void

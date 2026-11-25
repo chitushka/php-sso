@@ -32,6 +32,10 @@ Production image собирается отдельным multi-stage target бе
 
 ## Доменные модули
 
+Внешние PHP-приложения выступают отдельными OpenID Connect Relying Parties и подключаются через самостоятельный пакет sso-client. Они используют Authorization Code + PKCE S256, проверяют ID Token через Discovery/JWKS и не получают доступ к БД или паролям SSO. Локальная identity и прикладные права принадлежат приложению; ключ связи — issuer + sub.
+
+Интерактивный вход RP использует центральную страницу /login?continue=... . Browser continuation ограничен точным same-origin путём /oauth2/authorize и сохраняется при federation; после локального входа, MFA или восстановления сессии UI возобновляет authorize до загрузки административных данных. Сам OAuth endpoint повторно валидирует зарегистрированный client и redirect. Мгновенный глобальный выход всех RP не является завершённой возможностью: оставшаяся работа описана в PLAN.md.
+
 - Authentication: local password, LDAP fallback, federated login, SSO cookie и Bearer JWT.
 - Account: profile, password change/reset, email verification и session management.
 - MFA: TOTP enrollment/verification, replay counter, одноразовые recovery codes и отзыв credentials при смене MFA-состояния.
@@ -94,6 +98,8 @@ Cookie-authenticated изменяющие запросы требуют CSRF tok
 LDAP group mapping является вложенным ресурсом provider: list/create возвращают `404`, если parent отсутствует, а delete сопоставляет одновременно `provider_id` и `mappingID`, поэтому mapping нельзя удалить через URI другого provider. Проверка parent, mutation и обязательный audit выполняются в одной транзакции. `PUT /api/v1/ldap/providers/{id}` имеет partial-update семантику: изменяются только присутствующие поля, пропущенные настройки и пустой `bind_password` сохраняют прежние значения.
 
 ## Browser и OAuth/OIDC security
+
+Время исходного OAuth grant сохраняется в refresh_tokens.auth_time и переносится без изменения при каждой ротации, независимо от created_at нового token. Старые OIDC grants без сохранённого времени отзываются миграцией; fallback на время очередной выдачи ID Token не допускается. Новый столбец и его неотрицательный constraint проверяет deployment-check.
 
 Ответы получают CSP, `Permissions-Policy`, `X-Content-Type-Options` и `Referrer-Policy`; HSTS включается в production для прямого HTTPS и HTTPS за доверенным proxy. Cookie имеют `HttpOnly`, `SameSite` и в production `Secure`. Forwarded IP, host, scheme и port принимаются только от CIDR из `SSO_TRUSTED_PROXIES`; те же CIDR настраивают Yii `Request::trustedHosts`, поэтому недоверенные peers не могут подменить origin или признак защищённого соединения.
 

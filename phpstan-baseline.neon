@@ -1387,12 +1387,6 @@ parameters:
 			path: /app/services/OAuthService.php
 
 		-
-			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$family_id\.$#'
-			identifier: property.notFound
-			count: 6
-			path: /app/services/OAuthService.php
-
-		-
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1408,12 +1402,6 @@ parameters:
 			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$rotated_at\.$#'
 			identifier: property.notFound
 			count: 2
-			path: /app/services/OAuthService.php
-
-		-
-			message: '#^Access to an undefined property app\\models\\RefreshToken\:\:\$scope\.$#'
-			identifier: property.notFound
-			count: 3
 			path: /app/services/OAuthService.php
 
 		-

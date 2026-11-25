@@ -37,7 +37,9 @@
         await this.refresh();
       },
       startBrokerLogin(code) {
-        window.location.href = '/oauth2/broker/' + encodeURIComponent(code) + '/login?continue=/';
+        const authorization = this.authorizationContinuation();
+        const returnTo = authorization ? '/login?continue=' + encodeURIComponent(authorization) : '/';
+        window.location.href = '/oauth2/broker/' + encodeURIComponent(code) + '/login?continue=' + encodeURIComponent(returnTo);
       },
       syncProfileForm() {
         if (!this.user) {

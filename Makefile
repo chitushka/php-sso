@@ -65,7 +65,11 @@ secret-scan:
 migration-check:
 	$(TEST_RUN) php scripts/ci/migration_check.php
 
-quality: lint cs analyse verify-assets verify-docs secret-scan
+quality: lint cs analyse verify-assets verify-docs secret-scan authorization-check
+
+.PHONY: authorization-check
+authorization-check:
+	docker run --rm -v "$(CURDIR):/app:ro" -w /app node:20-alpine node --test tests/Browser/authorization-continuation.check.cjs
 
 cleanup:
 	docker compose run --rm app php yii cleanup/run
